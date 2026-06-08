@@ -16,12 +16,13 @@ import * as XLSX from "xlsx";
 ════════════════════════════════════════════════════════════════ */
 
 // Reads from .env.local first (Option A), falls back to hardcoded (Option B)
-const SUPABASE_URL =https://tprimzlbzbrhuxxsgxxa.supabase.co
+const SUPABASE_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
-  "https://tprimzlbzbrhuxxsgxxa.supabase.co";   // ← Option B: paste your Project URL here
+  "YOUR_PROJECT_URL_HERE";   // ← Option B: paste your Project URL here
 
-const SUPABASE_KEY =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwcmltemxiemJyaHV4eHNneHhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NTA4MjIsImV4cCI6MjA5NjQyNjgyMn0.hVD7jE5Kxi732cpCti8rb6A3udVAqf1NVTbtUfnuAKs
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwcmltemxiemJyaHV4eHNneHhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NTA4MjIsImV4cCI6MjA5NjQyNjgyMn0.hVD7jE5Kxi732cpCti8rb6A3udVAqf1NVTbtUfnuAKs";      // ← Option B: paste your anon key here
+const SUPABASE_KEY =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_KEY) ||
+  "YOUR_ANON_KEY_HERE";      // ← Option B: paste your anon key here
 
 const isConfigured =
   SUPABASE_URL !== "YOUR_PROJECT_URL_HERE" &&
@@ -34,22 +35,37 @@ const isConfigured =
    they fall back to local state (demo mode).
 ════════════════════════════════════════════════════════════════ */
 async function sbFetch(path, opts = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...opts,
-    headers: {
-      "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": opts.prefer || "return=representation",
-      ...(opts.headers || {}),
-    },
-  });
+  // Build headers — prefer in opts.headers wins over opts.prefer wins over default
+  const preferHeader = (opts.headers && opts.headers["Prefer"]) || opts.prefer || "return=representation";
+  const headers = {
+    "apikey":        SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type":  "application/json",
+    "Prefer":        preferHeader,
+    ...(opts.headers || {}),
+  };
+  // Remove internal-only key so it doesn't leak into headers
+  delete headers["Prefer"]; headers["Prefer"] = preferHeader;
+
+  const fetchOpts = { method: opts.method || "GET", headers };
+  if (opts.body) fetchOpts.body = opts.body;
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, fetchOpts);
+
+  // 204 No Content (DELETE success) — nothing to parse
+  if (res.status === 204) return null;
+
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Supabase error ${res.status}: ${err}`);
+    let errText = "";
+    try { errText = await res.text(); } catch {}
+    throw new Error(`Supabase ${res.status} on ${path}: ${errText}`);
   }
+
+  // Some responses (PATCH with return=minimal) are also empty
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  if (!text || text.trim() === "") return null;
+  try { return JSON.parse(text); }
+  catch { return text; }
 }
 
 // Convert DB row (snake_case) → app object (camelCase)
@@ -112,31 +128,43 @@ const DB = {
     return (rows || []).map(dbToProspect);
   },
   async upsertProspect(p) {
-    const body = prospectToDb(p);
-    // If id is a UUID (from DB), update; if it's a number (local uid()), insert without id
-    const isDbId = typeof p.id === "string" && p.id.includes("-") && p.id.length === 36;
+    const body = prospectToDb(p); // never includes id — safe for both INSERT and UPDATE
+    const isDbId = typeof p.id === "string" && /^[0-9a-f-]{36}$/.test(p.id);
     if (isDbId) {
-      const rows = await sbFetch(`prospects?id=eq.${p.id}`, {
-        method: "PATCH", prefer: "return=representation", body: JSON.stringify(body),
+      // UPDATE existing row
+      const rows = await sbFetch(`prospects?id=eq.${encodeURIComponent(p.id)}`, {
+        method: "PATCH",
+        headers: { "Prefer": "return=representation" },
+        body: JSON.stringify(body),
       });
-      return dbToProspect((rows || [])[0]);
+      return dbToProspect(Array.isArray(rows) ? rows[0] : rows);
     } else {
+      // INSERT new row — let Supabase generate the UUID
       const rows = await sbFetch("prospects", {
-        method: "POST", prefer: "return=representation", body: JSON.stringify(body),
+        method: "POST",
+        headers: { "Prefer": "return=representation" },
+        body: JSON.stringify(body),
       });
-      return dbToProspect((rows || [])[0]);
+      return dbToProspect(Array.isArray(rows) ? rows[0] : rows);
     }
   },
   async deleteProspect(id) {
     await sbFetch(`prospects?id=eq.${id}`, { method: "DELETE" });
   },
   async upsertProspects(list) {
-    // Bulk insert (ignores IDs — always new records)
-    const rows = list.map(prospectToDb);
-    const result = await sbFetch("prospects", {
-      method: "POST", prefer: "return=representation", body: JSON.stringify(rows),
+    // Bulk INSERT — strip local numeric IDs so Supabase generates fresh UUIDs
+    const rows = list.map(p => {
+      const row = prospectToDb(p);
+      // Only include id if it looks like a real UUID
+      if (typeof p.id === "string" && /^[0-9a-f-]{36}$/.test(p.id)) row.id = p.id;
+      return row;
     });
-    return (result || []).map(dbToProspect);
+    const result = await sbFetch("prospects", {
+      method: "POST",
+      headers: { "Prefer": "return=representation" },
+      body: JSON.stringify(rows),
+    });
+    return (Array.isArray(result) ? result : []).map(dbToProspect);
   },
   async deleteAllProspects() {
     await sbFetch("prospects?id=neq.00000000-0000-0000-0000-000000000000", { method: "DELETE" });
@@ -148,18 +176,22 @@ const DB = {
     return (rows || []).map(dbToUser);
   },
   async upsertUser(u) {
-    const isDbId = typeof u.id === "string" && u.id.includes("-") && u.id.length === 36;
+    const isDbId = typeof u.id === "string" && /^[0-9a-f-]{36}$/.test(u.id);
     const body = { username:u.username, password:u.password, name:u.name, email:u.email, role:u.role, active:u.active, avatar:u.avatar };
     if (isDbId) {
-      const rows = await sbFetch(`crm_users?id=eq.${u.id}`, {
-        method:"PATCH", prefer:"return=representation", body: JSON.stringify(body),
+      const rows = await sbFetch(`crm_users?id=eq.${encodeURIComponent(u.id)}`, {
+        method:"PATCH",
+        headers:{"Prefer":"return=representation"},
+        body: JSON.stringify(body),
       });
-      return dbToUser((rows||[])[0]);
+      return dbToUser(Array.isArray(rows) ? rows[0] : rows);
     } else {
       const rows = await sbFetch("crm_users", {
-        method:"POST", prefer:"return=representation", body: JSON.stringify(body),
+        method:"POST",
+        headers:{"Prefer":"return=representation"},
+        body: JSON.stringify(body),
       });
-      return dbToUser((rows||[])[0]);
+      return dbToUser(Array.isArray(rows) ? rows[0] : rows);
     }
   },
   async deleteUser(id) {
@@ -194,12 +226,22 @@ const DB = {
     return out;
   },
   async saveSettings(settings) {
-    const rows = Object.entries(settings).map(([key, value]) => ({ key, value: String(value) }));
-    await sbFetch("system_settings", {
-      method:"POST", prefer:"resolution=merge-duplicates,return=minimal",
-      headers:{"Prefer":"resolution=merge-duplicates"},
-      body: JSON.stringify(rows),
-    });
+    // Upsert each key one at a time to avoid bulk conflict issues
+    const entries = Object.entries(settings);
+    for (const [key, value] of entries) {
+      await sbFetch(`system_settings?key=eq.${encodeURIComponent(key)}`, {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        body: JSON.stringify({ value: String(value) }),
+      }).catch(async () => {
+        // If PATCH fails (row doesn't exist), INSERT it
+        await sbFetch("system_settings", {
+          method: "POST",
+          headers: { "Prefer": "return=minimal" },
+          body: JSON.stringify({ key, value: String(value) }),
+        });
+      });
+    }
   },
 
   // Emails
