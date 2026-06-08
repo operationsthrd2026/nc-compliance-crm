@@ -20,8 +20,8 @@ const SUPABASE_URL =https://tprimzlbzbrhuxxsgxxa.supabase.co
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
   "https://tprimzlbzbrhuxxsgxxa.supabase.co";   // ← Option B: paste your Project URL here
 
-const SUPABASE_KEY =sb_publishable_5aFEQ5NWvZ54hpXS7qi6tg_veKeK6mU
-  "sb_publishable_5aFEQ5NWvZ54hpXS7qi6tg_veKeK6mU";      // ← Option B: paste your anon key here
+const SUPABASE_KEY =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwcmltemxiemJyaHV4eHNneHhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NTA4MjIsImV4cCI6MjA5NjQyNjgyMn0.hVD7jE5Kxi732cpCti8rb6A3udVAqf1NVTbtUfnuAKs
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwcmltemxiemJyaHV4eHNneHhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NTA4MjIsImV4cCI6MjA5NjQyNjgyMn0.hVD7jE5Kxi732cpCti8rb6A3udVAqf1NVTbtUfnuAKs";      // ← Option B: paste your anon key here
 
 const isConfigured =
   SUPABASE_URL !== "YOUR_PROJECT_URL_HERE" &&
