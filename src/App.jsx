@@ -16,13 +16,13 @@ import * as XLSX from "xlsx";
 ════════════════════════════════════════════════════════════════ */
 
 // Reads from .env.local first (Option A), falls back to hardcoded (Option B)
-const SUPABASE_URL =
+const SUPABASE_URL = https://twzsblvvtvpwndlzzlmu.supabase.co
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
-  "YOUR_PROJECT_URL_HERE";   // ← Option B: paste your Project URL here
+  "https://twzsblvvtvpwndlzzlmu.supabase.co";   // ← Option B: paste your Project URL here
 
-const SUPABASE_KEY =
+const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3enNibHZ2dHZwd25kbHp6bG11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDU0MzIsImV4cCI6MjA5NjUyMTQzMn0.sAcvcvW8n0KYP3i6zGOOftRULS6to7jNwXylEqVrVI4
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_KEY) ||
-  "YOUR_ANON_KEY_HERE";      // ← Option B: paste your anon key here
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3enNibHZ2dHZwd25kbHp6bG11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDU0MzIsImV4cCI6MjA5NjUyMTQzMn0.sAcvcvW8n0KYP3i6zGOOftRULS6to7jNwXylEqVrVI4";      // ← Option B: paste your anon key here
 
 const isConfigured =
   SUPABASE_URL !== "YOUR_PROJECT_URL_HERE" &&
