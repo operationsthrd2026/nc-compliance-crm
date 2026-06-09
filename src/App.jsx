@@ -398,7 +398,7 @@ function LoginScreen({users,onLogin}){
           <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:72,height:72,background:`linear-gradient(145deg,${G},${GL})`,borderRadius:22,marginBottom:16,boxShadow:`0 12px 48px rgba(201,150,58,0.35),0 0 0 1px rgba(201,150,58,0.2)`}}>
             <span style={{fontSize:34}}>⚖️</span>
           </div>
-          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>NC Compliance CRM</h1>
+          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>CRM</h1>
           <p style={{margin:0,fontSize:13,color:WM}}>HR On Demand · SMB & Nonprofit Outreach</p>
         </div>
 
@@ -436,7 +436,7 @@ function LoginScreen({users,onLogin}){
           </button>
         </div>
 
-        <p style={{textAlign:"center",marginTop:16,fontSize:11,color:WD}}>Version 4.0 · © 2026 HR On Demand · NC Compliance CRM</p>
+        <p style={{textAlign:"center",marginTop:16,fontSize:11,color:WD}}>Version 1.0 beta· © 2026 HR On Demand · CRM</p>
       </div>
     </div>
   );
