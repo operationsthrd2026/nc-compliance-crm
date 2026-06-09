@@ -15,19 +15,21 @@ import * as XLSX from "xlsx";
      resets on refresh).
 ════════════════════════════════════════════════════════════════ */
 
-// Reads from .env.local first (Option A), falls back to hardcoded (Option B)
-const SUPABASE_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
-  "YOUR_PROJECT_URL_HERE";   // ← Option B: paste your Project URL here
-
-const SUPABASE_KEY =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_KEY) ||
-  "YOUR_ANON_KEY_HERE";      // ← Option B: paste your anon key here
+// ── Supabase credentials ─────────────────────────────────────
+// Vite statically replaces import.meta.env.VITE_* at build time.
+// Set VITE_SUPABASE_URL and VITE_SUPABASE_KEY in Vercel → Settings →
+// Environment Variables, then trigger a new deployment.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "YOUR_PROJECT_URL_HERE";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "YOUR_ANON_KEY_HERE";
 
 const isConfigured =
   SUPABASE_URL !== "YOUR_PROJECT_URL_HERE" &&
   SUPABASE_KEY !== "YOUR_ANON_KEY_HERE" &&
   SUPABASE_URL.startsWith("https://");
+
+// Debug output — visible in browser console. Remove once confirmed working.
+console.log("[NC CRM] Supabase configured:", isConfigured,
+  "| URL:", SUPABASE_URL.startsWith("https://") ? SUPABASE_URL.slice(0,40)+"…" : "(not set)");
 
 /* ════════════════════════════════════════════════════════════════
    SUPABASE DATABASE LAYER
@@ -2274,7 +2276,7 @@ export default function App(){
   /* ── Load everything from DB on mount ────────────────────── */
   useEffect(()=>{
     const init = async () => {
-      // Restore session regardless of DB mode
+      // Always restore session from sessionStorage first
       let sessionUser = null;
       try {
         const s = sessionStorage.getItem("crm_v4");
@@ -2282,7 +2284,7 @@ export default function App(){
       } catch {}
 
       if (!isConfigured) {
-        // Local / demo mode — use seed data
+        console.log("[NC CRM] Running in Demo Mode — no Supabase credentials found.");
         setDbStatus("local");
         if (sessionUser) {
           const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
@@ -2292,31 +2294,53 @@ export default function App(){
         return;
       }
 
-      // Supabase mode
+      // ── Supabase mode ─────────────────────────────────────────
+      console.log("[NC CRM] Connecting to Supabase…");
       try {
-        const [dbUsers, dbProspects, dbSettings, dbAudit] = await Promise.all([
-          DB.getUsers(),
-          DB.getProspects(),
-          DB.getSettings(),
-          DB.getAuditLog(),
-        ]);
-        if (dbUsers.length)     setUsers(dbUsers);
-        if (dbProspects.length) setCrmData(dbProspects);
-        if (Object.keys(dbSettings).length) setSysSettings(s=>({...s,...dbSettings}));
-        if (dbAudit.length)     setAuditLog(dbAudit);
-        setDbStatus("connected");
+        // Test connection first with a lightweight query
+        const testResult = await DB.getSettings();
+        console.log("[NC CRM] Supabase connection OK. Settings keys:", Object.keys(testResult).length);
 
+        // Now load all data in parallel
+        const [dbUsers, dbProspects, dbAudit] = await Promise.all([
+          DB.getUsers().catch(e => { console.warn("[NC CRM] getUsers failed:", e.message); return []; }),
+          DB.getProspects().catch(e => { console.warn("[NC CRM] getProspects failed:", e.message); return []; }),
+          DB.getAuditLog().catch(e => { console.warn("[NC CRM] getAuditLog failed:", e.message); return []; }),
+        ]);
+
+        // Only replace state if DB returned actual data
+        if (dbUsers && dbUsers.length > 0) {
+          setUsers(dbUsers);
+          console.log("[NC CRM] Loaded", dbUsers.length, "users from DB");
+        }
+        if (dbProspects && dbProspects.length > 0) {
+          setCrmData(dbProspects);
+          console.log("[NC CRM] Loaded", dbProspects.length, "prospects from DB");
+        }
+        if (Object.keys(testResult).length > 0) {
+          setSysSettings(s => ({...s, ...testResult}));
+        }
+        if (dbAudit && dbAudit.length > 0) {
+          setAuditLog(dbAudit);
+        }
+
+        setDbStatus("connected");
+        console.log("[NC CRM] ✅ Supabase connected and data loaded.");
+
+        // Restore session against DB users
         if (sessionUser) {
-          const live = dbUsers.find(u => u.id === sessionUser.id && u.active) ||
-                       INIT_USERS.find(u => u.id === sessionUser.id && u.active);
+          const allUsers = dbUsers && dbUsers.length > 0 ? dbUsers : INIT_USERS;
+          const live = allUsers.find(u => u.id === sessionUser.id && u.active);
           if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
         }
         setScreen("login");
+
       } catch(e) {
-        console.error("Supabase load failed:", e);
+        console.error("[NC CRM] ❌ Supabase connection failed:", e.message);
+        console.error("[NC CRM] Full error:", e);
         setDbError(e.message);
         setDbStatus("error");
-        // Fall back to local data so the app still works
+        // Graceful fallback — app still works with seed data
         if (sessionUser) {
           const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
           if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
@@ -2494,22 +2518,42 @@ export default function App(){
 
   /* ── DB status banner (shown across all screens) ─────────── */
   const DbBanner = () => {
+    if (dbStatus === "connecting") return (
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:20,fontSize:10,color:"#60a5fa"}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#60a5fa",animation:"pulse 1s infinite"}}/>
+        Connecting to Supabase…
+      </div>
+    );
     if (dbStatus === "connected") return (
       <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.25)",borderRadius:20,fontSize:10,color:"#34d399"}}>
         <div style={{width:6,height:6,borderRadius:"50%",background:"#34d399"}}/>
-        Supabase · Live
+        Supabase · Live · {SUPABASE_URL.replace("https://","").slice(0,22)}…
       </div>
     );
     if (dbStatus === "local") return (
-      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"#fbbf24",cursor:"pointer"}} title="Click to learn how to connect your database" onClick={()=>alert("Add your Supabase URL and key at the top of the JSX file. See SETUP_GUIDE.md for instructions.")}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24"}}/>
-        Demo Mode — data resets on refresh · Add DB credentials to persist
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"#fbbf24",cursor:"pointer",maxWidth:460}}
+        title="Open browser console (F12) to see debug info. Check that VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set in Vercel → Settings → Environment Variables, then redeploy."
+        onClick={()=>alert("Demo Mode active — Supabase not connected.
+
+To connect:
+1. Go to Vercel → your project → Settings → Environment Variables
+2. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set
+3. Trigger a new deployment (Deployments → Redeploy)
+4. Open browser console (F12) and look for [NC CRM] log messages")}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24",flexShrink:0}}/>
+        <span>⚠️ Demo Mode — data resets on refresh. <u>Click for fix instructions.</u></span>
       </div>
     );
     if (dbStatus === "error") return (
-      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"#f87171"}} title={dbError}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171"}}/>
-        DB Error — using local data · hover for details
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"#f87171",cursor:"pointer",maxWidth:520}}
+        title={dbError}
+        onClick={()=>alert("Supabase DB Error:
+
+"+dbError+"
+
+Check browser console (F12) for [NC CRM] log messages.")}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171",flexShrink:0}}/>
+        <span>❌ DB Error — {(dbError||"").slice(0,60)}{(dbError||"").length>60?"…":""} · <u>Click for details</u></span>
       </div>
     );
     return null;
