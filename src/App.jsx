@@ -16,16 +16,16 @@ import * as XLSX from "xlsx";
 ════════════════════════════════════════════════════════════════ */
 
 // Reads from .env.local first (Option A), falls back to hardcoded (Option B)
-const SUPABASE_URL =
+const SUPABASE_URL =https://ifpzpepurqlvaixxshzk.supabase.co
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
-  "YOUR_PROJECT_URL_HERE";   // ← Option B: paste your Project URL here
+  "https://ifpzpepurqlvaixxshzk.supabase.co";   // ← Option B: paste your Project URL here
 
 const SUPABASE_KEY =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_KEY) ||
   "YOUR_ANON_KEY_HERE";      // ← Option B: paste your anon key here
 
 const isConfigured =
-  SUPABASE_URL !== "YOUR_PROJECT_URL_HERE" &&
+  SUPABASE_URL !== "https://ifpzpepurqlvaixxshzk.supabase.co" &&
   SUPABASE_KEY !== "YOUR_ANON_KEY_HERE" &&
   SUPABASE_URL.startsWith("https://");
 
