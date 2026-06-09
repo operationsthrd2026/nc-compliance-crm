@@ -1,7 +1,7 @@
 {
   "name": "nc-compliance-crm",
-  "version": "4.0.0",
-  "description": "NC Compliance CRM — HR On Demand SMB & Nonprofit Outreach Tracker",
+  "version": "1.0.0",
+  "description": "HR On Demand - CRM for SMB & Nonprofit Outreach Tracker",
   "private": true,
   "type": "module",
   "scripts": {
