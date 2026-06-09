@@ -20,13 +20,13 @@ const SUPABASE_URL =https://ifpzpepurqlvaixxshzk.supabase.co
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
   "https://ifpzpepurqlvaixxshzk.supabase.co";   // ← Option B: paste your Project URL here
 
-const SUPABASE_KEY =
+const SUPABASE_KEY =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDs
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_KEY) ||
-  "YOUR_ANON_KEY_HERE";      // ← Option B: paste your anon key here
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDs";      // ← Option B: paste your anon key here
 
 const isConfigured =
   SUPABASE_URL !== "https://ifpzpepurqlvaixxshzk.supabase.co" &&
-  SUPABASE_KEY !== "YOUR_ANON_KEY_HERE" &&
+  SUPABASE_KEY !== "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDsE" &&
   SUPABASE_URL.startsWith("https://");
 
 /* ════════════════════════════════════════════════════════════════
