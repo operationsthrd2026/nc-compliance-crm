@@ -1,7 +1,7 @@
 {
   "name": "nc-compliance-crm",
   "version": "4.0.0",
-  "description": "HR On Demand - CRM for SMB & Nonprofit Outreach Tracker",
+  "description": "NC Compliance CRM — HR On Demand SMB & Nonprofit Outreach Tracker",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,10 +11,10 @@
     "lint":    "eslint src --ext .js,.jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
     "react":     "^18.3.1",
     "react-dom": "^18.3.1",
-    "xlsx":      "^0.18.5",
-    "@supabase/supabase-js": "^2.45.0"
+    "xlsx":      "^0.18.5"
   },
   "devDependencies": {
     "@types/react":        "^18.3.3",
@@ -25,7 +25,6 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
     "vite":                "^5.3.1"
-    
   },
   "engines": {
     "node": ">=18.0.0"
