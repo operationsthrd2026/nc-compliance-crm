@@ -15,19 +15,21 @@ import * as XLSX from "xlsx";
      resets on refresh).
 ════════════════════════════════════════════════════════════════ */
 
-// Reads from .env.local first (Option A), falls back to hardcoded (Option B)
-const SUPABASE_URL =https://ifpzpepurqlvaixxshzk.supabase.co
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
-  "https://ifpzpepurqlvaixxshzk.supabase.co";   // ← Option B: paste your Project URL here
-
-const SUPABASE_KEY =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDs
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_KEY) ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDs";      // ← Option B: paste your anon key here
+// ── Supabase credentials ─────────────────────────────────────
+// Vite statically replaces import.meta.env.VITE_* at build time.
+// Set VITE_SUPABASE_URL and VITE_SUPABASE_KEY in Vercel → Settings →
+// Environment Variables, then trigger a new deployment.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "YOUR_PROJECT_URL_HERE";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "YOUR_ANON_KEY_HERE";
 
 const isConfigured =
-  SUPABASE_URL !== "https://ifpzpepurqlvaixxshzk.supabase.co" &&
-  SUPABASE_KEY !== "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDsE" &&
+  SUPABASE_URL !== "YOUR_PROJECT_URL_HERE" &&
+  SUPABASE_KEY !== "YOUR_ANON_KEY_HERE" &&
   SUPABASE_URL.startsWith("https://");
+
+// Debug output — visible in browser console. Remove once confirmed working.
+console.log("[NC CRM] Supabase configured:", isConfigured,
+  "| URL:", SUPABASE_URL.startsWith("https://") ? SUPABASE_URL.slice(0,40)+"…" : "(not set)");
 
 /* ════════════════════════════════════════════════════════════════
    SUPABASE DATABASE LAYER
@@ -35,22 +37,37 @@ const isConfigured =
    they fall back to local state (demo mode).
 ════════════════════════════════════════════════════════════════ */
 async function sbFetch(path, opts = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...opts,
-    headers: {
-      "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": opts.prefer || "return=representation",
-      ...(opts.headers || {}),
-    },
-  });
+  // Build headers — prefer in opts.headers wins over opts.prefer wins over default
+  const preferHeader = (opts.headers && opts.headers["Prefer"]) || opts.prefer || "return=representation";
+  const headers = {
+    "apikey":        SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type":  "application/json",
+    "Prefer":        preferHeader,
+    ...(opts.headers || {}),
+  };
+  // Remove internal-only key so it doesn't leak into headers
+  delete headers["Prefer"]; headers["Prefer"] = preferHeader;
+
+  const fetchOpts = { method: opts.method || "GET", headers };
+  if (opts.body) fetchOpts.body = opts.body;
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, fetchOpts);
+
+  // 204 No Content (DELETE success) — nothing to parse
+  if (res.status === 204) return null;
+
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Supabase error ${res.status}: ${err}`);
+    let errText = "";
+    try { errText = await res.text(); } catch {}
+    throw new Error(`Supabase ${res.status} on ${path}: ${errText}`);
   }
+
+  // Some responses (PATCH with return=minimal) are also empty
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  if (!text || text.trim() === "") return null;
+  try { return JSON.parse(text); }
+  catch { return text; }
 }
 
 // Convert DB row (snake_case) → app object (camelCase)
@@ -113,31 +130,43 @@ const DB = {
     return (rows || []).map(dbToProspect);
   },
   async upsertProspect(p) {
-    const body = prospectToDb(p);
-    // If id is a UUID (from DB), update; if it's a number (local uid()), insert without id
-    const isDbId = typeof p.id === "string" && p.id.includes("-") && p.id.length === 36;
+    const body = prospectToDb(p); // never includes id — safe for both INSERT and UPDATE
+    const isDbId = typeof p.id === "string" && /^[0-9a-f-]{36}$/.test(p.id);
     if (isDbId) {
-      const rows = await sbFetch(`prospects?id=eq.${p.id}`, {
-        method: "PATCH", prefer: "return=representation", body: JSON.stringify(body),
+      // UPDATE existing row
+      const rows = await sbFetch(`prospects?id=eq.${encodeURIComponent(p.id)}`, {
+        method: "PATCH",
+        headers: { "Prefer": "return=representation" },
+        body: JSON.stringify(body),
       });
-      return dbToProspect((rows || [])[0]);
+      return dbToProspect(Array.isArray(rows) ? rows[0] : rows);
     } else {
+      // INSERT new row — let Supabase generate the UUID
       const rows = await sbFetch("prospects", {
-        method: "POST", prefer: "return=representation", body: JSON.stringify(body),
+        method: "POST",
+        headers: { "Prefer": "return=representation" },
+        body: JSON.stringify(body),
       });
-      return dbToProspect((rows || [])[0]);
+      return dbToProspect(Array.isArray(rows) ? rows[0] : rows);
     }
   },
   async deleteProspect(id) {
     await sbFetch(`prospects?id=eq.${id}`, { method: "DELETE" });
   },
   async upsertProspects(list) {
-    // Bulk insert (ignores IDs — always new records)
-    const rows = list.map(prospectToDb);
-    const result = await sbFetch("prospects", {
-      method: "POST", prefer: "return=representation", body: JSON.stringify(rows),
+    // Bulk INSERT — strip local numeric IDs so Supabase generates fresh UUIDs
+    const rows = list.map(p => {
+      const row = prospectToDb(p);
+      // Only include id if it looks like a real UUID
+      if (typeof p.id === "string" && /^[0-9a-f-]{36}$/.test(p.id)) row.id = p.id;
+      return row;
     });
-    return (result || []).map(dbToProspect);
+    const result = await sbFetch("prospects", {
+      method: "POST",
+      headers: { "Prefer": "return=representation" },
+      body: JSON.stringify(rows),
+    });
+    return (Array.isArray(result) ? result : []).map(dbToProspect);
   },
   async deleteAllProspects() {
     await sbFetch("prospects?id=neq.00000000-0000-0000-0000-000000000000", { method: "DELETE" });
@@ -149,18 +178,22 @@ const DB = {
     return (rows || []).map(dbToUser);
   },
   async upsertUser(u) {
-    const isDbId = typeof u.id === "string" && u.id.includes("-") && u.id.length === 36;
+    const isDbId = typeof u.id === "string" && /^[0-9a-f-]{36}$/.test(u.id);
     const body = { username:u.username, password:u.password, name:u.name, email:u.email, role:u.role, active:u.active, avatar:u.avatar };
     if (isDbId) {
-      const rows = await sbFetch(`crm_users?id=eq.${u.id}`, {
-        method:"PATCH", prefer:"return=representation", body: JSON.stringify(body),
+      const rows = await sbFetch(`crm_users?id=eq.${encodeURIComponent(u.id)}`, {
+        method:"PATCH",
+        headers:{"Prefer":"return=representation"},
+        body: JSON.stringify(body),
       });
-      return dbToUser((rows||[])[0]);
+      return dbToUser(Array.isArray(rows) ? rows[0] : rows);
     } else {
       const rows = await sbFetch("crm_users", {
-        method:"POST", prefer:"return=representation", body: JSON.stringify(body),
+        method:"POST",
+        headers:{"Prefer":"return=representation"},
+        body: JSON.stringify(body),
       });
-      return dbToUser((rows||[])[0]);
+      return dbToUser(Array.isArray(rows) ? rows[0] : rows);
     }
   },
   async deleteUser(id) {
@@ -195,12 +228,22 @@ const DB = {
     return out;
   },
   async saveSettings(settings) {
-    const rows = Object.entries(settings).map(([key, value]) => ({ key, value: String(value) }));
-    await sbFetch("system_settings", {
-      method:"POST", prefer:"resolution=merge-duplicates,return=minimal",
-      headers:{"Prefer":"resolution=merge-duplicates"},
-      body: JSON.stringify(rows),
-    });
+    // Upsert each key one at a time to avoid bulk conflict issues
+    const entries = Object.entries(settings);
+    for (const [key, value] of entries) {
+      await sbFetch(`system_settings?key=eq.${encodeURIComponent(key)}`, {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        body: JSON.stringify({ value: String(value) }),
+      }).catch(async () => {
+        // If PATCH fails (row doesn't exist), INSERT it
+        await sbFetch("system_settings", {
+          method: "POST",
+          headers: { "Prefer": "return=minimal" },
+          body: JSON.stringify({ key, value: String(value) }),
+        });
+      });
+    }
   },
 
   // Emails
@@ -234,7 +277,11 @@ const ROLES={
    INITIAL DATA
 ════════════════════════════════════════════════════════════════ */
 const INIT_USERS=[
-"},
+  {id:1,username:"superadmin",password:"superadmin",name:"Super Administrator",email:"superadmin@hrondemand.com",role:"superadmin",active:true,createdAt:"2024-01-01",lastLogin:null,avatar:"SA"},
+  {id:2,username:"admin",     password:"admin",     name:"System Administrator",email:"admin@hrondemand.com",   role:"admin",     active:true,createdAt:"2024-01-01",lastLogin:null,avatar:"AD"},
+  {id:3,username:"manager1",  password:"manager123",name:"Melissa Pennington",  email:"melissa@hrondemand.com", role:"manager",   active:true,createdAt:"2024-01-15",lastLogin:null,avatar:"MP"},
+  {id:4,username:"user1",     password:"user123",   name:"Jordan Hayes",        email:"jordan@hrondemand.com",  role:"user",      active:true,createdAt:"2024-02-01",lastLogin:null,avatar:"JH"},
+  {id:5,username:"viewer1",   password:"view123",   name:"Alex Torres",         email:"alex@hrondemand.com",    role:"viewer",    active:true,createdAt:"2024-02-10",lastLogin:null,avatar:"AT"},
 ];
 
 const STATUSES=["NEW","T1 SENT","T2 SENT","REVIEW","TOUCH 3 GATE","NURTURE/T3 SENT","Replied","Do Not Respond","Converted"];
@@ -398,7 +445,7 @@ function LoginScreen({users,onLogin}){
           <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:72,height:72,background:`linear-gradient(145deg,${G},${GL})`,borderRadius:22,marginBottom:16,boxShadow:`0 12px 48px rgba(201,150,58,0.35),0 0 0 1px rgba(201,150,58,0.2)`}}>
             <span style={{fontSize:34}}>⚖️</span>
           </div>
-          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>CRM</h1>
+          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>NC Compliance CRM</h1>
           <p style={{margin:0,fontSize:13,color:WM}}>HR On Demand · SMB & Nonprofit Outreach</p>
         </div>
 
@@ -436,7 +483,7 @@ function LoginScreen({users,onLogin}){
           </button>
         </div>
 
-        <p style={{textAlign:"center",marginTop:16,fontSize:11,color:WD}}>Version 1.0 beta· © 2026 HR On Demand · CRM</p>
+        <p style={{textAlign:"center",marginTop:16,fontSize:11,color:WD}}>Version 4.0 · © 2026 HR On Demand · NC Compliance CRM</p>
       </div>
     </div>
   );
@@ -2219,17 +2266,19 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 export default function App(){
   const [screen,setScreen]   = useState("loading");
   const [currentUser,setCurrentUser] = useState(null);
-  const [users,setUsers]     = useState(INIT_USERS);
-  const [crmData,setCrmData] = useState(SEED);
+  // Start with empty arrays — DB data loads in useEffect below.
+  // INIT_USERS / SEED only used as fallback if DB is empty or not configured.
+  const [users,setUsers]     = useState([]);
+  const [crmData,setCrmData] = useState([]);
   const [sysSettings,setSysSettings] = useState(DEFAULT_SYS);
-  const [auditLog,setAuditLog] = useState([{time:"2026-06-05 00:00",user:"system",action:"System initialized — NC Compliance CRM v4.0"}]);
+  const [auditLog,setAuditLog] = useState([]);
   const [dbStatus,setDbStatus] = useState(isConfigured ? "connecting" : "local");
   const [dbError,setDbError]   = useState(null);
 
   /* ── Load everything from DB on mount ────────────────────── */
   useEffect(()=>{
     const init = async () => {
-      // Restore session regardless of DB mode
+      // Always restore session from sessionStorage first
       let sessionUser = null;
       try {
         const s = sessionStorage.getItem("crm_v4");
@@ -2237,7 +2286,12 @@ export default function App(){
       } catch {}
 
       if (!isConfigured) {
-        // Local / demo mode — use seed data
+        console.log("[NC CRM] Running in Demo Mode — no Supabase credentials found.");
+        // Populate with seed data for demo mode
+        setUsers(INIT_USERS);
+        setCrmData(SEED);
+        setSysSettings(DEFAULT_SYS);
+        setAuditLog([{time: new Date().toLocaleString("sv-SE").slice(0,16).replace("T"," "), user:"system", action:"Demo mode initialized"}]);
         setDbStatus("local");
         if (sessionUser) {
           const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
@@ -2247,31 +2301,69 @@ export default function App(){
         return;
       }
 
-      // Supabase mode
+      // ── Supabase mode ─────────────────────────────────────────
+      console.log("[NC CRM] Connecting to Supabase…");
       try {
-        const [dbUsers, dbProspects, dbSettings, dbAudit] = await Promise.all([
-          DB.getUsers(),
-          DB.getProspects(),
-          DB.getSettings(),
-          DB.getAuditLog(),
-        ]);
-        if (dbUsers.length)     setUsers(dbUsers);
-        if (dbProspects.length) setCrmData(dbProspects);
-        if (Object.keys(dbSettings).length) setSysSettings(s=>({...s,...dbSettings}));
-        if (dbAudit.length)     setAuditLog(dbAudit);
-        setDbStatus("connected");
+        // Test connection first with a lightweight query
+        const testResult = await DB.getSettings();
+        console.log("[NC CRM] Supabase connection OK. Settings keys:", Object.keys(testResult).length);
 
+        // Now load all data in parallel
+        const [dbUsers, dbProspects, dbAudit] = await Promise.all([
+          DB.getUsers().catch(e => { console.warn("[NC CRM] getUsers failed:", e.message); return []; }),
+          DB.getProspects().catch(e => { console.warn("[NC CRM] getProspects failed:", e.message); return []; }),
+          DB.getAuditLog().catch(e => { console.warn("[NC CRM] getAuditLog failed:", e.message); return []; }),
+        ]);
+
+        // Always use DB data when connected.
+        // Fall back to hardcoded seed ONLY if DB tables are completely empty
+        // (e.g. first run before schema was seeded).
+        if (dbUsers && dbUsers.length > 0) {
+          setUsers(dbUsers);
+          console.log("[NC CRM] Loaded", dbUsers.length, "users from DB");
+        } else {
+          console.warn("[NC CRM] No users in DB — using hardcoded INIT_USERS as fallback");
+          setUsers(INIT_USERS);
+        }
+
+        if (dbProspects && dbProspects.length > 0) {
+          setCrmData(dbProspects);
+          console.log("[NC CRM] Loaded", dbProspects.length, "prospects from DB");
+        } else {
+          console.warn("[NC CRM] No prospects in DB — starting with empty list");
+          setCrmData([]);
+        }
+
+        if (Object.keys(testResult).length > 0) {
+          setSysSettings(s => ({...s, ...testResult}));
+          console.log("[NC CRM] Loaded system settings from DB");
+        } else {
+          setSysSettings(DEFAULT_SYS);
+        }
+
+        if (dbAudit && dbAudit.length > 0) {
+          setAuditLog(dbAudit);
+        } else {
+          setAuditLog([{time: new Date().toLocaleString("sv-SE").slice(0,16).replace("T"," "), user:"system", action:"CRM initialized"}]);
+        }
+
+        setDbStatus("connected");
+        console.log("[NC CRM] ✅ Supabase connected and data loaded.");
+
+        // Restore session against DB users
         if (sessionUser) {
-          const live = dbUsers.find(u => u.id === sessionUser.id && u.active) ||
-                       INIT_USERS.find(u => u.id === sessionUser.id && u.active);
+          const allUsers = dbUsers && dbUsers.length > 0 ? dbUsers : INIT_USERS;
+          const live = allUsers.find(u => u.id === sessionUser.id && u.active);
           if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
         }
         setScreen("login");
+
       } catch(e) {
-        console.error("Supabase load failed:", e);
+        console.error("[NC CRM] ❌ Supabase connection failed:", e.message);
+        console.error("[NC CRM] Full error:", e);
         setDbError(e.message);
         setDbStatus("error");
-        // Fall back to local data so the app still works
+        // Graceful fallback — app still works with seed data
         if (sessionUser) {
           const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
           if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
@@ -2343,30 +2435,43 @@ export default function App(){
 
   /* ── DB-aware save / delete wrappers passed down ─────────── */
   const handleSaveProspect = useCallback(async (form) => {
+    // Step 1: Optimistic UI update immediately (instant feedback)
+    const isNew = !crmData.find(p => p.id === form.id);
+    setCrmData(prev => isNew
+      ? [...prev, form]
+      : prev.map(p => p.id === form.id ? form : p)
+    );
+
+    // Step 2: Persist to Supabase
     if (isConfigured && dbStatus === "connected") {
       try {
         const saved = await DB.upsertProspect(form);
-        if (saved) {
-          setCrmData(prev => {
-            const exists = prev.find(p => p.id === form.id);
-            return exists ? prev.map(p => p.id === form.id ? saved : p) : [...prev, saved];
-          });
+        if (saved && saved.id) {
+          // Replace optimistic record with DB record (gets real UUID if new)
+          setCrmData(prev => isNew
+            ? prev.map(p => p.id === form.id ? saved : p)  // swap temp id for DB uuid
+            : prev.map(p => p.id === form.id ? saved : p)
+          );
+          console.log("[NC CRM] Prospect saved to DB:", saved.companyName, "id:", saved.id);
           return saved;
         }
-      } catch(e) { console.warn("upsert failed, using local:", e.message); }
+      } catch(e) {
+        console.error("[NC CRM] Failed to save prospect to DB:", e.message);
+        // Keep optimistic update in UI even if DB fails
+      }
     }
-    // Local fallback
-    setCrmData(prev => {
-      const exists = prev.find(p => p.id === form.id);
-      return exists ? prev.map(p => p.id === form.id ? form : p) : [...prev, form];
-    });
     return form;
-  },[dbStatus]);
+  },[dbStatus, crmData]);
 
   const handleDeleteProspect = useCallback(async (id) => {
-    setCrmData(prev => prev.filter(p => p.id !== id));
+    setCrmData(prev => prev.filter(p => p.id !== id)); // optimistic
     if (isConfigured && dbStatus === "connected") {
-      try { await DB.deleteProspect(id); } catch(e) { console.warn("delete failed:", e.message); }
+      try {
+        await DB.deleteProspect(id);
+        console.log("[NC CRM] Prospect deleted from DB:", id);
+      } catch(e) {
+        console.error("[NC CRM] Failed to delete prospect from DB:", e.message);
+      }
     }
   },[dbStatus]);
 
@@ -2397,24 +2502,28 @@ export default function App(){
   },[dbStatus]);
 
   const handleSaveUser = useCallback(async (u) => {
+    // Optimistic update
+    const isNew = !users.find(x => x.id === u.id);
+    setUsers(prev => isNew ? [...prev, u] : prev.map(x => x.id === u.id ? u : x));
+
+    // Persist to DB
     if (isConfigured && dbStatus === "connected") {
       try {
         const saved = await DB.upsertUser(u);
-        if (saved) {
-          setUsers(prev => {
-            const exists = prev.find(x => x.id === u.id);
-            return exists ? prev.map(x => x.id === u.id ? saved : x) : [...prev, saved];
-          });
+        if (saved && saved.id) {
+          setUsers(prev => isNew
+            ? prev.map(x => x.id === u.id ? saved : x)
+            : prev.map(x => x.id === u.id ? saved : x)
+          );
+          console.log("[NC CRM] User saved to DB:", saved.username);
           return saved;
         }
-      } catch(e) { console.warn("user upsert failed:", e.message); }
+      } catch(e) {
+        console.error("[NC CRM] Failed to save user to DB:", e.message);
+      }
     }
-    setUsers(prev => {
-      const exists = prev.find(x => x.id === u.id);
-      return exists ? prev.map(x => x.id === u.id ? u : x) : [...prev, u];
-    });
     return u;
-  },[dbStatus]);
+  },[dbStatus, users]);
 
   const handleDeleteUser = useCallback(async (id) => {
     setUsers(prev => prev.filter(u => u.id !== id));
@@ -2424,9 +2533,14 @@ export default function App(){
   },[dbStatus]);
 
   const handleSaveSettings = useCallback(async (settings) => {
-    setSysSettings(settings);
+    setSysSettings(settings); // immediate UI update
     if (isConfigured && dbStatus === "connected") {
-      try { await DB.saveSettings(settings); } catch(e) { console.warn("settings save failed:", e.message); }
+      try {
+        await DB.saveSettings(settings);
+        console.log("[NC CRM] System settings saved to DB");
+      } catch(e) {
+        console.error("[NC CRM] Failed to save settings to DB:", e.message);
+      }
     }
   },[dbStatus]);
 
@@ -2449,22 +2563,42 @@ export default function App(){
 
   /* ── DB status banner (shown across all screens) ─────────── */
   const DbBanner = () => {
+    if (dbStatus === "connecting") return (
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:20,fontSize:10,color:"#60a5fa"}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#60a5fa",animation:"pulse 1s infinite"}}/>
+        Connecting to Supabase…
+      </div>
+    );
     if (dbStatus === "connected") return (
       <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.25)",borderRadius:20,fontSize:10,color:"#34d399"}}>
         <div style={{width:6,height:6,borderRadius:"50%",background:"#34d399"}}/>
-        Supabase · Live
+        Supabase · Live · {SUPABASE_URL.replace("https://","").slice(0,22)}…
       </div>
     );
     if (dbStatus === "local") return (
-      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"#fbbf24",cursor:"pointer"}} title="Click to learn how to connect your database" onClick={()=>alert("Add your Supabase URL and key at the top of the JSX file. See SETUP_GUIDE.md for instructions.")}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24"}}/>
-        Demo Mode — data resets on refresh · Add DB credentials to persist
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"#fbbf24",cursor:"pointer",maxWidth:460}}
+        title="Open browser console (F12) to see debug info. Check that VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set in Vercel → Settings → Environment Variables, then redeploy."
+        onClick={()=>alert("Demo Mode active — Supabase not connected.
+
+To connect:
+1. Go to Vercel → your project → Settings → Environment Variables
+2. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set
+3. Trigger a new deployment (Deployments → Redeploy)
+4. Open browser console (F12) and look for [NC CRM] log messages")}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24",flexShrink:0}}/>
+        <span>⚠️ Demo Mode — data resets on refresh. <u>Click for fix instructions.</u></span>
       </div>
     );
     if (dbStatus === "error") return (
-      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"#f87171"}} title={dbError}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171"}}/>
-        DB Error — using local data · hover for details
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"#f87171",cursor:"pointer",maxWidth:520}}
+        title={dbError}
+        onClick={()=>alert("Supabase DB Error:
+
+"+dbError+"
+
+Check browser console (F12) for [NC CRM] log messages.")}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171",flexShrink:0}}/>
+        <span>❌ DB Error — {(dbError||"").slice(0,60)}{(dbError||"").length>60?"…":""} · <u>Click for details</u></span>
       </div>
     );
     return null;
