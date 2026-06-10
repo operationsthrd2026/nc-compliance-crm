@@ -36,6 +36,127 @@ console.log("[NC CRM] Supabase configured:", isConfigured,
    All DB calls go through these helpers. When not configured,
    they fall back to local state (demo mode).
 ════════════════════════════════════════════════════════════════ */
+import { createClient } from "@supabase/supabase-js";
+
+// Initialize Supabase client (for Auth)
+const supabaseClient = isConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_KEY)
+  : null;
+
+// Real Google sign-in function
+async function signInWithGoogle() {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      scopes: "openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
+      redirectTo: window.location.origin,
+    },
+  });
+  if (error) console.error("Google sign-in error:", error.message);
+}
+async function sendViaGmailAPI({ to, subject, body, from }) {
+  const accessToken = sessionStorage.getItem("google_access_token");
+  if (!accessToken) {
+    // Fall back to Gmail compose link
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    return null;
+  }
+
+  // Encode email as RFC 2822
+  const email = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `Content-Type: text/plain; charset=utf-8`,
+    ``,
+    body,
+  ].join("\r\n");
+
+  const encoded = btoa(unescape(encodeURIComponent(email)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ raw: encoded }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || "Gmail send failed");
+  }
+  return await res.json();
+}
+
+async function fetchGmailInbox() {
+  const accessToken = sessionStorage.getItem("google_access_token");
+  if (!accessToken) return [];
+
+  // Get latest 20 messages
+  const listRes = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox",
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const listData = await listRes.json();
+  if (!listData.messages) return [];
+
+  // Fetch each message detail
+  const messages = await Promise.all(
+    listData.messages.map(async (msg) => {
+      const msgRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      return msgRes.json();
+    })
+  );
+
+  // Parse into CRM inbox format
+  return messages.map(m => {
+    const headers = m.payload?.headers || [];
+    const get = name => headers.find(h => h.name.toLowerCase() === name)?.value || "";
+    const bodyData = m.payload?.parts?.[0]?.body?.data || m.payload?.body?.data || "";
+    const body = bodyData ? atob(bodyData.replace(/-/g,"+").replace(/_/g,"/")) : "(no body)";
+    return {
+      id: m.id,
+      from: get("from"),
+      fromEmail: get("from").match(/<(.+)>/)?.[1] || get("from"),
+      subject: get("subject"),
+      preview: body.slice(0, 120),
+      body,
+      date: new Date(parseInt(m.internalDate)).toLocaleString("sv-SE").slice(0,16).replace("T"," "),
+      read: !m.labelIds?.includes("UNREAD"),
+      starred: m.labelIds?.includes("STARRED") || false,
+      label: "reply",
+      sentiment: "neutral",
+    };
+  });
+}
+// Listen for auth state changes
+supabaseClient?.auth.onAuthStateChange(async (event, session) => {
+  if (event === "SIGNED_IN" && session?.user) {
+    const googleUser = session.user;
+    // Match against crm_users by email
+    const dbUsers = await DB.getUsers();
+    const matched = dbUsers.find(u => u.email === googleUser.email && u.active);
+    if (matched) {
+      // Store Google access token for Gmail API calls
+      sessionStorage.setItem("google_access_token", session.provider_token || "");
+      // Log them into the CRM
+      login(matched);
+    } else {
+      console.warn("Google account not found in CRM users:", googleUser.email);
+      alert(`No CRM account found for ${googleUser.email}. Ask your admin to add your email to the system.`);
+      await supabaseClient.auth.signOut();
+    }
+  }
+});
 async function sbFetch(path, opts = {}) {
   // Build headers — prefer in opts.headers wins over opts.prefer wins over default
   const preferHeader = (opts.headers && opts.headers["Prefer"]) || opts.prefer || "return=representation";
@@ -430,8 +551,15 @@ function LoginScreen({users,onLogin}){
     },520);
   };
 
-  const googleSign=()=>{setGload(true);setTimeout(()=>{const u=users.find(x=>x.active);if(u)onLogin(u);else setGload(false);},900);};
-
+const googleSign = () => {
+  if (supabaseClient) {
+    signInWithGoogle(); // real OAuth
+  } else {
+    // Demo mode fallback
+    setGload(true);
+    setTimeout(() => { const u = users.find(x => x.active); if(u) onLogin(u); }, 900);
+  }
+};
   return(
     <div style={{minHeight:"100vh",background:N,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden",padding:24}}>
       <GS/>
