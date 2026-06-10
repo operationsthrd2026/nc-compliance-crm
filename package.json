@@ -28,6 +28,6 @@
     "@supabase/supabase-js": "^2.45.0"
   },
   "engines": {
-    "node": "24.x"
+    "node": ">=18.0.0"
   }
 }
