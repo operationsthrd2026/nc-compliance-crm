@@ -2521,13 +2521,7 @@ export default function App(){
     if (dbStatus === "local") return (
       <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"#fbbf24",cursor:"pointer",maxWidth:460}}
         title="Open browser console (F12) to see debug info. Check that VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set in Vercel → Settings → Environment Variables, then redeploy."
-        onClick={()=>alert("Demo Mode active — Supabase not connected.
-
-To connect:
-1. Go to Vercel → your project → Settings → Environment Variables
-2. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set
-3. Trigger a new deployment (Deployments → Redeploy)
-4. Open browser console (F12) and look for [NC CRM] log messages")}>
+        onClick={()=>alert("Demo Mode active — Supabase not connected.\n\nTo connect:\n1. Go to Vercel → your project → Settings → Environment Variables\n2. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set\n3. Trigger a new deployment (Deployments → Redeploy)\n4. Open browser console (F12) and look for [NC CRM] log messages")}>
         <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24",flexShrink:0}}/>
         <span>⚠️ Demo Mode — data resets on refresh. <u>Click for fix instructions.</u></span>
       </div>
@@ -2535,11 +2529,7 @@ To connect:
     if (dbStatus === "error") return (
       <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"#f87171",cursor:"pointer",maxWidth:520}}
         title={dbError}
-        onClick={()=>alert("Supabase DB Error:
-
-"+dbError+"
-
-Check browser console (F12) for [NC CRM] log messages.")}>
+        onClick={()=>alert(`Supabase DB Error:\n\n${dbError}\n\nCheck browser console (F12) for [NC CRM] log messages.`)}>
         <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171",flexShrink:0}}/>
         <span>❌ DB Error — {(dbError||"").slice(0,60)}{(dbError||"").length>60?"…":""} · <u>Click for details</u></span>
       </div>
