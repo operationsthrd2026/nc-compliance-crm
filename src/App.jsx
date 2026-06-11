@@ -231,6 +231,119 @@ const DB = {
 };
 
 /* ════════════════════════════════════════════════════════════════
+   GMAIL API HELPERS
+   Uses the Google access token captured during OAuth sign-in
+   (stored in sessionStorage as "google_access_token").
+   Falls back gracefully to Gmail compose links / mock data if the
+   token is missing or a request fails (e.g. token expired).
+════════════════════════════════════════════════════════════════ */
+function getGoogleToken() {
+  return sessionStorage.getItem("google_access_token") || null;
+}
+
+function isGmailConnected() {
+  return !!getGoogleToken();
+}
+
+// Send an email through the signed-in user's real Gmail account
+async function sendViaGmailAPI({ to, subject, body, cc }) {
+  const token = getGoogleToken();
+  if (!token) return { ok: false, reason: "no_token" };
+
+  const headers = [
+    `To: ${to}`,
+    cc ? `Cc: ${cc}` : null,
+    `Subject: ${subject}`,
+    `Content-Type: text/plain; charset="UTF-8"`,
+  ].filter(Boolean).join("\r\n");
+
+  const raw = `${headers}\r\n\r\n${body}`;
+  const encoded = btoa(unescape(encodeURIComponent(raw)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  try {
+    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ raw: encoded }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      console.error("[NC CRM] Gmail send failed:", res.status, err);
+      return { ok: false, reason: "api_error", status: res.status, error: err };
+    }
+    const data = await res.json();
+    console.log("[NC CRM] ✅ Email sent via Gmail API, id:", data.id);
+    return { ok: true, id: data.id };
+  } catch (e) {
+    console.error("[NC CRM] Gmail send exception:", e.message);
+    return { ok: false, reason: "network_error", error: e.message };
+  }
+}
+
+// Fetch recent inbox messages from the signed-in user's real Gmail
+async function fetchGmailInbox(maxResults = 15) {
+  const token = getGoogleToken();
+  if (!token) return { ok: false, reason: "no_token", messages: [] };
+
+  try {
+    const listRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}&q=in:inbox`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!listRes.ok) {
+      const err = await listRes.json().catch(()=>({}));
+      console.error("[NC CRM] Gmail list failed:", listRes.status, err);
+      return { ok: false, reason: "api_error", status: listRes.status, messages: [] };
+    }
+    const listData = await listRes.json();
+    if (!listData.messages || listData.messages.length === 0) {
+      return { ok: true, messages: [] };
+    }
+
+    const detailed = await Promise.all(
+      listData.messages.map(async (m) => {
+        const r = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return r.ok ? r.json() : null;
+      })
+    );
+
+    const messages = detailed.filter(Boolean).map(m => {
+      const headers = m.payload?.headers || [];
+      const get = name => headers.find(h => h.name === name)?.value || "";
+      const fromRaw = get("From");
+      const fromMatch = fromRaw.match(/^(.*?)\s*<(.+)>$/);
+      const fromName = fromMatch ? fromMatch[1].replace(/"/g,"").trim() : fromRaw;
+      const fromEmail = fromMatch ? fromMatch[2] : fromRaw;
+      return {
+        id: m.id,
+        from: fromName || fromEmail,
+        fromEmail,
+        subject: get("Subject") || "(no subject)",
+        preview: (m.snippet || "").slice(0, 140),
+        body: m.snippet || "",
+        date: get("Date") ? new Date(get("Date")).toLocaleString("sv-SE").slice(0,16).replace("T"," ") : "",
+        read: !m.labelIds?.includes("UNREAD"),
+        starred: m.labelIds?.includes("STARRED") || false,
+        label: "reply",
+        sentiment: "neutral",
+        prospectId: null,
+        touch: null,
+        _gmailId: m.id,
+      };
+    });
+
+    return { ok: true, messages };
+  } catch (e) {
+    console.error("[NC CRM] Gmail fetch exception:", e.message);
+    return { ok: false, reason: "network_error", error: e.message, messages: [] };
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
    THEME
 ════════════════════════════════════════════════════════════════ */
 const N="#0B1426";const NL="#111E38";const NC="#162040";const NB="#1C2B50";
@@ -406,11 +519,19 @@ function LoginScreen({users,onLogin}){
 
   const googleSign=async()=>{
     if (supabaseAuth) {
-      // Real Google OAuth — redirects to Google's account chooser
+      // Real Google OAuth — redirects to Google's account chooser.
+      // Requesting Gmail send/read scopes alongside basic profile so the
+      // CRM can send emails and load the inbox via Gmail API after login.
+      // access_type=offline + prompt=consent ensures we get a refresh token
+      // and that provider_token is returned even on repeat sign-ins.
       setGload(true);
       const { error } = await supabaseAuth.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: window.location.origin },
+        options: {
+          redirectTo: window.location.origin,
+          scopes: "openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
+          queryParams: { access_type: "offline", prompt: "consent" },
+        },
       });
       if (error) {
         console.error("[NC CRM] Google sign-in error:", error.message);
@@ -1446,6 +1567,15 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
   const [compose,setCompose]=useState(null);
   const [inboxConnected,setInboxConnected]=useState(false);
   const [connecting,setConnecting]=useState(false);
+  const [usingRealGmail,setUsingRealGmail]=useState(false);
+
+  // Auto-connect inbox if the user signed in with Google (token already present)
+  useEffect(() => {
+    if (isGmailConnected() && !inboxConnected) {
+      connectInbox();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [selectedTemplate,setSelectedTemplate]=useState("t1_standard");
   const [composeForm,setComposeForm]=useState({to:"",subject:"",body:"",cc:"",bcc:""});
   const [sending,setSending]=useState(false);
@@ -1454,9 +1584,59 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
   const unread=inbox.filter(e=>!e.read).length;
   const replies=inbox.filter(e=>e.label==="reply").length;
 
-  const connectInbox=()=>{
+  const connectInbox=async()=>{
     setConnecting(true);
-    setTimeout(()=>{setConnecting(false);setInboxConnected(true);t2("Inbox connected! Showing demo emails.");},1400);
+    if (isGmailConnected()) {
+      const result = await fetchGmailInbox(15);
+      setConnecting(false);
+      if (result.ok) {
+        if (result.messages.length > 0) {
+          setInbox(result.messages);
+          t2(`Gmail connected! Loaded ${result.messages.length} messages.`);
+        } else {
+          setInbox([]);
+          t2("Gmail connected — your inbox is empty.");
+        }
+        setInboxConnected(true);
+        setUsingRealGmail(true);
+      } else if (result.reason === "no_token") {
+        // Shouldn't happen if isGmailConnected() returned true, but just in case
+        setInboxConnected(true);
+        setUsingRealGmail(false);
+        setInbox(MOCK_INBOX);
+        t2("Showing demo inbox — Gmail token unavailable.");
+      } else {
+        // Gmail API error (e.g. token expired or scopes missing)
+        setInboxConnected(true);
+        setUsingRealGmail(false);
+        setInbox(MOCK_INBOX);
+        t2("Couldn't load Gmail — showing demo inbox. Try signing out and back in.", "err");
+      }
+    } else {
+      // Not signed in via Google — fall back to demo inbox
+      setTimeout(()=>{
+        setConnecting(false);
+        setInboxConnected(true);
+        setUsingRealGmail(false);
+        setInbox(MOCK_INBOX);
+        t2("Showing demo inbox. Sign in with Google to connect your real Gmail.");
+      },900);
+    }
+  };
+
+  const refreshInbox=async()=>{
+    if (usingRealGmail) {
+      const result = await fetchGmailInbox(15);
+      if (result.ok) {
+        setInbox(result.messages);
+        t2(`Inbox refreshed — ${result.messages.length} messages.`);
+      } else {
+        t2("Couldn't refresh Gmail inbox.", "err");
+      }
+    } else {
+      setInbox(MOCK_INBOX);
+      t2("Demo inbox refreshed!");
+    }
   };
 
   const fillTemplate=(tpl,prospect)=>{
@@ -1487,15 +1667,40 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
     setCompose("write");
   };
 
-  const sendEmail=(prospect,touchKey)=>{
+  const sendEmail=async(prospect,touchKey)=>{
     setSending(true);
+    const recipient = prospect?.emailPhone || composeForm.to;
+
+    if (isGmailConnected()) {
+      const result = await sendViaGmailAPI({
+        to: recipient,
+        cc: composeForm.cc,
+        subject: composeForm.subject,
+        body: composeForm.body,
+      });
+      setSending(false);
+      if (result.ok) {
+        const next=touchKey==="t1"?"T1 SENT":touchKey==="t2"?"T2 SENT":"NURTURE/T3 SENT";
+        if(prospect)qStatus(prospect.id,next);
+        const newSent={id:"sx"+uid(),to:prospect?.contactName||recipient,toEmail:recipient,subject:composeForm.subject,date:tsNow(),touch:touchKey==="t1"?"T1":touchKey==="t2"?"T2":"T3",opened:false,prospectId:prospect?.id||null};
+        setSent(p=>[newSent,...p]);
+        setCompose(null);
+        t2(`✅ Email sent via Gmail to ${prospect?.companyName||recipient}!`);
+      } else {
+        t2("Gmail send failed — opening Gmail compose instead.", "err");
+        window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${encodeURIComponent(composeForm.subject)}&body=${encodeURIComponent(composeForm.body)}`, "_blank");
+      }
+      return;
+    }
+
+    // Demo fallback — no Gmail connected
     setTimeout(()=>{
       const next=touchKey==="t1"?"T1 SENT":touchKey==="t2"?"T2 SENT":"NURTURE/T3 SENT";
       if(prospect)qStatus(prospect.id,next);
-      const newSent={id:"sx"+uid(),to:prospect?.contactName||composeForm.to,toEmail:prospect?.emailPhone||composeForm.to,subject:composeForm.subject,date:tsNow(),touch:touchKey==="t1"?"T1":touchKey==="t2"?"T2":"T3",opened:false,prospectId:prospect?.id||null};
+      const newSent={id:"sx"+uid(),to:prospect?.contactName||recipient,toEmail:recipient,subject:composeForm.subject,date:tsNow(),touch:touchKey==="t1"?"T1":touchKey==="t2"?"T2":"T3",opened:false,prospectId:prospect?.id||null};
       setSent(p=>[newSent,...p]);
       setSending(false);setCompose(null);
-      t2(`Email sent to ${prospect?.companyName||composeForm.to}!`);
+      t2(`Email logged for ${prospect?.companyName||recipient} (demo mode — connect Gmail to send for real).`);
     },800);
   };
 
@@ -1544,13 +1749,13 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
               {connecting?<><Spin s={12} c={N}/> Connecting…</>:<>🔗 Connect Inbox</>}
             </button>
           ):(
-            <div style={{display:"flex",alignItems:"center",gap:7,padding:"7px 10px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.22)",borderRadius:8}}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:"#34d399",flexShrink:0}}/>
+            <div style={{display:"flex",alignItems:"center",gap:7,padding:"7px 10px",background:usingRealGmail?"rgba(52,211,153,0.08)":"rgba(251,191,36,0.08)",border:`1px solid ${usingRealGmail?"rgba(52,211,153,0.22)":"rgba(251,191,36,0.22)"}`,borderRadius:8}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:usingRealGmail?"#34d399":"#fbbf24",flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
-                <p style={{margin:0,fontSize:10,fontWeight:700,color:"#34d399"}}>Inbox Connected</p>
-                <p style={{margin:0,fontSize:9,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sysSettings.senderEmail||"melissa@hrondemand.com"}</p>
+                <p style={{margin:0,fontSize:10,fontWeight:700,color:usingRealGmail?"#34d399":"#fbbf24"}}>{usingRealGmail?"Gmail Connected":"Demo Inbox"}</p>
+                <p style={{margin:0,fontSize:9,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{usingRealGmail?(sessionStorage.getItem("google_email")||currentUser.email):"Sign in with Google for live Gmail"}</p>
               </div>
-              <button onClick={()=>setInboxConnected(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:WD,padding:2}}>✕</button>
+              <button onClick={()=>{setInboxConnected(false);setUsingRealGmail(false);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:WD,padding:2}}>✕</button>
             </div>
           )}
         </div>
@@ -1712,7 +1917,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                   <h3 style={{margin:0,fontSize:14,fontWeight:800,color:W,flex:1}}>📥 Inbox {unread>0&&<span style={{background:"#60a5fa",color:N,borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:800,marginLeft:6}}>{unread}</span>}</h3>
                   {!inboxConnected&&<button onClick={connectInbox} disabled={connecting} className="bh" style={{...B.blue,fontSize:10,padding:"5px 10px"}}>{connecting?<Spin s={10}/>:"🔗 Connect"}</button>}
-                  {inboxConnected&&<button onClick={()=>{setInbox(MOCK_INBOX);t2("Inbox refreshed!");}} style={{...B.ghost,fontSize:10,padding:"5px 10px"}}>↻ Refresh</button>}
+                  {inboxConnected&&<button onClick={refreshInbox} style={{...B.ghost,fontSize:10,padding:"5px 10px"}}>↻ Refresh</button>}
                 </div>
                 <div style={{position:"relative",marginBottom:8}}>
                   <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:11,color:WD}}>🔍</span>
@@ -1729,11 +1934,11 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                 <div style={{padding:"32px 20px",textAlign:"center"}}>
                   <span style={{fontSize:40,display:"block",marginBottom:12}}>📥</span>
                   <p style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:W}}>Connect Your Inbox</p>
-                  <p style={{margin:"0 0 16px",fontSize:11,color:WM}}>Link your email account to see replies from prospects, track opens, and manage all outreach in one place.</p>
+                  <p style={{margin:"0 0 16px",fontSize:11,color:WM}}>{isGmailConnected()?"You're signed in with Google — connect to load your real Gmail inbox.":"Sign in with Google on the login screen to connect your real Gmail, or view a demo inbox."}</p>
                   <button onClick={connectInbox} disabled={connecting} className="bh" style={{...B.gold,fontSize:12}}>
-                    {connecting?<><Spin s={14} c={N}/> Connecting…</>:"🔗 Connect Inbox"}
+                    {connecting?<><Spin s={14} c={N}/> Connecting…</>:isGmailConnected()?"🔗 Connect Gmail Inbox":"🔗 Connect Inbox (Demo)"}
                   </button>
-                  <p style={{margin:"12px 0 0",fontSize:10,color:WD}}>Supports Gmail · Outlook · IMAP</p>
+                  <p style={{margin:"12px 0 0",fontSize:10,color:WD}}>{isGmailConnected()?`Signed in as ${sessionStorage.getItem("google_email")||""}`:"Supports Gmail · Outlook · IMAP"}</p>
                 </div>
               )}
               {inboxConnected&&filtInbox.map(e=>{
@@ -2270,6 +2475,14 @@ export default function App(){
   const [dbStatus,setDbStatus] = useState(isConfigured ? "connecting" : "local");
   const [dbError,setDbError]   = useState(null);
 
+  // Tracks whether Google OAuth already completed login during this page load,
+  // so the data-init effect doesn't overwrite the screen back to "login".
+  const oauthLoginRef = useRef(false);
+  // Tracks whether we're currently mid-OAuth-redirect (URL has #access_token)
+  // so the init effect can wait instead of racing to "login" first.
+  const isOAuthRedirect = typeof window !== "undefined" &&
+    (window.location.hash.includes("access_token") || window.location.hash.includes("provider_token"));
+
   /* ── Load everything from DB on mount ────────────────────── */
   useEffect(()=>{
     const init = async () => {
@@ -2292,6 +2505,7 @@ export default function App(){
           const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
           if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
         }
+        if (isOAuthRedirect || oauthLoginRef.current) return;
         setScreen("login");
         return;
       }
@@ -2351,6 +2565,13 @@ export default function App(){
           const live = allUsers.find(u => u.id === sessionUser.id && u.active);
           if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
         }
+
+        // If a Google OAuth redirect is in progress, or already completed,
+        // let the OAuth handler control the screen — don't force "login" here.
+        if (isOAuthRedirect || oauthLoginRef.current) {
+          console.log("[NC CRM] OAuth redirect in progress — deferring to auth handler.");
+          return;
+        }
         setScreen("login");
 
       } catch(e) {
@@ -2358,6 +2579,7 @@ export default function App(){
         console.error("[NC CRM] Full error:", e);
         setDbError(e.message);
         setDbStatus("error");
+        if (isOAuthRedirect || oauthLoginRef.current) return;
         // Graceful fallback — app still works with seed data
         if (sessionUser) {
           const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
@@ -2410,30 +2632,68 @@ export default function App(){
   useEffect(() => {
     if (!supabaseAuth) return;
 
-    const { data: listener } = supabaseAuth.auth.onAuthStateChange(async (event, session) => {
-      if (event !== "SIGNED_IN" || !session?.user?.email) return;
+    const handleGoogleSession = async (session) => {
+      if (!session?.user?.email) return;
+      // Avoid double-processing the same session (INITIAL_SESSION + SIGNED_IN
+      // can both fire for one redirect)
+      if (oauthLoginRef.current) return;
 
       const googleEmail = session.user.email.toLowerCase();
-      console.log("[NC CRM] Google OAuth sign-in detected:", googleEmail);
+      console.log("[NC CRM] Google OAuth session detected:", googleEmail);
 
       // Look up by email in current users list, falling back to a fresh DB fetch
       // (covers the case where `users` hasn't loaded yet on first paint)
       let pool = users;
       if (!pool || pool.length === 0) {
         try { pool = await DB.getUsers(); } catch { pool = INIT_USERS; }
+        if (!pool || pool.length === 0) pool = INIT_USERS;
       }
 
       const matched = pool.find(u => u.email.toLowerCase() === googleEmail);
 
       if (matched && matched.active) {
         console.log("[NC CRM] ✅ Matched CRM account:", matched.username);
+        oauthLoginRef.current = true;
+        // Store Google access/provider tokens for Gmail inbox integration
+        if (session.provider_token) {
+          sessionStorage.setItem("google_access_token", session.provider_token);
+        }
+        if (session.provider_refresh_token) {
+          sessionStorage.setItem("google_refresh_token", session.provider_refresh_token);
+        }
+        sessionStorage.setItem("google_email", googleEmail);
         await login(matched);
+        // Clean the #access_token=... fragment out of the URL so a page
+        // refresh doesn't re-trigger the OAuth flow and force a second login
+        if (window.location.hash) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
       } else if (matched && !matched.active) {
         alert(`Your CRM account (${googleEmail}) has been deactivated. Contact your administrator.`);
         await supabaseAuth.auth.signOut();
+        if (window.location.hash) window.history.replaceState(null, "", window.location.pathname);
       } else {
         alert(`No CRM account found for ${googleEmail}.\n\nAsk your administrator to add this email address as a user in Admin → Users.`);
         await supabaseAuth.auth.signOut();
+        if (window.location.hash) window.history.replaceState(null, "", window.location.pathname);
+      }
+    };
+
+    // Handle the case where Supabase already has a session on page load
+    // (e.g. immediately after the OAuth redirect completes)
+    supabaseAuth.auth.getSession().then(({ data }) => {
+      if (data?.session) handleGoogleSession(data.session);
+    });
+
+    const { data: listener } = supabaseAuth.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        await handleGoogleSession(session);
+      }
+      if (event === "SIGNED_OUT") {
+        oauthLoginRef.current = false;
+        sessionStorage.removeItem("google_access_token");
+        sessionStorage.removeItem("google_refresh_token");
+        sessionStorage.removeItem("google_email");
       }
     });
 
