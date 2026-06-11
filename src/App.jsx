@@ -36,159 +36,37 @@ console.log("[NC CRM] Supabase configured:", isConfigured,
    All DB calls go through these helpers. When not configured,
    they fall back to local state (demo mode).
 ════════════════════════════════════════════════════════════════ */
-import { createClient } from "@supabase/supabase-js";
-
-// Initialize Supabase client (for Auth)
-const supabaseClient = isConfigured
-  ? createClient(SUPABASE_URL, SUPABASE_KEY)
-  : null;
-
-// Real Google sign-in function
-async function signInWithGoogle() {
-  if (!supabaseClient) return;
-  const { error } = await supabaseClient.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      scopes: "openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
-      redirectTo: window.location.origin,
-    },
-  });
-  if (error) console.error("Google sign-in error:", error.message);
-}
-async function sendViaGmailAPI({ to, subject, body, from }) {
-  const accessToken = sessionStorage.getItem("google_access_token");
-  if (!accessToken) {
-    // Fall back to Gmail compose link
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-    return null;
-  }
-
-  // Encode email as RFC 2822
-  const email = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    `Content-Type: text/plain; charset=utf-8`,
-    ``,
-    body,
-  ].join("\r\n");
-
-  const encoded = btoa(unescape(encodeURIComponent(email)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ raw: encoded }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message || "Gmail send failed");
-  }
-  return await res.json();
-}
-
-async function fetchGmailInbox() {
-  const accessToken = sessionStorage.getItem("google_access_token");
-  if (!accessToken) return [];
-
-  // Get latest 20 messages
-  const listRes = await fetch(
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox",
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const listData = await listRes.json();
-  if (!listData.messages) return [];
-
-  // Fetch each message detail
-  const messages = await Promise.all(
-    listData.messages.map(async (msg) => {
-      const msgRes = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      return msgRes.json();
-    })
-  );
-
-  // Parse into CRM inbox format
-  return messages.map(m => {
-    const headers = m.payload?.headers || [];
-    const get = name => headers.find(h => h.name.toLowerCase() === name)?.value || "";
-    const bodyData = m.payload?.parts?.[0]?.body?.data || m.payload?.body?.data || "";
-    const body = bodyData ? atob(bodyData.replace(/-/g,"+").replace(/_/g,"/")) : "(no body)";
-    return {
-      id: m.id,
-      from: get("from"),
-      fromEmail: get("from").match(/<(.+)>/)?.[1] || get("from"),
-      subject: get("subject"),
-      preview: body.slice(0, 120),
-      body,
-      date: new Date(parseInt(m.internalDate)).toLocaleString("sv-SE").slice(0,16).replace("T"," "),
-      read: !m.labelIds?.includes("UNREAD"),
-      starred: m.labelIds?.includes("STARRED") || false,
-      label: "reply",
-      sentiment: "neutral",
-    };
-  });
-}
-// Listen for auth state changes
-supabaseClient?.auth.onAuthStateChange(async (event, session) => {
-  if (event === "SIGNED_IN" && session?.user) {
-    const googleUser = session.user;
-    // Match against crm_users by email
-    const dbUsers = await DB.getUsers();
-    const matched = dbUsers.find(u => u.email === googleUser.email && u.active);
-    if (matched) {
-      // Store Google access token for Gmail API calls
-      sessionStorage.setItem("google_access_token", session.provider_token || "");
-      // Log them into the CRM
-      login(matched);
-    } else {
-      console.warn("Google account not found in CRM users:", googleUser.email);
-      alert(`No CRM account found for ${googleUser.email}. Ask your admin to add your email to the system.`);
-      await supabaseClient.auth.signOut();
-    }
-  }
-});
-async function sbFetch(path, opts = {}) {
-  // Build headers — prefer in opts.headers wins over opts.prefer wins over default
-  const preferHeader = (opts.headers && opts.headers["Prefer"]) || opts.prefer || "return=representation";
+async function sbFetch(path, method = "GET", body = null, prefer = "return=representation") {
+  // Clean, conflict-free header builder
   const headers = {
     "apikey":        SUPABASE_KEY,
     "Authorization": `Bearer ${SUPABASE_KEY}`,
     "Content-Type":  "application/json",
-    "Prefer":        preferHeader,
-    ...(opts.headers || {}),
+    "Prefer":        prefer,
   };
-  // Remove internal-only key so it doesn't leak into headers
-  delete headers["Prefer"]; headers["Prefer"] = preferHeader;
 
-  const fetchOpts = { method: opts.method || "GET", headers };
-  if (opts.body) fetchOpts.body = opts.body;
+  const options = { method, headers };
+  if (body !== null) options.body = typeof body === "string" ? body : JSON.stringify(body);
 
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, fetchOpts);
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  console.log(`[NC CRM DB] ${method} ${path}`);
 
-  // 204 No Content (DELETE success) — nothing to parse
+  const res = await fetch(url, options);
+
+  // 204 No Content — DELETE returns this on success
   if (res.status === 204) return null;
 
+  const text = await res.text();
+
   if (!res.ok) {
-    let errText = "";
-    try { errText = await res.text(); } catch {}
-    throw new Error(`Supabase ${res.status} on ${path}: ${errText}`);
+    console.error(`[NC CRM DB] ❌ ${method} ${path} → ${res.status}:`, text);
+    throw new Error(`Supabase ${res.status} on ${method} ${path}: ${text}`);
   }
 
-  // Some responses (PATCH with return=minimal) are also empty
-  const text = await res.text();
   if (!text || text.trim() === "") return null;
+
   try { return JSON.parse(text); }
-  catch { return text; }
+  catch(e) { return text; }
 }
 
 // Convert DB row (snake_case) → app object (camelCase)
@@ -255,24 +133,16 @@ const DB = {
     const isDbId = typeof p.id === "string" && /^[0-9a-f-]{36}$/.test(p.id);
     if (isDbId) {
       // UPDATE existing row
-      const rows = await sbFetch(`prospects?id=eq.${encodeURIComponent(p.id)}`, {
-        method: "PATCH",
-        headers: { "Prefer": "return=representation" },
-        body: JSON.stringify(body),
-      });
+      const rows = await sbFetch(`prospects?id=eq.${encodeURIComponent(p.id)}`, "PATCH", body, "return=representation");
       return dbToProspect(Array.isArray(rows) ? rows[0] : rows);
     } else {
       // INSERT new row — let Supabase generate the UUID
-      const rows = await sbFetch("prospects", {
-        method: "POST",
-        headers: { "Prefer": "return=representation" },
-        body: JSON.stringify(body),
-      });
+      const rows = await sbFetch("prospects", "POST", body, "return=representation");
       return dbToProspect(Array.isArray(rows) ? rows[0] : rows);
     }
   },
   async deleteProspect(id) {
-    await sbFetch(`prospects?id=eq.${id}`, { method: "DELETE" });
+    await sbFetch(`prospects?id=eq.${encodeURIComponent(id)}`, "DELETE");
   },
   async upsertProspects(list) {
     // Bulk INSERT — strip local numeric IDs so Supabase generates fresh UUIDs
@@ -282,15 +152,11 @@ const DB = {
       if (typeof p.id === "string" && /^[0-9a-f-]{36}$/.test(p.id)) row.id = p.id;
       return row;
     });
-    const result = await sbFetch("prospects", {
-      method: "POST",
-      headers: { "Prefer": "return=representation" },
-      body: JSON.stringify(rows),
-    });
+    const result = await sbFetch("prospects", "POST", rows, "return=representation");
     return (Array.isArray(result) ? result : []).map(dbToProspect);
   },
   async deleteAllProspects() {
-    await sbFetch("prospects?id=neq.00000000-0000-0000-0000-000000000000", { method: "DELETE" });
+    await sbFetch("prospects?id=neq.00000000-0000-0000-0000-000000000000", "DELETE");
   },
 
   // Users
@@ -302,29 +168,18 @@ const DB = {
     const isDbId = typeof u.id === "string" && /^[0-9a-f-]{36}$/.test(u.id);
     const body = { username:u.username, password:u.password, name:u.name, email:u.email, role:u.role, active:u.active, avatar:u.avatar };
     if (isDbId) {
-      const rows = await sbFetch(`crm_users?id=eq.${encodeURIComponent(u.id)}`, {
-        method:"PATCH",
-        headers:{"Prefer":"return=representation"},
-        body: JSON.stringify(body),
-      });
+      const rows = await sbFetch(`crm_users?id=eq.${encodeURIComponent(u.id)}`, "PATCH", body, "return=representation");
       return dbToUser(Array.isArray(rows) ? rows[0] : rows);
     } else {
-      const rows = await sbFetch("crm_users", {
-        method:"POST",
-        headers:{"Prefer":"return=representation"},
-        body: JSON.stringify(body),
-      });
+      const rows = await sbFetch("crm_users", "POST", body, "return=representation");
       return dbToUser(Array.isArray(rows) ? rows[0] : rows);
     }
   },
   async deleteUser(id) {
-    await sbFetch(`crm_users?id=eq.${id}`, { method:"DELETE" });
+    await sbFetch(`crm_users?id=eq.${encodeURIComponent(id)}`, "DELETE");
   },
   async updateLastLogin(id) {
-    await sbFetch(`crm_users?id=eq.${id}`, {
-      method:"PATCH", prefer:"return=minimal",
-      body: JSON.stringify({ last_login: new Date().toISOString() }),
-    });
+    await sbFetch(`crm_users?id=eq.${encodeURIComponent(id)}`, "PATCH", { last_login: new Date().toISOString() }, "return=minimal");
   },
 
   // Audit log
@@ -333,7 +188,7 @@ const DB = {
     return (rows||[]).map(r=>({ time: r.created_at ? r.created_at.slice(0,16).replace("T"," ") : "", user: r.username, action: r.action }));
   },
   async addAudit(username, action) {
-    await sbFetch("audit_log", { method:"POST", prefer:"return=minimal", body: JSON.stringify({ username, action }) });
+    await sbFetch("audit_log", "POST", { username, action }, "return=minimal");
   },
 
   // System settings
@@ -349,22 +204,9 @@ const DB = {
     return out;
   },
   async saveSettings(settings) {
-    // Upsert each key one at a time to avoid bulk conflict issues
-    const entries = Object.entries(settings);
-    for (const [key, value] of entries) {
-      await sbFetch(`system_settings?key=eq.${encodeURIComponent(key)}`, {
-        method: "PATCH",
-        headers: { "Prefer": "return=minimal" },
-        body: JSON.stringify({ value: String(value) }),
-      }).catch(async () => {
-        // If PATCH fails (row doesn't exist), INSERT it
-        await sbFetch("system_settings", {
-          method: "POST",
-          headers: { "Prefer": "return=minimal" },
-          body: JSON.stringify({ key, value: String(value) }),
-        });
-      });
-    }
+    // Upsert all settings at once using Supabase merge-duplicates
+    const rows = Object.entries(settings).map(([key, value]) => ({ key, value: String(value) }));
+    await sbFetch("system_settings", "POST", rows, "resolution=merge-duplicates,return=minimal");
   },
 
   // Emails
@@ -373,7 +215,7 @@ const DB = {
     return rows || [];
   },
   async addEmail(email) {
-    await sbFetch("emails", { method:"POST", prefer:"return=minimal", body: JSON.stringify(email) });
+    await sbFetch("emails", "POST", email, "return=minimal");
   },
 };
 
@@ -551,15 +393,8 @@ function LoginScreen({users,onLogin}){
     },520);
   };
 
-const googleSign = () => {
-  if (supabaseClient) {
-    signInWithGoogle(); // real OAuth
-  } else {
-    // Demo mode fallback
-    setGload(true);
-    setTimeout(() => { const u = users.find(x => x.active); if(u) onLogin(u); }, 900);
-  }
-};
+  const googleSign=()=>{setGload(true);setTimeout(()=>{const u=users.find(x=>x.active);if(u)onLogin(u);else setGload(false);},900);};
+
   return(
     <div style={{minHeight:"100vh",background:N,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden",padding:24}}>
       <GS/>
@@ -2512,31 +2347,6 @@ export default function App(){
     }
   },[dbStatus]);
 
-  /* ── CRM data helpers (sync UI + DB) ────────────────────── */
-  const syncCrmData = useCallback(async (updater, dbAction) => {
-    setCrmData(updater); // optimistic update
-    if (isConfigured && dbStatus === "connected") {
-      try { await dbAction(); } catch(e) { console.warn("DB sync warn:", e.message); }
-    }
-  },[dbStatus]);
-
-  const syncUsers = useCallback(async (updater, dbAction) => {
-    setUsers(updater);
-    if (isConfigured && dbStatus === "connected") {
-      try { await dbAction(); } catch(e) { console.warn("DB sync warn:", e.message); }
-    }
-  },[dbStatus]);
-
-  /* ── Wrapped setCrmData that also persists ───────────────── */
-  const setCrmDataDb = useCallback((prospectOrUpdater, dbHint) => {
-    if (typeof prospectOrUpdater === "function") {
-      setCrmData(prospectOrUpdater);
-    } else {
-      setCrmData(prospectOrUpdater);
-    }
-    // DB persistence happens via specific save/delete calls below
-  },[]);
-
   /* ── Login / Logout ──────────────────────────────────────── */
   const login = async (user) => {
     const u = { ...user, lastLogin: new Date().toLocaleString() };
@@ -2564,113 +2374,118 @@ export default function App(){
   /* ── DB-aware save / delete wrappers passed down ─────────── */
   const handleSaveProspect = useCallback(async (form) => {
     // Step 1: Optimistic UI update immediately (instant feedback)
-    const isNew = !crmData.find(p => p.id === form.id);
-    setCrmData(prev => isNew
-      ? [...prev, form]
-      : prev.map(p => p.id === form.id ? form : p)
-    );
+    setCrmData(prev => {
+      const exists = prev.find(p => p.id === form.id);
+      return exists ? prev.map(p => p.id === form.id ? form : p) : [...prev, form];
+    });
 
-    // Step 2: Persist to Supabase
-    if (isConfigured && dbStatus === "connected") {
+    // Step 2: Persist to Supabase (always try if configured)
+    if (isConfigured) {
       try {
+        console.log("[NC CRM] Saving prospect to DB:", form.companyName, "| id:", form.id);
         const saved = await DB.upsertProspect(form);
         if (saved && saved.id) {
-          // Replace optimistic record with DB record (gets real UUID if new)
-          setCrmData(prev => isNew
-            ? prev.map(p => p.id === form.id ? saved : p)  // swap temp id for DB uuid
-            : prev.map(p => p.id === form.id ? saved : p)
-          );
-          console.log("[NC CRM] Prospect saved to DB:", saved.companyName, "id:", saved.id);
+          // Swap temp local ID for real DB UUID
+          setCrmData(prev => prev.map(p => p.id === form.id ? saved : p));
+          console.log("[NC CRM] ✅ Prospect saved:", saved.companyName, "| DB id:", saved.id);
           return saved;
         }
       } catch(e) {
-        console.error("[NC CRM] Failed to save prospect to DB:", e.message);
-        // Keep optimistic update in UI even if DB fails
+        console.error("[NC CRM] ❌ Prospect save failed:", e.message);
       }
     }
     return form;
-  },[dbStatus, crmData]);
+  },[]); // no deps — uses isConfigured which is module-level constant
 
   const handleDeleteProspect = useCallback(async (id) => {
     setCrmData(prev => prev.filter(p => p.id !== id)); // optimistic
-    if (isConfigured && dbStatus === "connected") {
+    if (isConfigured) {
       try {
         await DB.deleteProspect(id);
-        console.log("[NC CRM] Prospect deleted from DB:", id);
+        console.log("[NC CRM] ✅ Prospect deleted from DB:", id);
       } catch(e) {
-        console.error("[NC CRM] Failed to delete prospect from DB:", e.message);
+        console.error("[NC CRM] ❌ Delete failed:", e.message);
       }
     }
-  },[dbStatus]);
+  },[]);
 
   const handleImportProspects = useCallback(async (rows, mode) => {
     if (mode === "replace") {
-      setCrmData(rows);
-      if (isConfigured && dbStatus === "connected") {
+      setCrmData(rows); // optimistic
+      if (isConfigured) {
         try {
           await DB.deleteAllProspects();
           const saved = await DB.upsertProspects(rows);
-          if (saved && saved.length) setCrmData(saved);
-        } catch(e) { console.warn("import replace failed:", e.message); }
+          if (saved && saved.length) {
+            setCrmData(saved);
+            console.log("[NC CRM] ✅ Imported", saved.length, "prospects (replace)");
+          }
+        } catch(e) { console.error("[NC CRM] ❌ Import replace failed:", e.message); }
       }
     } else {
-      setCrmData(prev => [...prev, ...rows]);
-      if (isConfigured && dbStatus === "connected") {
+      setCrmData(prev => [...prev, ...rows]); // optimistic
+      if (isConfigured) {
         try {
           const saved = await DB.upsertProspects(rows);
           if (saved && saved.length) {
             setCrmData(prev => {
-              const ids = new Set(rows.map(r => r.id));
-              return [...prev.filter(p => !ids.has(p.id)), ...saved];
+              const tempIds = new Set(rows.map(r => r.id));
+              return [...prev.filter(p => !tempIds.has(p.id)), ...saved];
             });
+            console.log("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
           }
-        } catch(e) { console.warn("import append failed:", e.message); }
+        } catch(e) { console.error("[NC CRM] ❌ Import append failed:", e.message); }
       }
     }
-  },[dbStatus]);
+  },[]);
 
   const handleSaveUser = useCallback(async (u) => {
     // Optimistic update
-    const isNew = !users.find(x => x.id === u.id);
-    setUsers(prev => isNew ? [...prev, u] : prev.map(x => x.id === u.id ? u : x));
+    setUsers(prev => {
+      const exists = prev.find(x => x.id === u.id);
+      return exists ? prev.map(x => x.id === u.id ? u : x) : [...prev, u];
+    });
 
     // Persist to DB
-    if (isConfigured && dbStatus === "connected") {
+    if (isConfigured) {
       try {
+        console.log("[NC CRM] Saving user to DB:", u.username);
         const saved = await DB.upsertUser(u);
         if (saved && saved.id) {
-          setUsers(prev => isNew
-            ? prev.map(x => x.id === u.id ? saved : x)
-            : prev.map(x => x.id === u.id ? saved : x)
-          );
-          console.log("[NC CRM] User saved to DB:", saved.username);
+          setUsers(prev => prev.map(x => x.id === u.id ? saved : x));
+          console.log("[NC CRM] ✅ User saved:", saved.username);
           return saved;
         }
       } catch(e) {
-        console.error("[NC CRM] Failed to save user to DB:", e.message);
+        console.error("[NC CRM] ❌ User save failed:", e.message);
       }
     }
     return u;
-  },[dbStatus, users]);
+  },[]);
 
   const handleDeleteUser = useCallback(async (id) => {
     setUsers(prev => prev.filter(u => u.id !== id));
-    if (isConfigured && dbStatus === "connected") {
-      try { await DB.deleteUser(id); } catch(e) { console.warn("user delete failed:", e.message); }
-    }
-  },[dbStatus]);
-
-  const handleSaveSettings = useCallback(async (settings) => {
-    setSysSettings(settings); // immediate UI update
-    if (isConfigured && dbStatus === "connected") {
+    if (isConfigured) {
       try {
-        await DB.saveSettings(settings);
-        console.log("[NC CRM] System settings saved to DB");
+        await DB.deleteUser(id);
+        console.log("[NC CRM] ✅ User deleted:", id);
       } catch(e) {
-        console.error("[NC CRM] Failed to save settings to DB:", e.message);
+        console.error("[NC CRM] ❌ User delete failed:", e.message);
       }
     }
-  },[dbStatus]);
+  },[]);
+
+  const handleSaveSettings = useCallback(async (settings) => {
+    setSysSettings(settings);
+    if (isConfigured) {
+      try {
+        await DB.saveSettings(settings);
+        console.log("[NC CRM] ✅ Settings saved to DB");
+      } catch(e) {
+        console.error("[NC CRM] ❌ Settings save failed:", e.message);
+      }
+    }
+  },[]);
 
   /* ── Loading screen ──────────────────────────────────────── */
   if (screen === "loading") return (
