@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
+import { createClient } from "@supabase/supabase-js";
 
 /* ════════════════════════════════════════════════════════════════
    SUPABASE CONFIG
@@ -30,6 +31,16 @@ const isConfigured =
 // Debug output — visible in browser console. Remove once confirmed working.
 console.log("[NC CRM] Supabase configured:", isConfigured,
   "| URL:", SUPABASE_URL.startsWith("https://") ? SUPABASE_URL.slice(0,40)+"…" : "(not set)");
+
+// ── Supabase Auth client (separate from the sbFetch REST helper) ──
+// Used ONLY for Google OAuth sign-in. All other DB reads/writes still
+// go through sbFetch with the anon key — this client just manages the
+// browser auth session and OAuth redirect flow.
+const supabaseAuth = isConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    })
+  : null;
 
 /* ════════════════════════════════════════════════════════════════
    SUPABASE DATABASE LAYER
@@ -393,7 +404,26 @@ function LoginScreen({users,onLogin}){
     },520);
   };
 
-  const googleSign=()=>{setGload(true);setTimeout(()=>{const u=users.find(x=>x.active);if(u)onLogin(u);else setGload(false);},900);};
+  const googleSign=async()=>{
+    if (supabaseAuth) {
+      // Real Google OAuth — redirects to Google's account chooser
+      setGload(true);
+      const { error } = await supabaseAuth.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) {
+        console.error("[NC CRM] Google sign-in error:", error.message);
+        alert("Google sign-in failed: " + error.message + "\n\nMake sure Google is enabled as a provider in Supabase → Authentication → Providers.");
+        setGload(false);
+      }
+      // On success, the page redirects to Google then back — no further code runs here
+    } else {
+      // Demo mode fallback — no Supabase configured
+      setGload(true);
+      setTimeout(()=>{const u=users.find(x=>x.active);if(u)onLogin(u);else setGload(false);},900);
+    }
+  };
 
   return(
     <div style={{minHeight:"100vh",background:N,fontFamily:"'Segoe UI',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden",padding:24}}>
@@ -977,7 +1007,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
 /* ════════════════════════════════════════════════════════════════
    ADMIN PANEL
 ════════════════════════════════════════════════════════════════ */
-function AdminPanel({currentUser,users,setUsers,crmData,setCrmData,sysSettings,setSysSettings,auditLog,addAudit,onBack,onLogout}){
+function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,setSysSettings,onSaveSettings,auditLog,addAudit,onBack,onLogout,dbStatus}){
   const [tab,setTab]=useState("overview");
   const [toast,setToast]=useState(null);
   const [uDlg,setUDlg]=useState(null);
@@ -998,28 +1028,30 @@ function AdminPanel({currentUser,users,setUsers,crmData,setCrmData,sysSettings,s
   // User ops
   const openAddU=()=>{setUForm({username:"",password:"",name:"",email:"",role:"user",active:true});setFErr("");setUDlg("add");};
   const openEditU=u=>{setUForm({...u});setFErr("");setUDlg(u);};
-  const saveU=()=>{
+  const saveU=async()=>{
     if(!uForm.name?.trim()||!uForm.username?.trim()||!uForm.password?.trim()||!uForm.email?.trim()){setFErr("All fields required.");return;}
     if(uForm.password.length<4){setFErr("Password min 4 chars.");return;}
     if(uForm.role==="superadmin"&&!isSuper){setFErr("Only Super Admin can assign this role.");return;}
     if(uDlg==="add"){
       if(users.find(u=>u.username.toLowerCase()===uForm.username.toLowerCase())){setFErr("Username already exists.");return;}
       const nu={...uForm,id:uid(),createdAt:today(),lastLogin:null,avatar:initials(uForm.name)};
-      setUsers(p=>[...p,nu]);addAudit(currentUser.username,`Created user: ${nu.username} (${nu.role})`);t2(`User "${nu.username}" created.`);
+      await onSaveUser(nu);
+      addAudit(currentUser.username,`Created user: ${nu.username} (${nu.role})`);t2(`User "${nu.username}" created.`);
     }else{
       if(uDlg.id===currentUser.id&&uForm.role!==currentUser.role){setFErr("Cannot change your own role.");return;}
-      setUsers(p=>p.map(u=>u.id===uDlg.id?{...u,...uForm}:u));
+      const updated={...uDlg,...uForm};
+      await onSaveUser(updated);
       addAudit(currentUser.username,`Updated user: ${uForm.username}`);t2(`"${uForm.username}" updated.`);
     }
     setUDlg(null);
   };
-  const deleteU=u=>{if(u.id===currentUser.id){t2("Cannot delete yourself.","err");return;}setUsers(p=>p.filter(x=>x.id!==u.id));addAudit(currentUser.username,`Deleted user: ${u.username}`);t2(`"${u.username}" deleted.`,"err");setConfirmDel(null);};
-  const toggleActive=u=>{if(u.id===currentUser.id){t2("Cannot deactivate yourself.","err");return;}setUsers(p=>p.map(x=>x.id===u.id?{...x,active:!x.active}:x));addAudit(currentUser.username,`${u.active?"Deactivated":"Activated"}: ${u.username}`);t2(`${u.name} ${u.active?"deactivated":"activated"}.`,u.active?"err":"ok");};
+  const deleteU=async u=>{if(u.id===currentUser.id){t2("Cannot delete yourself.","err");return;}await onDeleteUser(u.id);addAudit(currentUser.username,`Deleted user: ${u.username}`);t2(`"${u.username}" deleted.`,"err");setConfirmDel(null);};
+  const toggleActive=async u=>{if(u.id===currentUser.id){t2("Cannot deactivate yourself.","err");return;}await onSaveUser({...u,active:!u.active});addAudit(currentUser.username,`${u.active?"Deactivated":"Activated"}: ${u.username}`);t2(`${u.name} ${u.active?"deactivated":"activated"}.`,u.active?"err":"ok");};
 
   // Prospect ops
-  const saveP=form=>{const isNew=!crmData.find(p=>p.id===form.id);if(isNew){setCrmData(p=>[...p,form]);addAudit(currentUser.username,`Added: ${form.companyName}`);}else{setCrmData(p=>p.map(x=>x.id===form.id?form:x));addAudit(currentUser.username,`Edited: ${form.companyName}`);}t2(isNew?"Added!":"Saved!");setPDlg(null);};
-  const deleteP=id=>{const p=crmData.find(x=>x.id===id);setCrmData(prev=>prev.filter(x=>x.id!==id));addAudit(currentUser.username,`Deleted: ${p?.companyName||id}`);t2(`"${p?.companyName}" deleted.`,"err");setConfirmDel(null);setPDlg(null);};
-  const saveSettings=()=>{setSysSettings({...settings});addAudit(currentUser.username,"Updated system settings");t2("Settings saved.");};
+  const saveP=async form=>{const isNew=!crmData.find(p=>p.id===form.id);await onSaveProspect(form);addAudit(currentUser.username,isNew?`Added: ${form.companyName}`:`Edited: ${form.companyName}`);t2(isNew?"Added!":"Saved!");setPDlg(null);};
+  const deleteP=async id=>{const p=crmData.find(x=>x.id===id);await onDeleteProspect(id);addAudit(currentUser.username,`Deleted: ${p?.companyName||id}`);t2(`"${p?.companyName}" deleted.`,"err");setConfirmDel(null);setPDlg(null);};
+  const saveSettings=async()=>{await onSaveSettings({...settings});addAudit(currentUser.username,"Updated system settings");t2("Settings saved.");};
 
   const filtP=crmData.filter(p=>{const q=srch.toLowerCase();return(sfilt==="All"||p.currentStatus===sfilt)&&(!q||[p.companyName,p.contactName,p.market,p.vertical].some(v=>(v||"").toLowerCase().includes(q)));});
   const TABS=[{id:"overview",l:"📊 Overview"},{id:"users",l:"👥 Users"},{id:"crm",l:"🗄️ Prospects"},{id:"settings",l:"⚙️ Settings"},{id:"plugins",l:"🔌 Plugins"},{id:"audit",l:"📋 Audit Log"}];
@@ -1146,7 +1178,7 @@ function AdminPanel({currentUser,users,setUsers,crmData,setCrmData,sysSettings,s
                 <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
                   <button onClick={()=>setShowImport(true)} className="bh" style={{...B.purple,fontSize:11,display:"flex",gap:5,alignItems:"center"}}>📁 Import</button>
                   <button onClick={()=>{exportToExcel(crmData,"NC_CRM_Admin");t2("Exported!");}} className="bh" style={{...B.green,fontSize:11}}>⬇️ Export</button>
-                  {isAdmin&&<button onClick={()=>{if(window.confirm("Reset all CRM data?")){setCrmData(SEED);addAudit(currentUser.username,"Reset CRM to seed");t2("Data reset.","err");}}} className="bh" style={{...B.danger,fontSize:11}}>↺ Reset</button>}
+                  {isAdmin&&<button onClick={async()=>{if(window.confirm("Reset all CRM data? This will overwrite the database.")){await onImportProspects(SEED,"replace");addAudit(currentUser.username,"Reset CRM to seed");t2("Data reset.","err");}}} className="bh" style={{...B.danger,fontSize:11}}>↺ Reset</button>}
                   <button onClick={()=>setPDlg("add")} className="bh" style={{...B.gold,fontSize:11}}>+ Add</button>
                 </div>
               </div>
@@ -1276,7 +1308,7 @@ function AdminPanel({currentUser,users,setUsers,crmData,setCrmData,sysSettings,s
 
       {toast&&<Toast msg={toast.msg} type={toast.type}/>}
 
-      {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={(rows,mode)=>{if(mode==="replace")setCrmData(rows);else setCrmData(p=>[...p,...rows]);addAudit(currentUser.username,`Imported ${rows.length} prospects (${mode})`);setShowImport(false);t2(`${rows.length} imported!`);}}/>}
+      {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async(rows,mode)=>{await onImportProspects(rows,mode);addAudit(currentUser.username,`Imported ${rows.length} prospects (${mode})`);setShowImport(false);t2(`${rows.length} imported!`);}}/>}
       {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"} onSave={saveP} onDelete={id=>setConfirmDel({type:"prospect",item:crmData.find(p=>p.id===id)})} onClose={()=>setPDlg(null)} canDelete={isAdmin}/>}
 
       {confirmDel&&<DW onClose={()=>setConfirmDel(null)} title="Confirm Delete" width={380}>
@@ -2363,9 +2395,50 @@ export default function App(){
   const logout = () => {
     if (currentUser) addAudit(currentUser.username, "Logged out");
     sessionStorage.removeItem("crm_v4");
+    if (supabaseAuth) supabaseAuth.auth.signOut().catch(()=>{});
     setCurrentUser(null);
     setScreen("login");
   };
+
+  /* ── Google OAuth callback handler ───────────────────────── *
+   * When Google redirects back to the app, Supabase fires
+   * SIGNED_IN with the user's real Google profile (session.user).
+   * We match session.user.email against crm_users.email — if a
+   * matching active CRM account exists, log them in as that user.
+   * If not, sign them out of Supabase Auth and show an error,
+   * since Google identity alone doesn't grant CRM access.        */
+  useEffect(() => {
+    if (!supabaseAuth) return;
+
+    const { data: listener } = supabaseAuth.auth.onAuthStateChange(async (event, session) => {
+      if (event !== "SIGNED_IN" || !session?.user?.email) return;
+
+      const googleEmail = session.user.email.toLowerCase();
+      console.log("[NC CRM] Google OAuth sign-in detected:", googleEmail);
+
+      // Look up by email in current users list, falling back to a fresh DB fetch
+      // (covers the case where `users` hasn't loaded yet on first paint)
+      let pool = users;
+      if (!pool || pool.length === 0) {
+        try { pool = await DB.getUsers(); } catch { pool = INIT_USERS; }
+      }
+
+      const matched = pool.find(u => u.email.toLowerCase() === googleEmail);
+
+      if (matched && matched.active) {
+        console.log("[NC CRM] ✅ Matched CRM account:", matched.username);
+        await login(matched);
+      } else if (matched && !matched.active) {
+        alert(`Your CRM account (${googleEmail}) has been deactivated. Contact your administrator.`);
+        await supabaseAuth.auth.signOut();
+      } else {
+        alert(`No CRM account found for ${googleEmail}.\n\nAsk your administrator to add this email address as a user in Admin → Users.`);
+        await supabaseAuth.auth.signOut();
+      }
+    });
+
+    return () => { listener?.subscription?.unsubscribe(); };
+  }, [users]); // re-run if users list updates (so first-load race is handled)
 
   const openAdmin = () => {
     if (currentUser && ROLES[currentUser.role].canAdmin) setScreen("admin");
