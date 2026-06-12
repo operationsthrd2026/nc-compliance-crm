@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
@@ -442,6 +442,30 @@ const isPast=d=>d&&new Date(d+"T23:59:59")<new Date();
 const hasEM=p=>!!(p.emailPhone&&p.emailPhone.includes("@"));
 const tsNow=()=>new Date().toLocaleString("sv-SE",{hour12:false}).replace("T"," ").slice(0,16);
 const initials=n=>n.split(" ").map(x=>x[0]||"").join("").slice(0,2).toUpperCase();
+// Add N days to a YYYY-MM-DD date string (or today if none given), return YYYY-MM-DD
+const addDays=(dateStr,n)=>{const d=dateStr?new Date(dateStr+"T00:00:00"):new Date();d.setDate(d.getDate()+n);return d.toISOString().split("T")[0];};
+/* ── Outreach cadence ─────────────────────────────────────────
+   Touch 2 is due 7 days after Touch 1 is sent.
+   Touch 3 is due 14 days (2 weeks) after Touch 2 is sent.
+   applyTouchDates() auto-stamps send/due dates whenever a status
+   change represents "I just sent this touch" — called from qStatus
+   and the Email Hub send flow so the calendar always reflects
+   accurate due dates without manual entry.                      */
+const applyTouchDates=(prospect,newStatus)=>{
+  const patch={currentStatus:newStatus};
+  if(newStatus==="T1 SENT"&&!prospect.t1SendDate){
+    patch.t1SendDate=today();
+    patch.t2DueDate=addDays(today(),7);
+  }
+  if(newStatus==="T2 SENT"&&!prospect.t2SendDate){
+    patch.t2SendDate=today();
+    patch.t3DueDate=addDays(today(),14);
+  }
+  if((newStatus==="NURTURE/T3 SENT")&&!prospect.t3SendDate){
+    patch.t3SendDate=today();
+  }
+  return{...prospect,...patch};
+};
 const mapHdr=h=>COL_MAP[(h||"").toLowerCase().trim().replace(/[_\-]+/g," ")]||null;
 const parseBool=v=>{if(typeof v==="boolean")return v;const s=String(v||"").toLowerCase().trim();return s==="yes"||s==="true"||s==="1"||s==="y";};
 const parseDate=v=>{if(!v)return"";if(typeof v==="number"){try{const d=XLSX.SSF.parse_date_code(v);return`${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;}catch{return"";}}const s=String(v).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;try{const d=new Date(s);if(!isNaN(d))return d.toISOString().split("T")[0];}catch{}return s;};
@@ -2193,6 +2217,221 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
 }
 
 /* ════════════════════════════════════════════════════════════════
+   CALENDAR VIEW
+   Plots T1/T2/T3 send & due dates onto a month grid, similar to
+   activity calendars in HubSpot/Salesforce. Click a day to see
+   every action item due that date; click an item to open the
+   prospect record.
+════════════════════════════════════════════════════════════════ */
+const CAL_EVENT_TYPES={
+  t1_due:{label:"Touch 1 Due",  color:"#60a5fa", bg:"rgba(96,165,250,0.14)",  bc:"rgba(96,165,250,0.35)",  icon:"📧"},
+  t2_due:{label:"Touch 2 Due",  color:"#a78bfa", bg:"rgba(167,139,250,0.14)", bc:"rgba(167,139,250,0.35)", icon:"📩"},
+  t3_due:{label:"Touch 3 Due",  color:"#f472b6", bg:"rgba(244,114,182,0.14)", bc:"rgba(244,114,182,0.35)", icon:"📬"},
+  t1_sent:{label:"Touch 1 Sent",color:"#34d399", bg:"rgba(52,211,153,0.10)",  bc:"rgba(52,211,153,0.28)",  icon:"✅"},
+  t2_sent:{label:"Touch 2 Sent",color:"#34d399", bg:"rgba(52,211,153,0.10)",  bc:"rgba(52,211,153,0.28)",  icon:"✅"},
+  t3_sent:{label:"Touch 3 Sent",color:"#34d399", bg:"rgba(52,211,153,0.10)",  bc:"rgba(52,211,153,0.28)",  icon:"✅"},
+};
+
+function CalendarView({crmData,onViewProspect,onGoToEmail}){
+  const now=new Date();
+  const [viewMonth,setViewMonth]=useState(now.getMonth()); // 0-11
+  const [viewYear,setViewYear]=useState(now.getFullYear());
+  const [selectedDay,setSelectedDay]=useState(today());
+  const [filterTypes,setFilterTypes]=useState(new Set(Object.keys(CAL_EVENT_TYPES)));
+
+  // Build a map: { "YYYY-MM-DD": [ {prospect, type}, ... ] }
+  const eventsByDate=useMemo(()=>{
+    const map={};
+    const add=(date,prospect,type)=>{
+      if(!date)return;
+      if(!map[date])map[date]=[];
+      map[date].push({prospect,type});
+    };
+    crmData.forEach(p=>{
+      if(p.doNotRespond)return;
+      add(p.t1DueDate, p,"t1_due");
+      add(p.t2DueDate, p,"t2_due");
+      add(p.t3DueDate, p,"t3_due");
+      add(p.t1SendDate,p,"t1_sent");
+      add(p.t2SendDate,p,"t2_sent");
+      add(p.t3SendDate,p,"t3_sent");
+    });
+    return map;
+  },[crmData]);
+
+  const visibleEvents=(date)=> (eventsByDate[date]||[]).filter(e=>filterTypes.has(e.type));
+
+  // Month grid: pad with leading/trailing days from adjacent months
+  const firstOfMonth=new Date(viewYear,viewMonth,1);
+  const lastOfMonth=new Date(viewYear,viewMonth+1,0);
+  const startWeekday=firstOfMonth.getDay(); // 0=Sun
+  const daysInMonth=lastOfMonth.getDate();
+  const gridCells=[];
+  for(let i=0;i<startWeekday;i++)gridCells.push(null);
+  for(let d=1;d<=daysInMonth;d++)gridCells.push(d);
+  while(gridCells.length%7!==0)gridCells.push(null);
+
+  const monthLabel=firstOfMonth.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  const fmtCellDate=d=>`${viewYear}-${String(viewMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
+  const prevMonth=()=>{ if(viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);} else setViewMonth(m=>m-1); };
+  const nextMonth=()=>{ if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);} else setViewMonth(m=>m+1); };
+  const goToday=()=>{setViewMonth(now.getMonth());setViewYear(now.getFullYear());setSelectedDay(today());};
+
+  const toggleFilter=type=>setFilterTypes(prev=>{
+    const next=new Set(prev);
+    if(next.has(type))next.delete(type);else next.add(type);
+    return next;
+  });
+
+  // Upcoming due items (next 14 days), for the sidebar
+  const upcoming=useMemo(()=>{
+    const items=[];
+    Object.entries(eventsByDate).forEach(([date,evts])=>{
+      evts.forEach(e=>{
+        if(!e.type.endsWith("_due"))return;
+        const d=new Date(date+"T00:00:00");
+        const diffDays=Math.round((d-new Date(today()+"T00:00:00"))/86400000);
+        if(diffDays>=-30&&diffDays<=14)items.push({date,diffDays,...e});
+      });
+    });
+    return items.sort((a,b)=>a.date.localeCompare(b.date));
+  },[eventsByDate]);
+
+  const selectedEvents=visibleEvents(selectedDay);
+  const todayStr=today();
+
+  return(
+    <div style={{padding:"18px 16px 60px",maxWidth:1180,margin:"0 auto",animation:"fadeUp 0.3s ease",display:"flex",gap:18,flexWrap:"wrap"}}>
+      {/* MAIN CALENDAR GRID */}
+      <div style={{flex:"1 1 640px",minWidth:320}}>
+        <div style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,padding:"13px 18px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+          <div>
+            <h2 style={{margin:0,fontSize:16,fontWeight:800,color:W}}>📅 Outreach Calendar</h2>
+            <p style={{margin:"4px 0 0",fontSize:12,color:WM}}>Touch 1/2/3 due dates &amp; sent activity, auto-tracked from prospect status changes</p>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={prevMonth} style={{...B.ghost,fontSize:13,padding:"6px 11px"}}>‹</button>
+            <span style={{fontSize:13,fontWeight:800,color:W,minWidth:140,textAlign:"center"}}>{monthLabel}</span>
+            <button onClick={nextMonth} style={{...B.ghost,fontSize:13,padding:"6px 11px"}}>›</button>
+            <button onClick={goToday} className="bh" style={{...B.gold,fontSize:11,padding:"6px 12px",marginLeft:6}}>Today</button>
+          </div>
+        </div>
+
+        {/* Legend / filters */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+          {Object.entries(CAL_EVENT_TYPES).map(([key,t])=>(
+            <button key={key} onClick={()=>toggleFilter(key)} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,padding:"4px 10px",borderRadius:20,border:`1px solid ${filterTypes.has(key)?t.bc:BR}`,background:filterTypes.has(key)?t.bg:"rgba(255,255,255,0.02)",color:filterTypes.has(key)?t.color:WD,cursor:"pointer",fontWeight:filterTypes.has(key)?700:500,opacity:filterTypes.has(key)?1:0.5}}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Weekday header */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:5}}>
+          {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>(
+            <div key={d} style={{textAlign:"center",fontSize:10,fontWeight:800,color:WD,textTransform:"uppercase",letterSpacing:"0.06em",padding:"4px 0"}}>{d}</div>
+          ))}
+        </div>
+
+        {/* Month grid */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5}}>
+          {gridCells.map((d,i)=>{
+            if(d===null)return <div key={i} style={{minHeight:78,borderRadius:9,background:"rgba(255,255,255,0.012)"}}/>;
+            const dateStr=fmtCellDate(d);
+            const evts=visibleEvents(dateStr);
+            const isToday=dateStr===todayStr;
+            const isSelected=dateStr===selectedDay;
+            // Count distinct types for compact dot display
+            const typeCounts={};
+            evts.forEach(e=>{typeCounts[e.type]=(typeCounts[e.type]||0)+1;});
+            return(
+              <div key={i} onClick={()=>setSelectedDay(dateStr)} style={{minHeight:78,borderRadius:9,padding:"6px 7px",cursor:"pointer",background:isSelected?"rgba(201,150,58,0.10)":isToday?"rgba(96,165,250,0.06)":"rgba(255,255,255,0.02)",border:`1px solid ${isSelected?"rgba(201,150,58,0.4)":isToday?"rgba(96,165,250,0.3)":BR}`,display:"flex",flexDirection:"column",gap:3,transition:"background 0.12s"}}>
+                <span style={{fontSize:11,fontWeight:isToday?800:600,color:isToday?"#60a5fa":isSelected?GL:WM}}>{d}</span>
+                <div style={{display:"flex",flexDirection:"column",gap:2,overflow:"hidden"}}>
+                  {Object.entries(typeCounts).slice(0,3).map(([type,count])=>{
+                    const t=CAL_EVENT_TYPES[type];
+                    return(
+                      <div key={type} style={{display:"flex",alignItems:"center",gap:3,fontSize:8,padding:"1px 4px",borderRadius:4,background:t.bg,color:t.color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden"}}>
+                        <span>{t.icon}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{count>1?`${count} ${t.label}`:t.label}</span>
+                      </div>
+                    );
+                  })}
+                  {Object.keys(typeCounts).length>3&&<span style={{fontSize:8,color:WD}}>+{Object.keys(typeCounts).length-3} more</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* SIDEBAR — selected day details + upcoming */}
+      <div style={{flex:"0 0 320px",minWidth:280,display:"flex",flexDirection:"column",gap:14}}>
+        {/* Selected day */}
+        <div style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,overflow:"hidden"}}>
+          <div style={{padding:"11px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}>
+            <p style={{margin:0,fontSize:13,fontWeight:800,color:W}}>
+              {new Date(selectedDay+"T00:00:00").toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}
+              {selectedDay===todayStr&&<span style={{marginLeft:8,fontSize:9,padding:"2px 8px",background:"rgba(96,165,250,0.15)",color:"#60a5fa",borderRadius:20,fontWeight:700}}>TODAY</span>}
+            </p>
+            <p style={{margin:"3px 0 0",fontSize:11,color:WM}}>{selectedEvents.length} action item{selectedEvents.length!==1?"s":""}</p>
+          </div>
+          <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:7,maxHeight:320,overflowY:"auto"}}>
+            {selectedEvents.length===0&&<p style={{fontSize:11,color:WD,textAlign:"center",padding:"14px 0",margin:0}}>Nothing scheduled this day.</p>}
+            {selectedEvents.map((e,i)=>{
+              const t=CAL_EVENT_TYPES[e.type];
+              const isDue=e.type.endsWith("_due");
+              return(
+                <div key={i} onClick={()=>onViewProspect(e.prospect)} className="rh" style={{background:NB,border:`1px solid ${t.bc}`,borderRadius:9,padding:"9px 11px",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:8}}>
+                  <span style={{fontSize:14,flexShrink:0}}>{t.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{margin:0,fontSize:12,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.prospect.companyName}</p>
+                    <p style={{margin:"2px 0 0",fontSize:10,color:t.color,fontWeight:700}}>{t.label}{isDue&&isPast(selectedDay)&&selectedDay<todayStr?" · Overdue":""}</p>
+                    <p style={{margin:"2px 0 0",fontSize:10,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.prospect.contactName} · {e.prospect.market}</p>
+                  </div>
+                  <SBadge status={e.prospect.currentStatus} sm/>
+                </div>
+              );
+            })}
+          </div>
+          {selectedEvents.some(e=>e.type.endsWith("_due"))&&(
+            <div style={{padding:"10px 12px",borderTop:`1px solid ${BR}`}}>
+              <button onClick={onGoToEmail} className="bh" style={{...B.gold,width:"100%",fontSize:11,padding:"8px"}}>📧 Go to Outreach Queue</button>
+            </div>
+          )}
+        </div>
+
+        {/* Upcoming due items (next 14 days + overdue) */}
+        <div style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,overflow:"hidden"}}>
+          <div style={{padding:"11px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}>
+            <p style={{margin:0,fontSize:13,fontWeight:800,color:W}}>⏰ Due Soon &amp; Overdue</p>
+            <p style={{margin:"3px 0 0",fontSize:11,color:WM}}>Next 14 days</p>
+          </div>
+          <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+            {upcoming.length===0&&<p style={{fontSize:11,color:WD,textAlign:"center",padding:"14px 0",margin:0}}>No upcoming due dates.</p>}
+            {upcoming.map((e,i)=>{
+              const t=CAL_EVENT_TYPES[e.type];
+              const overdue=e.diffDays<0;
+              const label=overdue?`${Math.abs(e.diffDays)}d overdue`:e.diffDays===0?"Today":e.diffDays===1?"Tomorrow":`in ${e.diffDays}d`;
+              return(
+                <div key={i} onClick={()=>{setSelectedDay(e.date);setViewMonth(new Date(e.date+"T00:00:00").getMonth());setViewYear(new Date(e.date+"T00:00:00").getFullYear());}} className="rh" style={{display:"flex",alignItems:"center",gap:8,padding:"7px 9px",borderRadius:8,cursor:"pointer",background:overdue?"rgba(248,113,113,0.06)":"rgba(255,255,255,0.02)",border:`1px solid ${overdue?"rgba(248,113,113,0.2)":BR}`}}>
+                  <span style={{fontSize:13}}>{t.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{margin:0,fontSize:11,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.prospect.companyName}</p>
+                    <p style={{margin:0,fontSize:9,color:t.color}}>{t.label}</p>
+                  </div>
+                  <span style={{fontSize:9,fontWeight:800,color:overdue?"#f87171":WD,flexShrink:0,whiteSpace:"nowrap"}}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
    CRM APP — MAIN INTERFACE
 ════════════════════════════════════════════════════════════════ */
 const CHECKLIST=["Pull 10 new prospects using approved sources (AI Finder, Apollo, etc.)","Send Touch 1 emails every Monday","Send Touch 2 emails 7 days after T1 if no reply","ANY reply → Flag to Melissa IMMEDIATELY","Flag to Melissa before Touch 3 — wait for approval","After Touch 3 → update status to NURTURE/T3 SENT","Log Call Booked after Melissa handles reply"];
@@ -2247,7 +2486,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   };
   const qStatus=async (id,s)=>{
     const p=crmData.find(x=>x.id===id);if(!p)return;
-    await onSaveProspect({...p,currentStatus:s});
+    await onSaveProspect(applyTouchDates(p,s));
   };
   const doSort=col=>{if(sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc");}};
   const SI=({col})=>sortCol===col?<span style={{fontSize:9,marginLeft:2}}>{sortDir==="asc"?"▲":"▼"}</span>:null;
@@ -2258,7 +2497,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const mktBreak=MARKETS.map(m=>({m,c:crmData.filter(p=>p.market===m).length})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
   const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"#c084fc"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"#60a5fa"}];
 
-  const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
+  const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
 
   return(
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W}}>
@@ -2533,6 +2772,11 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         </div>
       )}
 
+      {/* CALENDAR */}
+      {view==="calendar"&&(
+        <CalendarView crmData={crmData} onViewProspect={p=>setPDlg(p)} onGoToEmail={()=>setView("email")}/>
+      )}
+
       {/* EMAIL HUB */}
       {view==="email"&&(
         <EmailHub
@@ -2548,6 +2792,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           t2={t2}
         />
       )}
+
 
       {/* MODALS */}
       {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
