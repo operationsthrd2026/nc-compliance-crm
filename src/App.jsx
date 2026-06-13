@@ -28,9 +28,23 @@ const isConfigured =
   SUPABASE_KEY !== "YOUR_ANON_KEY_HERE" &&
   SUPABASE_URL.startsWith("https://");
 
-// Debug output — visible in browser console. Remove once confirmed working.
-console.log("[NC CRM] Supabase configured:", isConfigured,
-  "| URL:", SUPABASE_URL.startsWith("https://") ? SUPABASE_URL.slice(0,40)+"…" : "(not set)");
+/* ── Debug logging ──────────────────────────────────────────────
+   console.error() always fires — those indicate real problems and
+   should be visible regardless. dlog()/dwarn() info
+   traces (DB connection status, successful saves, etc.) are gated
+   behind a DEBUG flag to keep the production console clean.
+   Enable verbose logging from the browser console with:
+     localStorage.setItem("nc_crm_debug","1")
+   then refresh the page. Disable with:
+     localStorage.removeItem("nc_crm_debug")              */
+const DEBUG = typeof window !== "undefined" && window.localStorage?.getItem("nc_crm_debug") === "1";
+const dlog = (...args) => { if (DEBUG) dlog(...args); };
+const dwarn = (...args) => { if (DEBUG) dwarn(...args); };
+
+if (DEBUG) {
+  console.log("[NC CRM] Debug logging enabled. Supabase configured:", isConfigured,
+    "| URL:", SUPABASE_URL.startsWith("https://") ? SUPABASE_URL.slice(0,40)+"…" : "(not set)");
+}
 
 // ── Supabase Auth client (separate from the sbFetch REST helper) ──
 // Used ONLY for Google OAuth sign-in. All other DB reads/writes still
@@ -60,7 +74,7 @@ async function sbFetch(path, method = "GET", body = null, prefer = "return=repre
   if (body !== null) options.body = typeof body === "string" ? body : JSON.stringify(body);
 
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
-  console.log(`[NC CRM DB] ${method} ${path}`);
+  dlog(`[NC CRM DB] ${method} ${path}`);
 
   const res = await fetch(url, options);
 
@@ -273,7 +287,7 @@ async function sendViaGmailAPI({ to, subject, body, cc }) {
       return { ok: false, reason: "api_error", status: res.status, error: err };
     }
     const data = await res.json();
-    console.log("[NC CRM] ✅ Email sent via Gmail API, id:", data.id);
+    dlog("[NC CRM] ✅ Email sent via Gmail API, id:", data.id);
     return { ok: true, id: data.id };
   } catch (e) {
     console.error("[NC CRM] Gmail send exception:", e.message);
@@ -444,6 +458,41 @@ const tsNow=()=>new Date().toLocaleString("sv-SE",{hour12:false}).replace("T"," 
 const initials=n=>n.split(" ").map(x=>x[0]||"").join("").slice(0,2).toUpperCase();
 // Add N days to a YYYY-MM-DD date string (or today if none given), return YYYY-MM-DD
 const addDays=(dateStr,n)=>{const d=dateStr?new Date(dateStr+"T00:00:00"):new Date();d.setDate(d.getDate()+n);return d.toISOString().split("T")[0];};
+
+/* ── Password hashing (SHA-256 via Web Crypto API) ─────────────
+   Stored passwords are SHA-256 hex digests, prefixed "sha256:" so
+   we can distinguish them from legacy plaintext values already
+   sitting in the database/seed data. This is NOT a substitute for
+   server-side bcrypt+salt — it prevents plaintext exposure if the
+   database is read directly (e.g. via the Supabase table editor or
+   a leaked anon key), but a stolen hash can still be brute-forced
+   offline. True per-user salting requires a server-side auth layer
+   (e.g. a Supabase Edge Function), which is a larger infrastructure
+   change. This is a meaningful improvement with zero new deps.    */
+const PW_HASH_PREFIX="sha256:";
+async function sha256Hex(text){
+  const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function hashPassword(plain){
+  return PW_HASH_PREFIX+await sha256Hex(plain);
+}
+// Verify a plaintext attempt against a stored value that may be either
+// a sha256 hash (new accounts) or legacy plaintext (old seed data /
+// accounts created before this change). Legacy matches still work so
+// no one gets locked out — but the next saveU() will re-hash on edit.
+async function verifyPassword(plainAttempt,stored){
+  if(!stored)return false;
+  if(stored.startsWith(PW_HASH_PREFIX)){
+    return (PW_HASH_PREFIX+await sha256Hex(plainAttempt))===stored;
+  }
+  // Legacy plaintext comparison (pre-hashing accounts)
+  return plainAttempt===stored;
+}
+// A password value is "already hashed" if it carries our prefix —
+// used by saveU to avoid re-hashing a hash when a user record is
+// edited without changing the password.
+const isHashed=v=>typeof v==="string"&&v.startsWith(PW_HASH_PREFIX);
 /* ── Outreach cadence ─────────────────────────────────────────
    Touch 2 is due 7 days after Touch 1 is sent.
    Touch 3 is due 14 days (2 weeks) after Touch 2 is sent.
@@ -530,15 +579,18 @@ function LoginScreen({users,onLogin}){
   const [un,setUn]=useState("");const [pw,setPw]=useState("");const [show,setShow]=useState(false);
   const [loading,setLoading]=useState(false);const [gload,setGload]=useState(false);const [err,setErr]=useState("");
 
-  const attempt=(u,p)=>{
+  const attempt=async(u,p)=>{
     const usr=(u||un).trim();const pass=p||pw;if(!usr||!pass)return;
     setErr("");setLoading(true);
-    setTimeout(()=>{
-      const m=users.find(x=>x.username.toLowerCase()===usr.toLowerCase()&&x.password===pass);
-      if(m&&m.active){onLogin(m);return;}
-      setErr(m&&!m.active?"This account has been deactivated. Contact your administrator.":"Incorrect username or password.");
-      setLoading(false);
-    },520);
+    await new Promise(r=>setTimeout(r,420)); // small delay for UX feel
+    const candidate=users.find(x=>x.username.toLowerCase()===usr.toLowerCase());
+    if(candidate){
+      const ok=await verifyPassword(pass,candidate.password);
+      if(ok&&candidate.active){onLogin(candidate);return;}
+      if(ok&&!candidate.active){setErr("This account has been deactivated. Contact your administrator.");setLoading(false);return;}
+    }
+    setErr("Incorrect username or password.");
+    setLoading(false);
   };
 
   const googleSign=async()=>{
@@ -654,6 +706,11 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [selected,setSelected]=useState(new Set());
   const [progress,setProgress]=useState({});
   const [searchLog,setSearchLog]=useState([]);
+  const [sortBy,setSortBy]=useState("priority"); // priority | name | verified
+  const [resultFilter,setResultFilter]=useState("all"); // all | verified | unverified | new
+  const [recentSearches,setRecentSearches]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("nc_crm_recent_searches")||"[]");}catch{return[];}
+  });
 
   const toggleSrc=id=>setSelectedSources(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   const toggleSel=id=>setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
@@ -662,10 +719,32 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
 
   const log=msg=>setSearchLog(p=>[...p,{t:tsNow().slice(11),msg}]);
 
+  // Re-apply a recent search's filters (does not auto-run — lets user review/tweak first)
+  const applyRecentSearch=(s)=>{
+    setQuery(s.query||"");
+    setVertical(s.vertical||"");
+    setMarket(s.market||"");
+    setOrgSize(s.orgSize||"");
+    setOrgType(s.orgType||"all");
+  };
+  const clearRecentSearches=()=>{
+    setRecentSearches([]);
+    try{localStorage.removeItem("nc_crm_recent_searches");}catch{}
+  };
+
   const runSearch=async()=>{
     if(!query.trim()&&!vertical&&!market){return;}
     setSearching(true);setResults([]);setSelected(new Set());setSearchLog([]);
     setStep("results");
+
+    // Save this search to recent history (dedupe, cap at 6, most-recent-first)
+    const searchSummary={query:query.trim(),vertical,market,orgSize,orgType,ts:Date.now()};
+    const label=[searchSummary.query,searchSummary.vertical,searchSummary.market].filter(Boolean).join(" · ")||"(filters only)";
+    setRecentSearches(prev=>{
+      const next=[{...searchSummary,label},...prev.filter(s=>s.label!==label)].slice(0,6);
+      try{localStorage.setItem("nc_crm_recent_searches",JSON.stringify(next));}catch{}
+      return next;
+    });
 
     const prog={};selectedSources.forEach(s=>{prog[s]="searching";});
     setProgress({...prog});
@@ -722,6 +801,23 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
 
   const hasKey=src=>(src==="apollo"&&sysSettings.apolloKey)||(src==="hunter"&&sysSettings.hunterKey)||!["apollo","hunter"].includes(src);
 
+  // Apply in-results filter + sort to the raw results list, without
+  // mutating `results` itself (so toggling filters doesn't lose data).
+  const displayedResults=useMemo(()=>{
+    let list=[...results];
+    if(resultFilter==="verified")list=list.filter(r=>r._verified);
+    else if(resultFilter==="unverified")list=list.filter(r=>!r._verified);
+    else if(resultFilter==="new")list=list.filter(r=>!existingIds.has(r.companyName?.toLowerCase())&&!existingIds.has(r.emailPhone?.toLowerCase()));
+
+    if(sortBy==="priority")list.sort((a,b)=>(parseInt(b.priorityScore)||0)-(parseInt(a.priorityScore)||0));
+    else if(sortBy==="name")list.sort((a,b)=>(a.companyName||"").localeCompare(b.companyName||""));
+    else if(sortBy==="verified")list.sort((a,b)=>(b._verified?1:0)-(a._verified?1:0));
+    return list;
+  },[results,resultFilter,sortBy,existingIds]);
+
+  const newCount=results.filter(r=>!existingIds.has(r.companyName?.toLowerCase())&&!existingIds.has(r.emailPhone?.toLowerCase())).length;
+  const verifiedCount=results.filter(r=>r._verified).length;
+
   return(
     <DW onClose={onClose} title="🔍 AI Prospect Finder" width={860}>
       {/* Source selector tabs */}
@@ -745,6 +841,23 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           })}
         </div>
       </div>
+
+      {/* Recent searches */}
+      {recentSearches.length>0&&step==="search"&&(
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+            <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Recent Searches</p>
+            <button onClick={clearRecentSearches} style={{...B.ghost,fontSize:9,padding:"3px 8px"}}>Clear</button>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {recentSearches.map((s,i)=>(
+              <button key={i} onClick={()=>applyRecentSearch(s)} style={{fontSize:11,padding:"5px 12px",borderRadius:20,border:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)",color:WM,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                🕓 {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search form */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:16,marginBottom:16}}>
@@ -785,6 +898,15 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         </div>
       </div>
 
+      {/* Initial empty state — before any search */}
+      {step==="search"&&(
+        <div style={{textAlign:"center",padding:"40px 0",color:WD}}>
+          <p style={{fontSize:40,margin:"0 0 10px"}}>🔍</p>
+          <p style={{margin:0,fontSize:14,color:WM}}>Run a search to discover prospects</p>
+          <p style={{margin:"6px 0 0",fontSize:12}}>Try entering a keyword, selecting a vertical, or choosing a market</p>
+        </div>
+      )}
+
       {/* Results */}
       {step==="results"&&(
         <div style={{animation:"fadeUp 0.2s ease"}}>
@@ -813,15 +935,32 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
 
           {/* Results header */}
           {results.length>0&&(
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,flexWrap:"wrap"}}>
-              <p style={{margin:0,fontSize:13,fontWeight:700,color:W}}>{results.length} prospects found</p>
-              <span style={{fontSize:11,color:WM}}>{selected.size} selected</span>
-              <div style={{marginLeft:"auto",display:"flex",gap:7}}>
-                <button onClick={selectAll} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Select All</button>
-                <button onClick={clearSel} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Clear</button>
-                {selected.size>0&&<button onClick={doAdd} className="bh" style={{...B.gold,fontSize:11,padding:"7px 16px",display:"flex",gap:6,alignItems:"center"}}>
-                  ➕ Add {selected.size} to CRM
-                </button>}
+            <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <p style={{margin:0,fontSize:13,fontWeight:700,color:W}}>{results.length} prospects found</p>
+                <span style={{fontSize:11,color:"#34d399"}}>{newCount} new</span>
+                <span style={{fontSize:11,color:WD}}>·</span>
+                <span style={{fontSize:11,color:WM}}>{verifiedCount} verified</span>
+                <span style={{fontSize:11,color:WD}}>·</span>
+                <span style={{fontSize:11,color:WM}}>{selected.size} selected</span>
+                <div style={{marginLeft:"auto",display:"flex",gap:7}}>
+                  <button onClick={selectAll} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Select All</button>
+                  <button onClick={clearSel} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Clear</button>
+                  {selected.size>0&&<button onClick={doAdd} className="bh" style={{...B.gold,fontSize:11,padding:"7px 16px",display:"flex",gap:6,alignItems:"center"}}>
+                    ➕ Add {selected.size} to CRM
+                  </button>}
+                </div>
+              </div>
+              {/* Sort + in-results filter controls */}
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Show:</span>
+                {[["all","All"],["new","New only"],["verified","Verified"],["unverified","Unverified"]].map(([k,l])=>(
+                  <button key={k} onClick={()=>setResultFilter(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${resultFilter===k?"rgba(201,150,58,0.4)":BR}`,background:resultFilter===k?"rgba(201,150,58,0.12)":"rgba(255,255,255,0.03)",color:resultFilter===k?GL:WD,cursor:"pointer",fontWeight:resultFilter===k?700:500}}>{l}</button>
+                ))}
+                <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:10}}>Sort:</span>
+                {[["priority","Priority"],["verified","Verified first"],["name","Company name"]].map(([k,l])=>(
+                  <button key={k} onClick={()=>setSortBy(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${sortBy===k?"rgba(96,165,250,0.4)":BR}`,background:sortBy===k?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.03)",color:sortBy===k?"#60a5fa":WD,cursor:"pointer",fontWeight:sortBy===k?700:500}}>{l}</button>
+                ))}
               </div>
             </div>
           )}
@@ -834,10 +973,10 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                 <p style={{color:WM,marginTop:12,fontSize:13}}>Searching across {selectedSources.length} source{selectedSources.length!==1?"s":""}…</p>
               </div>
             )}
-            {results.map(r=>{
+            {displayedResults.map(r=>{
               const sel=selected.has(r._id);
               const si=AI_SOURCES.find(s=>s.id===r._source);
-              const alreadyIn=existingIds.has(r.companyName?.toLowerCase());
+              const alreadyIn=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
               return(
                 <div key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{background:sel?"rgba(201,150,58,0.08)":alreadyIn?"rgba(255,255,255,0.02)":"rgba(255,255,255,0.03)",border:`1.5px solid ${sel?G:alreadyIn?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 14px",cursor:alreadyIn?"default":"pointer",transition:"all 0.15s",opacity:alreadyIn?0.5:1}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
@@ -866,11 +1005,25 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                 </div>
               );
             })}
+            {!searching&&results.length>0&&displayedResults.length===0&&(
+              <div style={{textAlign:"center",padding:"32px 0",color:WD}}>
+                <p style={{fontSize:40,margin:"0 0 10px"}}>🗂️</p>
+                <p style={{margin:0,fontSize:14,color:WM}}>No results match this filter</p>
+                <p style={{margin:"6px 0 0",fontSize:12}}>Try "All" or a different Show filter above</p>
+                <button onClick={()=>setResultFilter("all")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 14px",marginTop:10}}>Show All Results</button>
+              </div>
+            )}
             {!searching&&results.length===0&&(
               <div style={{textAlign:"center",padding:"32px 0",color:WD}}>
                 <p style={{fontSize:40,margin:"0 0 10px"}}>🔍</p>
-                <p style={{margin:0,fontSize:14,color:WM}}>Run a search to discover prospects</p>
-                <p style={{margin:"6px 0 0",fontSize:12}}>Try entering a keyword, selecting a vertical, or choosing a market</p>
+                <p style={{margin:0,fontSize:14,color:WM}}>No prospects found for this search</p>
+                <p style={{margin:"6px 0 0",fontSize:12}}>Try broadening your filters — remove the org size, switch verticals, or search "All Markets"</p>
+                <div style={{display:"flex",gap:7,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
+                  {orgSize&&<button onClick={()=>setOrgSize("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Org Size</button>}
+                  {vertical&&<button onClick={()=>setVertical("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Vertical</button>}
+                  {market&&<button onClick={()=>setMarket("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Market</button>}
+                  {orgType!=="all"&&<button onClick={()=>setOrgType("all")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>All Org Types</button>}
+                </div>
               </div>
             )}
           </div>
@@ -1172,19 +1325,26 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
 
   // User ops
   const openAddU=()=>{setUForm({username:"",password:"",name:"",email:"",role:"user",active:true});setFErr("");setUDlg("add");};
-  const openEditU=u=>{setUForm({...u});setFErr("");setUDlg(u);};
+  const openEditU=u=>{setUForm({...u,password:""});setFErr("");setUDlg(u);};
   const saveU=async()=>{
-    if(!uForm.name?.trim()||!uForm.username?.trim()||!uForm.password?.trim()||!uForm.email?.trim()){setFErr("All fields required.");return;}
-    if(uForm.password.length<4){setFErr("Password min 4 chars.");return;}
+    if(!uForm.name?.trim()||!uForm.username?.trim()||!uForm.email?.trim()){setFErr("All fields required.");return;}
+    if(uDlg==="add"&&!uForm.password?.trim()){setFErr("Password required for new users.");return;}
+    if(uForm.password&&uForm.password.length<4){setFErr("Password min 4 chars.");return;}
     if(uForm.role==="superadmin"&&!isSuper){setFErr("Only Super Admin can assign this role.");return;}
     if(uDlg==="add"){
       if(users.find(u=>u.username.toLowerCase()===uForm.username.toLowerCase())){setFErr("Username already exists.");return;}
-      const nu={...uForm,id:uid(),createdAt:today(),lastLogin:null,avatar:initials(uForm.name)};
+      const hashed=await hashPassword(uForm.password);
+      const nu={...uForm,password:hashed,id:uid(),createdAt:today(),lastLogin:null,avatar:initials(uForm.name)};
       await onSaveUser(nu);
       addAudit(currentUser.username,`Created user: ${nu.username} (${nu.role})`);t2(`User "${nu.username}" created.`);
     }else{
       if(uDlg.id===currentUser.id&&uForm.role!==currentUser.role){setFErr("Cannot change your own role.");return;}
-      const updated={...uDlg,...uForm};
+      // Empty password field on edit = "leave unchanged" — keep the
+      // existing stored hash. Only hash+replace if a new value was typed.
+      const passwordToStore=uForm.password?.trim()
+        ? await hashPassword(uForm.password.trim())
+        : uDlg.password;
+      const updated={...uDlg,...uForm,password:passwordToStore};
       await onSaveUser(updated);
       addAudit(currentUser.username,`Updated user: ${uForm.username}`);t2(`"${uForm.username}" updated.`);
     }
@@ -1475,7 +1635,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
             <FG label="Username *"><input value={uForm.username||""} onChange={e=>uf("username",e.target.value.toLowerCase().replace(/\s/g,""))} placeholder="janedoe" style={inp()} disabled={uDlg!=="add"}/></FG>
           </div>
           <FG label="Email *"><input type="email" value={uForm.email||""} onChange={e=>uf("email",e.target.value)} placeholder="jane@company.com" style={inp()}/></FG>
-          <FG label="Password *"><input type="text" value={uForm.password||""} onChange={e=>uf("password",e.target.value)} placeholder="Min 4 characters" style={inp()}/></FG>
+          <FG label={uDlg==="add"?"Password *":"New Password (optional)"}><input type="text" value={uForm.password||""} onChange={e=>uf("password",e.target.value)} placeholder={uDlg==="add"?"Min 4 characters":"Leave blank to keep current password"} style={inp()}/></FG>
           <FG label="Role / Access Level *">
             <select value={uForm.role||"user"} onChange={e=>uf("role",e.target.value)} style={{...inp(),cursor:"pointer"}}>
               {Object.entries(ROLES).map(([k,r])=>k==="superadmin"&&!isSuper?null:<option key={k} value={k}>{r.icon} {r.label}</option>)}
@@ -1618,9 +1778,9 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
           via: r.from_email ? "gmail" : "demo",
         }));
         setSent(mapped);
-        console.log("[NC CRM] Loaded", mapped.length, "sent emails from DB");
+        dlog("[NC CRM] Loaded", mapped.length, "sent emails from DB");
       }
-    }).catch(e => console.warn("[NC CRM] Could not load email history:", e.message));
+    }).catch(e => dwarn("[NC CRM] Could not load email history:", e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [selectedTemplate,setSelectedTemplate]=useState("t1_standard");
@@ -1747,7 +1907,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
             from_name: currentUser.name,
             opened: false,
             sent_at: new Date().toISOString(),
-          }).catch(e => console.warn("[NC CRM] Could not save email to DB:", e.message));
+          }).catch(e => dwarn("[NC CRM] Could not save email to DB:", e.message));
         }
       } else {
         t2("Gmail send failed — opening Gmail compose instead.", "err");
@@ -1777,7 +1937,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
           from_name: currentUser.name,
           opened: false,
           sent_at: new Date().toISOString(),
-        }).catch(e => console.warn("[NC CRM] Could not save email to DB:", e.message));
+        }).catch(e => dwarn("[NC CRM] Could not save email to DB:", e.message));
       }
     },800);
   };
@@ -2587,7 +2747,13 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const q3=crmData.filter(p=>((p.currentStatus==="T2 SENT"&&isPast(p.t2DueDate))||(p.currentStatus==="TOUCH 3 GATE"&&p.t3Approved))&&!p.doNotRespond&&hasEM(p));
   const totalDue=q1.length+q2.length+q3.length;
 
-  const existingIds=new Set(crmData.map(p=>p.companyName?.toLowerCase()));
+  // Duplicate detection by both company name AND email — catches cases
+  // where the same org appears under a slightly different name but
+  // shares a contact email already in the CRM.
+  const existingIds=new Set([
+    ...crmData.map(p=>p.companyName?.toLowerCase()).filter(Boolean),
+    ...crmData.map(p=>p.emailPhone?.toLowerCase()).filter(Boolean),
+  ]);
 
   const sorted=[...crmData].sort((a,b)=>{
     const av=String(a[sortCol]||"").toLowerCase();const bv=String(b[sortCol]||"").toLowerCase();
@@ -2964,7 +3130,7 @@ export default function App(){
       } catch {}
 
       if (!isConfigured) {
-        console.log("[NC CRM] Running in Demo Mode — no Supabase credentials found.");
+        dlog("[NC CRM] Running in Demo Mode — no Supabase credentials found.");
         // Populate with seed data for demo mode
         setUsers(INIT_USERS);
         setCrmData(SEED);
@@ -2981,17 +3147,17 @@ export default function App(){
       }
 
       // ── Supabase mode ─────────────────────────────────────────
-      console.log("[NC CRM] Connecting to Supabase…");
+      dlog("[NC CRM] Connecting to Supabase…");
       try {
         // Test connection first with a lightweight query
         const testResult = await DB.getSettings();
-        console.log("[NC CRM] Supabase connection OK. Settings keys:", Object.keys(testResult).length);
+        dlog("[NC CRM] Supabase connection OK. Settings keys:", Object.keys(testResult).length);
 
         // Now load all data in parallel
         const [dbUsers, dbProspects, dbAudit] = await Promise.all([
-          DB.getUsers().catch(e => { console.warn("[NC CRM] getUsers failed:", e.message); return []; }),
-          DB.getProspects().catch(e => { console.warn("[NC CRM] getProspects failed:", e.message); return []; }),
-          DB.getAuditLog().catch(e => { console.warn("[NC CRM] getAuditLog failed:", e.message); return []; }),
+          DB.getUsers().catch(e => { dwarn("[NC CRM] getUsers failed:", e.message); return []; }),
+          DB.getProspects().catch(e => { dwarn("[NC CRM] getProspects failed:", e.message); return []; }),
+          DB.getAuditLog().catch(e => { dwarn("[NC CRM] getAuditLog failed:", e.message); return []; }),
         ]);
 
         // Always use DB data when connected.
@@ -2999,23 +3165,23 @@ export default function App(){
         // (e.g. first run before schema was seeded).
         if (dbUsers && dbUsers.length > 0) {
           setUsers(dbUsers);
-          console.log("[NC CRM] Loaded", dbUsers.length, "users from DB");
+          dlog("[NC CRM] Loaded", dbUsers.length, "users from DB");
         } else {
-          console.warn("[NC CRM] No users in DB — using hardcoded INIT_USERS as fallback");
+          dwarn("[NC CRM] No users in DB — using hardcoded INIT_USERS as fallback");
           setUsers(INIT_USERS);
         }
 
         if (dbProspects && dbProspects.length > 0) {
           setCrmData(dbProspects);
-          console.log("[NC CRM] Loaded", dbProspects.length, "prospects from DB");
+          dlog("[NC CRM] Loaded", dbProspects.length, "prospects from DB");
         } else {
-          console.warn("[NC CRM] No prospects in DB — starting with empty list");
+          dwarn("[NC CRM] No prospects in DB — starting with empty list");
           setCrmData([]);
         }
 
         if (Object.keys(testResult).length > 0) {
           setSysSettings(s => ({...s, ...testResult}));
-          console.log("[NC CRM] Loaded system settings from DB");
+          dlog("[NC CRM] Loaded system settings from DB");
         } else {
           setSysSettings(DEFAULT_SYS);
         }
@@ -3027,7 +3193,7 @@ export default function App(){
         }
 
         setDbStatus("connected");
-        console.log("[NC CRM] ✅ Supabase connected and data loaded.");
+        dlog("[NC CRM] ✅ Supabase connected and data loaded.");
 
         // Restore session against DB users
         if (sessionUser) {
@@ -3039,7 +3205,7 @@ export default function App(){
         // If a Google OAuth redirect is in progress, or already completed,
         // let the OAuth handler control the screen — don't force "login" here.
         if (isOAuthRedirect || oauthLoginRef.current) {
-          console.log("[NC CRM] OAuth redirect in progress — deferring to auth handler.");
+          dlog("[NC CRM] OAuth redirect in progress — deferring to auth handler.");
           return;
         }
         setScreen("login");
@@ -3109,7 +3275,7 @@ export default function App(){
       if (oauthLoginRef.current) return;
 
       const googleEmail = session.user.email.toLowerCase();
-      console.log("[NC CRM] Google OAuth session detected:", googleEmail);
+      dlog("[NC CRM] Google OAuth session detected:", googleEmail);
 
       // Look up by email in current users list, falling back to a fresh DB fetch
       // (covers the case where `users` hasn't loaded yet on first paint)
@@ -3122,7 +3288,7 @@ export default function App(){
       const matched = pool.find(u => u.email.toLowerCase() === googleEmail);
 
       if (matched && matched.active) {
-        console.log("[NC CRM] ✅ Matched CRM account:", matched.username);
+        dlog("[NC CRM] ✅ Matched CRM account:", matched.username);
         oauthLoginRef.current = true;
         // Store Google access/provider tokens for Gmail inbox integration
         if (session.provider_token) {
@@ -3185,12 +3351,12 @@ export default function App(){
     // Step 2: Persist to Supabase (always try if configured)
     if (isConfigured) {
       try {
-        console.log("[NC CRM] Saving prospect to DB:", form.companyName, "| id:", form.id);
+        dlog("[NC CRM] Saving prospect to DB:", form.companyName, "| id:", form.id);
         const saved = await DB.upsertProspect(form);
         if (saved && saved.id) {
           // Swap temp local ID for real DB UUID
           setCrmData(prev => prev.map(p => p.id === form.id ? saved : p));
-          console.log("[NC CRM] ✅ Prospect saved:", saved.companyName, "| DB id:", saved.id);
+          dlog("[NC CRM] ✅ Prospect saved:", saved.companyName, "| DB id:", saved.id);
           return saved;
         }
       } catch(e) {
@@ -3205,7 +3371,7 @@ export default function App(){
     if (isConfigured) {
       try {
         await DB.deleteProspect(id);
-        console.log("[NC CRM] ✅ Prospect deleted from DB:", id);
+        dlog("[NC CRM] ✅ Prospect deleted from DB:", id);
       } catch(e) {
         console.error("[NC CRM] ❌ Delete failed:", e.message);
       }
@@ -3221,7 +3387,7 @@ export default function App(){
           const saved = await DB.upsertProspects(rows);
           if (saved && saved.length) {
             setCrmData(saved);
-            console.log("[NC CRM] ✅ Imported", saved.length, "prospects (replace)");
+            dlog("[NC CRM] ✅ Imported", saved.length, "prospects (replace)");
           }
         } catch(e) { console.error("[NC CRM] ❌ Import replace failed:", e.message); }
       }
@@ -3235,7 +3401,7 @@ export default function App(){
               const tempIds = new Set(rows.map(r => r.id));
               return [...prev.filter(p => !tempIds.has(p.id)), ...saved];
             });
-            console.log("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
+            dlog("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
           }
         } catch(e) { console.error("[NC CRM] ❌ Import append failed:", e.message); }
       }
@@ -3252,11 +3418,11 @@ export default function App(){
     // Persist to DB
     if (isConfigured) {
       try {
-        console.log("[NC CRM] Saving user to DB:", u.username);
+        dlog("[NC CRM] Saving user to DB:", u.username);
         const saved = await DB.upsertUser(u);
         if (saved && saved.id) {
           setUsers(prev => prev.map(x => x.id === u.id ? saved : x));
-          console.log("[NC CRM] ✅ User saved:", saved.username);
+          dlog("[NC CRM] ✅ User saved:", saved.username);
           return saved;
         }
       } catch(e) {
@@ -3271,7 +3437,7 @@ export default function App(){
     if (isConfigured) {
       try {
         await DB.deleteUser(id);
-        console.log("[NC CRM] ✅ User deleted:", id);
+        dlog("[NC CRM] ✅ User deleted:", id);
       } catch(e) {
         console.error("[NC CRM] ❌ User delete failed:", e.message);
       }
@@ -3283,7 +3449,7 @@ export default function App(){
     if (isConfigured) {
       try {
         await DB.saveSettings(settings);
-        console.log("[NC CRM] ✅ Settings saved to DB");
+        dlog("[NC CRM] ✅ Settings saved to DB");
       } catch(e) {
         console.error("[NC CRM] ❌ Settings save failed:", e.message);
       }
