@@ -686,12 +686,168 @@ const AI_SOURCES=[
   {id:"claude",   label:"Claude AI",    icon:"🤖", color:"#c084fc", desc:"Anthropic's Claude for intelligent prospect discovery"},
   {id:"chatgpt",  label:"ChatGPT",      icon:"🧠", color:"#10a37f", desc:"OpenAI GPT-4 for broad organizational research"},
   {id:"gemini",   label:"Gemini",       icon:"✨", color:"#4285F4", desc:"Google Gemini for real-time web-sourced results"},
-  {id:"apollo",   label:"Apollo.io",    icon:"🚀", color:"#7c3aed", desc:"B2B database — requires API key"},
-  {id:"hunter",   label:"Hunter.io",    icon:"🎯", color:"#f59e0b", desc:"Email finder & verifier — requires API key"},
+  {id:"apollo",   label:"Apollo.io",    icon:"🚀", color:"#7c3aed", desc:"B2B database — requires API key. Live results route through a Supabase Edge Function proxy (required because Apollo blocks direct browser requests)."},
+  {id:"hunter",   label:"Hunter.io",    icon:"🎯", color:"#f59e0b", desc:"Email finder & verifier — requires API key. Returns real results."},
   {id:"guidestar",label:"GuideStar",    icon:"🏛️", color:"#60a5fa", desc:"Nonprofit IRS 990 & financial data"},
   {id:"charity",  label:"Charity Navigator",icon:"⭐",color:"#34d399",desc:"Nonprofit ratings & financial health data"},
   {id:"linkedin", label:"LinkedIn",     icon:"💼", color:"#0077b5", desc:"Professional network search"},
 ];
+
+/* ════════════════════════════════════════════════════════════════
+   LIVE PROSPECT SEARCH — Hunter.io & Apollo.io
+   ─────────────────────────────────────────────────────────────
+   HUNTER.IO: Domain Search API supports CORS for browser requests,
+   so this returns REAL data when sysSettings.hunterKey is set.
+   Docs: https://hunter.io/api-documentation/v2#domain-search
+
+   APOLLO.IO: Apollo\'s People/Organization Search API does NOT allow
+   cross-origin browser requests (no CORS headers) — any direct fetch
+   from this static site will fail with a network/CORS error, NOT an
+   auth error, regardless of how valid the key is. Apollo is designed
+   to be called from a server. apolloSearch() below still attempts the
+   call (in case Apollo enables CORS in future, or if proxied later)
+   but DETECTS the CORS failure and returns a clear explanatory error
+   instead of silently falling back to mock data — so the UI can show
+   the user exactly what\'s happening rather than pretending it worked.
+
+   To get real Apollo results, the call would need to go through a
+   server-side proxy (e.g. a Supabase Edge Function) that holds the
+   API key and forwards the request — a larger infrastructure change.
+════════════════════════════════════════════════════════════════ */
+
+// Convert a Hunter.io domain-search "email" entry into a CRM prospect shape
+function hunterEmailToProspect(domainData, emailEntry, vertical, market){
+  const company = domainData.organization || domainData.domain || "Unknown Company";
+  const name = [emailEntry.first_name, emailEntry.last_name].filter(Boolean).join(" ") || "Unknown Contact";
+  const title = emailEntry.position || "";
+  return {
+    companyName: company,
+    contactName: name,
+    title,
+    emailPhone: emailEntry.value || "",
+    cityMarket: market || "",
+    market: market || "",
+    sourceUrl: domainData.domain ? `https://${domainData.domain}` : "",
+    sourceType: "Hunter.io",
+    verificationNotes: emailEntry.verification?.status
+      ? `Hunter.io verification: ${emailEntry.verification.status}`
+      : "Found via Hunter.io domain search",
+    whyFit: `Found via Hunter.io for domain ${domainData.domain || "unknown"}${title?`. Role: ${title}.`:""}`,
+    vertical: vertical || "",
+    hrPersonListed: /hr|human resources|people|talent/i.test(title) ? "Yes" : "No",
+    hrPeopleContact: "",
+    orgSize: "",
+    leadPainPoint: "",
+    priorityScore: emailEntry.confidence ? String(Math.max(1, Math.min(10, Math.round(emailEntry.confidence/10)))) : "",
+  };
+}
+
+// Real Hunter.io domain search. Requires either a company domain (derived
+// from the query) or falls back to Hunter\'s general "Discover" isn\'t
+// available on free plans, so we ask the user to search by domain/company
+// name and Hunter resolves it via the domain-search endpoint using a
+// best-guess .com domain if the query doesn\'t look like a domain already.
+async function hunterSearch(query, apiKey, vertical, market, log){
+  if(!apiKey) return {ok:false, reason:"no_key", results:[]};
+  if(!query.trim()) return {ok:false, reason:"no_query", results:[]};
+
+  // Guess a domain from the query: if it already looks like a domain, use it;
+  // otherwise strip spaces/punctuation and try "<slug>.com" as a best guess.
+  const looksLikeDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(query.trim());
+  const domain = looksLikeDomain
+    ? query.trim().toLowerCase()
+    : query.trim().toLowerCase().replace(/[^a-z0-9]+/g,"") + ".com";
+
+  try{
+    const url = `https://api.hunter.io/v2/domain-search?domain=${encodeURIComponent(domain)}&api_key=${encodeURIComponent(apiKey)}&limit=10`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if(!res.ok){
+      const msg = data?.errors?.[0]?.details || data?.errors?.[0]?.id || `HTTP ${res.status}`;
+      log?.(`Hunter.io: ${msg}`);
+      return {ok:false, reason:"api_error", status:res.status, message:msg, results:[]};
+    }
+
+    const emails = data?.data?.emails || [];
+    if(emails.length===0){
+      log?.(`Hunter.io: No contacts found for domain "${domain}" — try a more specific company name or exact domain.`);
+      return {ok:true, results:[], domainTried:domain};
+    }
+
+    const results = emails.map(e => hunterEmailToProspect(data.data, e, vertical, market));
+    log?.(`Hunter.io: Found ${results.length} contact(s) for ${domain}`);
+    return {ok:true, results, domainTried:domain};
+  }catch(e){
+    log?.(`Hunter.io: Network error — ${e.message}`);
+    return {ok:false, reason:"network_error", message:e.message, results:[]};
+  }
+}
+
+// Apollo.io People Search — routed through a Supabase Edge Function proxy
+// (supabase/functions/apollo-search) because Apollo\'s API does not send
+// CORS headers and blocks direct browser requests. The Edge Function runs
+// server-side, calls Apollo, and returns the response with CORS headers
+// so the browser can read it.
+//
+// If the Edge Function isn\'t deployed yet, this call fails with a 404 —
+// in that case we report a clear "proxy not deployed" message rather than
+// a generic error, with a pointer to SETUP_GUIDE.md for deployment steps.
+async function apolloSearch(query, apiKey, vertical, market, log){
+  if(!apiKey) return {ok:false, reason:"no_key", results:[]};
+  if(!query.trim()) return {ok:false, reason:"no_query", results:[]};
+  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — Apollo proxy requires Supabase", results:[]};
+
+  try{
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/apollo-search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "apikey": SUPABASE_KEY,
+      },
+      body: JSON.stringify({ apiKey, query, page: 1, perPage: 10 }),
+    });
+
+    if(res.status===404){
+      log?.(`Apollo.io: Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the Apollo proxy" to enable live Apollo results.`);
+      return {ok:false, reason:"no_proxy", results:[]};
+    }
+
+    const data = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      const msg = data?.error || `HTTP ${res.status}`;
+      log?.(`Apollo.io: ${msg}`);
+      return {ok:false, reason:"api_error", status:res.status, message:msg, results:[]};
+    }
+
+    const people = data?.people || [];
+    const results = people.map(p => ({
+      companyName: p.organization?.name || p.organization_name || "Unknown Company",
+      contactName: [p.first_name, p.last_name].filter(Boolean).join(" "),
+      title: p.title || "",
+      emailPhone: p.email || "",
+      cityMarket: market || p.city || "",
+      market: market || p.city || "",
+      sourceUrl: p.linkedin_url || "",
+      sourceType: "Apollo.io",
+      verificationNotes: "Found via Apollo.io people search (via proxy)",
+      whyFit: `Found via Apollo.io for "${query}". Title: ${p.title||"—"}.`,
+      vertical: vertical || "",
+      hrPersonListed: /hr|human resources|people|talent/i.test(p.title||"") ? "Yes" : "No",
+      hrPeopleContact: "",
+      orgSize: p.organization?.estimated_num_employees ? String(p.organization.estimated_num_employees) : "",
+      leadPainPoint: "",
+      priorityScore: "",
+    }));
+    log?.(`Apollo.io: Found ${results.length} contact(s) via proxy`);
+    return {ok:true, results};
+  }catch(e){
+    log?.(`Apollo.io: ${e.message}`);
+    return {ok:false, reason:"network_error", message:e.message, results:[]};
+  }
+}
 
 function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [step,setStep]=useState("search"); // search | results | confirm
@@ -749,7 +905,16 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
     const prog={};selectedSources.forEach(s=>{prog[s]="searching";});
     setProgress({...prog});
 
-    // Simulate each source searching with staggered timing
+    // Mock-data sources (simulated, staggered timing) vs live API sources
+    // (hunter/apollo — only "live" when an API key is configured; falls
+    // back to the mock simulation otherwise so the demo still works).
+    const liveSources=selectedSources.filter(s=>(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey));
+    const mockSources=selectedSources.filter(s=>!liveSources.includes(s));
+
+    let allResults=[];
+    const pushResults=(chunk)=>{allResults=[...allResults,...chunk];setResults([...allResults]);};
+
+    // ── Mock sources — original simulated search over MOCK_PROSPECTS ──
     const filtered=MOCK_PROSPECTS.filter(p=>{
       const qL=query.toLowerCase();
       const matchQ=!query||(p.companyName+p.contactName+p.whyFit+p.leadPainPoint+p.vertical+p.cityMarket).toLowerCase().includes(qL);
@@ -760,13 +925,11 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
       return matchQ&&matchV&&matchM&&matchS&&matchT;
     });
 
-    let allResults=[];
-    const sourceChunks={};
     const total=filtered.length;
-    const perSource=Math.max(2,Math.ceil(total/Math.max(selectedSources.length,1)));
+    const perSource=Math.max(2,Math.ceil(total/Math.max(mockSources.length,1)));
 
-    for(let i=0;i<selectedSources.length;i++){
-      const src=selectedSources[i];
+    for(let i=0;i<mockSources.length;i++){
+      const src=mockSources[i];
       const delay=i*700+400;
       setTimeout(()=>{
         const srcInfo=AI_SOURCES.find(s=>s.id===src);
@@ -777,17 +940,50 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         const start=i*perSource;
         const chunk=filtered.slice(start,start+perSource).map(p=>({...p,_id:uid(),_source:src,_verified:Math.random()>0.3}));
         const srcInfo=AI_SOURCES.find(s=>s.id===src);
-        log(`${srcInfo?.label||src}: Found ${chunk.length} prospects`);
+        log(`${srcInfo?.label||src}: Found ${chunk.length} prospects (demo data)`);
         setProgress(p=>({...p,[src]:"done"}));
-        allResults=[...allResults,...chunk];
-        setResults([...allResults]);
+        pushResults(chunk);
       },delay+900);
+    }
+
+    // ── Live sources — real API calls to Hunter.io / Apollo.io ──
+    for(const src of liveSources){
+      const srcInfo=AI_SOURCES.find(s=>s.id===src);
+      log(`${srcInfo?.label||src}: Searching live API…`);
+      setProgress(p=>({...p,[src]:"loading"}));
+
+      let outcome;
+      if(src==="hunter"){
+        outcome=await hunterSearch(query,sysSettings.hunterKey,vertical,market,log);
+      }else if(src==="apollo"){
+        outcome=await apolloSearch(query,sysSettings.apolloKey,vertical,market,log);
+      }
+
+      if(outcome?.ok){
+        const chunk=(outcome.results||[]).map(p=>({...EMPTY_P,...p,_id:uid(),_source:src,_verified:true}));
+        pushResults(chunk);
+        setProgress(p=>({...p,[src]:"done"}));
+        if(chunk.length===0){
+          log(`${srcInfo?.label||src}: 0 results${outcome.domainTried?` for domain "${outcome.domainTried}"`:""} — try a different/more specific query.`);
+        }
+      }else{
+        setProgress(p=>({...p,[src]:"error"}));
+        const reasonMsg={
+          no_proxy:"Apollo proxy not deployed — see SETUP_GUIDE.md to enable live Apollo results",
+          cors_blocked:"blocked by browser (CORS) — requires the Apollo proxy (see SETUP_GUIDE.md)",
+          api_error:`API error — ${outcome?.message||"check your API key in Admin → Plugins"}`,
+          network_error:`network error — ${outcome?.message||"unknown"}`,
+          no_key:"no API key configured",
+          no_query:"enter a search query (Hunter/Apollo need a company name or domain)",
+        }[outcome?.reason]||"unknown error";
+        log(`${srcInfo?.label||src}: ${reasonMsg}`);
+      }
     }
 
     setTimeout(()=>{
       setSearching(false);
       log("Search complete.");
-    },selectedSources.length*700+1400);
+    },mockSources.length>0?mockSources.length*700+1400:200);
   };
 
   const doAdd=()=>{
@@ -827,12 +1023,16 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           {AI_SOURCES.map(s=>{
             const active=selectedSources.includes(s.id);
             const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
+            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey);
             return(
-              <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.desc}
+              <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
                 style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
                 <span style={{fontSize:16}}>{s.icon}</span>
                 <div style={{textAlign:"left"}}>
-                  <p style={{margin:0,fontSize:11,fontWeight:700,color:active?GL:WM}}>{s.label}</p>
+                  <p style={{margin:0,fontSize:11,fontWeight:700,color:active?GL:WM,display:"flex",alignItems:"center",gap:5}}>
+                    {s.label}
+                    {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:800}}>LIVE</span>}
+                  </p>
                   {needsKey&&<p style={{margin:0,fontSize:9,color:"#f87171"}}>API key required</p>}
                 </div>
                 {active&&<span style={{marginLeft:2,fontSize:10,color:GL}}>✓</span>}
@@ -841,6 +1041,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           })}
         </div>
       </div>
+
 
       {/* Recent searches */}
       {recentSearches.length>0&&step==="search"&&(
@@ -867,6 +1068,9 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
               <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:WD}}>🔍</span>
               <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runSearch()} placeholder='e.g. "home health Raleigh" or "nonprofit Charlotte compliance"' style={{...inp(),paddingLeft:32}}/>
             </div>
+            {selectedSources.includes("hunter")&&sysSettings.hunterKey&&(
+              <p style={{margin:"6px 0 0",fontSize:10,color:"#fbbf24"}}>🎯 Hunter.io is LIVE — for best results, enter a company name or domain (e.g. "acmehealth" or "acmehealth.com"). Hunter.io will search that domain for contacts.</p>
+            )}
           </FG>
           <FG label="Organization Type">
             <select value={orgType} onChange={e=>setOrgType(e.target.value)} style={{...inp(),cursor:"pointer"}}>
@@ -915,12 +1119,15 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             {selectedSources.map(s=>{
               const si=AI_SOURCES.find(x=>x.id===s);
               const st=progress[s];
+              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey);
               return(
-                <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="loading"?`${si?.color}44`:"rgba(255,255,255,0.08)"}`,borderRadius:20}}>
+                <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(255,255,255,0.08)"}`,borderRadius:20}}>
                   <span style={{fontSize:13}}>{si?.icon}</span>
-                  <span style={{fontSize:11,fontWeight:600,color:st==="done"?"#34d399":st==="loading"?si?.color:WM}}>{si?.label}</span>
+                  <span style={{fontSize:11,fontWeight:600,color:st==="done"?"#34d399":st==="error"?"#f87171":st==="loading"?si?.color:WM}}>{si?.label}</span>
+                  {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:800}}>LIVE</span>}
                   {st==="loading"&&<Spin s={10} c={si?.color}/>}
                   {st==="done"&&<span style={{fontSize:10,color:"#34d399"}}>✓</span>}
+                  {st==="error"&&<span style={{fontSize:10,color:"#f87171"}}>⚠️</span>}
                 </div>
               );
             })}
@@ -1317,6 +1524,16 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
   const [sfilt,setSfilt]=useState("All");
   const [showImport,setShowImport]=useState(false);
   const [settings,setSettings]=useState({...sysSettings});
+  // sysSettings loads asynchronously from Supabase — if AdminPanel mounts
+  // before that load finishes (or before the admin opens Settings/Plugins),
+  // `settings` would be stuck with the initial (possibly empty) snapshot
+  // and saving would overwrite real DB values with blanks. Keep `settings`
+  // in sync with sysSettings until the admin starts editing, so freshly-
+  // loaded API keys / settings always appear correctly.
+  const settingsTouched=useRef(false);
+  useEffect(()=>{
+    if(!settingsTouched.current)setSettings({...sysSettings});
+  },[sysSettings]);
 
   const isSuper=currentUser.role==="superadmin";
   const isAdmin=ROLES[currentUser.role].canAdmin;
@@ -1356,7 +1573,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
   // Prospect ops
   const saveP=async form=>{const isNew=!crmData.find(p=>p.id===form.id);await onSaveProspect(form);addAudit(currentUser.username,isNew?`Added: ${form.companyName}`:`Edited: ${form.companyName}`);t2(isNew?"Added!":"Saved!");setPDlg(null);};
   const deleteP=async id=>{const p=crmData.find(x=>x.id===id);await onDeleteProspect(id);addAudit(currentUser.username,`Deleted: ${p?.companyName||id}`);t2(`"${p?.companyName}" deleted.`,"err");setConfirmDel(null);setPDlg(null);};
-  const saveSettings=async()=>{await onSaveSettings({...settings});addAudit(currentUser.username,"Updated system settings");t2("Settings saved.");};
+  const saveSettings=async()=>{await onSaveSettings({...settings});settingsTouched.current=false;addAudit(currentUser.username,"Updated system settings");t2("Settings saved.");};
 
   const filtP=crmData.filter(p=>{const q=srch.toLowerCase();return(sfilt==="All"||p.currentStatus===sfilt)&&(!q||[p.companyName,p.contactName,p.market,p.vertical].some(v=>(v||"").toLowerCase().includes(q)));});
   const TABS=[{id:"overview",l:"📊 Overview"},{id:"users",l:"👥 Users"},{id:"crm",l:"🗄️ Prospects"},{id:"settings",l:"⚙️ Settings"},{id:"plugins",l:"🔌 Plugins"},{id:"audit",l:"📋 Audit Log"}];
@@ -1524,12 +1741,12 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                 {[{title:"CRM Identity",icon:"🏷️",fields:[{k:"siteName",l:"System Name"},{k:"orgName",l:"Organization Name"}]},{title:"Email & Outreach",icon:"📧",fields:[{k:"senderName",l:"Sender Name"},{k:"senderEmail",l:"Sender Email"},{k:"senderTitle",l:"Sender Title"},{k:"honeyLink",l:"Schedule / Honey Link"},{k:"website",l:"Website"}]}].map(sec=>(
                   <div key={sec.title} style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
                     <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>{sec.icon} {sec.title}</p></div>
-                    <div style={{padding:"15px 17px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{sec.fields.map(f=><FG key={f.k} label={f.l}><input value={settings[f.k]||""} onChange={e=>setSettings(s=>({...s,[f.k]:e.target.value}))} style={inp()}/></FG>)}</div>
+                    <div style={{padding:"15px 17px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{sec.fields.map(f=><FG key={f.k} label={f.l}><input value={settings[f.k]||""} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,[f.k]:e.target.value}));}} style={inp()}/></FG>)}</div>
                   </div>
                 ))}
                 <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
                   <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>📦 Capacity</p></div>
-                  <div style={{padding:"15px 17px"}}><FG label="Max Prospects"><input type="number" value={settings.maxProspects||1000} onChange={e=>setSettings(s=>({...s,maxProspects:parseInt(e.target.value)||1000}))} style={{...inp(),width:200}}/></FG><div style={{marginTop:10,display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:`linear-gradient(90deg,${G},#34d399)`,borderRadius:3,width:Math.min((crmData.length/(settings.maxProspects||1000))*100,100)+"%"}}/></div><span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{crmData.length}/{settings.maxProspects||1000}</span></div></div>
+                  <div style={{padding:"15px 17px"}}><FG label="Max Prospects"><input type="number" value={settings.maxProspects||1000} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,maxProspects:parseInt(e.target.value)||1000}));}} style={{...inp(),width:200}}/></FG><div style={{marginTop:10,display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:`linear-gradient(90deg,${G},#34d399)`,borderRadius:3,width:Math.min((crmData.length/(settings.maxProspects||1000))*100,100)+"%"}}/></div><span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{crmData.length}/{settings.maxProspects||1000}</span></div></div>
                 </div>
                 {isSuper&&(
                   <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
@@ -1537,7 +1754,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                     <div style={{padding:"15px 17px",display:"flex",flexDirection:"column",gap:10}}>
                       {[{k:"requireMelissaApproval",l:"Require Melissa approval before Touch 3",d:"Blocks T3 queue until flagged and approved"},{k:"autoArchiveDNR",l:"Auto-archive DNR after 30 days",d:"Removes from active pipeline"},{k:"emailGmailDefault",l:"Use Gmail compose by default",d:"Opens Gmail for outreach emails"}].map(f=>(
                         <div key={f.k} style={{display:"flex",alignItems:"flex-start",gap:13,padding:"11px 13px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:`1px solid ${BR}`}}>
-                          <Tgl on={!!settings[f.k]} onChange={v=>setSettings(s=>({...s,[f.k]:v}))}/>
+                          <Tgl on={!!settings[f.k]} onChange={v=>{settingsTouched.current=true;setSettings(s=>({...s,[f.k]:v}));}}/>
                           <div><p style={{margin:0,fontSize:13,fontWeight:600,color:W}}>{f.l}</p><p style={{margin:"3px 0 0",fontSize:11,color:WM}}>{f.d}</p></div>
                         </div>
                       ))}
@@ -1571,7 +1788,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                       <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
                         <div style={{flex:1}}>
                           <label style={{...LBL,color:`${p.color}cc`}}>API Key</label>
-                          <input type="password" value={settings[p.key]||""} onChange={e=>setSettings(s=>({...s,[p.key]:e.target.value}))} placeholder={`Enter your ${p.name} API key…`} style={inp()}/>
+                          <input type="password" value={settings[p.key]||""} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,[p.key]:e.target.value}));}} placeholder={`Enter your ${p.name} API key…`} style={inp()}/>
                         </div>
                         <button onClick={()=>{setSysSettings(s=>({...s,[p.key]:settings[p.key]}));addAudit(currentUser.username,`Updated ${p.name} API key`);t2(`${p.name} key saved.`);}} className="bh" style={{...B.gold,fontSize:11,padding:"9px 16px",flexShrink:0}}>Save Key</button>
                       </div>
