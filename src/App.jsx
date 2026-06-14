@@ -234,6 +234,30 @@ const DB = {
     await sbFetch("system_settings", "POST", rows, "resolution=merge-duplicates,return=minimal");
   },
 
+  // API plugin credentials (Apollo, Hunter, Anthropic, ...) — stored
+  // in their own table so each integration carries its own metadata
+  // (last updated, by whom). Returns a flat { apollo: "key", hunter: "key", ... } map.
+  async getApiCredentials() {
+    const rows = await sbFetch("api_credentials?select=service,api_key,updated_at,updated_by");
+    const out = {};
+    (rows||[]).forEach(r => { out[r.service] = r.api_key || ""; });
+    return out;
+  },
+  // Upsert a single credential by service name. Uses PATCH-then-POST-
+  // fallback (same pattern as saveSettings's sibling methods) so this
+  // works whether or not the seed row for this service already exists.
+  async saveApiCredential(service, apiKey, username) {
+    const patchResult = await sbFetch(`api_credentials?service=eq.${encodeURIComponent(service)}`, "PATCH",
+      { api_key: apiKey, updated_by: username||"" }, "return=representation"
+    ).catch(()=>null);
+    if (patchResult && Array.isArray(patchResult) && patchResult.length>0) return patchResult[0];
+    // No existing row — insert one
+    const inserted = await sbFetch("api_credentials", "POST",
+      { service, api_key: apiKey, updated_by: username||"" }, "return=representation"
+    );
+    return Array.isArray(inserted) ? inserted[0] : inserted;
+  },
+
   // Emails
   async getEmails() {
     const rows = await sbFetch("emails?order=sent_at.desc&select=*&limit=100");
@@ -1770,9 +1794,9 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
           {tab==="plugins"&&(
             <div style={{animation:"fadeUp 0.3s ease",maxWidth:660}}>
               <div style={{marginBottom:20}}><h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>🔌 Plugin Integrations</h2><p style={{margin:"4px 0 0",fontSize:12,color:WM}}>Connect external tools for automated prospect discovery</p></div>
-              {[{id:"apollo",name:"Apollo.io",icon:"🚀",color:"#7c3aed",desc:"B2B contact & company database with 275M+ profiles. Automates prospect discovery and email finding.",key:"apolloKey",docs:"https://apolloio.github.io/apollo-api-docs/",features:["Contact search","Email verification","Company firmographics","Bulk export"]},
-                {id:"hunter",name:"Hunter.io",icon:"🎯",color:"#f59e0b",desc:"Email finding and verification tool. Finds professional email addresses from company domains.",key:"hunterKey",docs:"https://hunter.io/api-documentation/v2",features:["Domain search","Email finder","Email verifier","Bulk tasks"]},
-                {id:"anthropic",name:"Claude AI (Anthropic)",icon:"🤖",color:"#c084fc",desc:"Anthropic Claude API for intelligent prospect research, context analysis, and personalized outreach drafts.",key:"anthropicKey",docs:"https://docs.anthropic.com",features:["Prospect research","Outreach drafting","Pain point analysis","Fit scoring"]},
+              {[{id:"apollo",name:"Apollo.io",icon:"🚀",color:"#7c3aed",desc:"B2B contact & company database with 275M+ profiles. Automates prospect discovery and email finding.",key:"apolloKey",service:"apollo",docs:"https://apolloio.github.io/apollo-api-docs/",features:["Contact search","Email verification","Company firmographics","Bulk export"]},
+                {id:"hunter",name:"Hunter.io",icon:"🎯",color:"#f59e0b",desc:"Email finding and verification tool. Finds professional email addresses from company domains.",key:"hunterKey",service:"hunter",docs:"https://hunter.io/api-documentation/v2",features:["Domain search","Email finder","Email verifier","Bulk tasks"]},
+                {id:"anthropic",name:"Claude AI (Anthropic)",icon:"🤖",color:"#c084fc",desc:"Anthropic Claude API for intelligent prospect research, context analysis, and personalized outreach drafts.",key:"anthropicKey",service:"anthropic",docs:"https://docs.anthropic.com",features:["Prospect research","Outreach drafting","Pain point analysis","Fit scoring"]},
               ].map(p=>(
                 <div key={p.id} style={{background:NC,border:`1px solid ${p.color}33`,borderRadius:13,overflow:"hidden",marginBottom:13}}>
                   <div style={{padding:"12px 18px",borderBottom:`1px solid ${BR}`,background:`rgba(255,255,255,0.03)`,display:"flex",alignItems:"center",gap:12}}>
@@ -1790,7 +1814,23 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                           <label style={{...LBL,color:`${p.color}cc`}}>API Key</label>
                           <input type="password" value={settings[p.key]||""} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,[p.key]:e.target.value}));}} placeholder={`Enter your ${p.name} API key…`} style={inp()}/>
                         </div>
-                        <button onClick={()=>{setSysSettings(s=>({...s,[p.key]:settings[p.key]}));addAudit(currentUser.username,`Updated ${p.name} API key`);t2(`${p.name} key saved.`);}} className="bh" style={{...B.gold,fontSize:11,padding:"9px 16px",flexShrink:0}}>Save Key</button>
+                        <button onClick={async()=>{
+                          const newKey=settings[p.key]||"";
+                          // Optimistic UI update so the LIVE badge etc. respond immediately
+                          setSysSettings(s=>({...s,[p.key]:newKey}));
+                          if(isConfigured){
+                            try{
+                              await DB.saveApiCredential(p.service,newKey,currentUser.username);
+                              addAudit(currentUser.username,`Updated ${p.name} API key`);
+                              t2(`${p.name} key saved — will persist across refresh & relogin.`);
+                            }catch(e){
+                              t2(`${p.name} key saved locally, but DB save failed: ${e.message}`,"err");
+                            }
+                          }else{
+                            addAudit(currentUser.username,`Updated ${p.name} API key (local only — Supabase not configured)`);
+                            t2(`${p.name} key set for this session (Supabase not configured — won't persist).`,"err");
+                          }
+                        }} className="bh" style={{...B.gold,fontSize:11,padding:"9px 16px",flexShrink:0}}>Save Key</button>
                       </div>
                     ):(
                       <div style={{padding:"10px 14px",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,fontSize:12,color:"#f87171"}}>🔒 Admin access required to configure API keys.</div>
@@ -3371,10 +3411,11 @@ export default function App(){
         dlog("[NC CRM] Supabase connection OK. Settings keys:", Object.keys(testResult).length);
 
         // Now load all data in parallel
-        const [dbUsers, dbProspects, dbAudit] = await Promise.all([
+        const [dbUsers, dbProspects, dbAudit, dbApiCreds] = await Promise.all([
           DB.getUsers().catch(e => { dwarn("[NC CRM] getUsers failed:", e.message); return []; }),
           DB.getProspects().catch(e => { dwarn("[NC CRM] getProspects failed:", e.message); return []; }),
           DB.getAuditLog().catch(e => { dwarn("[NC CRM] getAuditLog failed:", e.message); return []; }),
+          DB.getApiCredentials().catch(e => { dwarn("[NC CRM] getApiCredentials failed:", e.message); return {}; }),
         ]);
 
         // Always use DB data when connected.
@@ -3396,9 +3437,19 @@ export default function App(){
           setCrmData([]);
         }
 
-        if (Object.keys(testResult).length > 0) {
-          setSysSettings(s => ({...s, ...testResult}));
-          dlog("[NC CRM] Loaded system settings from DB");
+        // Merge: defaults < system_settings < api_credentials.
+        // API keys live in api_credentials (apolloKey/hunterKey/anthropicKey
+        // map to api_credentials.service "apollo"/"hunter"/"anthropic"),
+        // but the rest of the app reads them off sysSettings.apolloKey etc,
+        // so we translate here to keep every existing reference working.
+        const apiKeyMap = {
+          apolloKey: dbApiCreds.apollo || "",
+          hunterKey: dbApiCreds.hunter || "",
+          anthropicKey: dbApiCreds.anthropic || "",
+        };
+        if (Object.keys(testResult).length > 0 || Object.keys(dbApiCreds).length > 0) {
+          setSysSettings(s => ({...s, ...testResult, ...apiKeyMap}));
+          dlog("[NC CRM] Loaded system settings + API credentials from DB");
         } else {
           setSysSettings(DEFAULT_SYS);
         }
