@@ -712,7 +712,7 @@ const AI_SOURCES=[
   {id:"gemini",   label:"Gemini",       icon:"✨", color:"#4285F4", desc:"Google Gemini for real-time web-sourced results"},
   {id:"apollo",   label:"Apollo.io",    icon:"🚀", color:"#7c3aed", desc:"B2B database — requires API key. Live results route through a Supabase Edge Function proxy (required because Apollo blocks direct browser requests)."},
   {id:"hunter",   label:"Hunter.io",    icon:"🎯", color:"#f59e0b", desc:"Email finder & verifier — requires API key. Returns real results."},
-  {id:"guidestar",label:"GuideStar",    icon:"🏛️", color:"#60a5fa", desc:"Nonprofit IRS 990 & financial data"},
+  {id:"guidestar",label:"GuideStar",    icon:"🏛️", color:"#60a5fa", desc:"Real NC nonprofit data via ProPublica's free Nonprofit Explorer API (IRS Form 990 filings) — no API key needed, always LIVE."},
   {id:"charity",  label:"Charity Navigator",icon:"⭐",color:"#34d399",desc:"Nonprofit ratings & financial health data"},
   {id:"linkedin", label:"LinkedIn",     icon:"💼", color:"#0077b5", desc:"Professional network search"},
 ];
@@ -724,7 +724,7 @@ const AI_SOURCES=[
    so this returns REAL data when sysSettings.hunterKey is set.
    Docs: https://hunter.io/api-documentation/v2#domain-search
 
-   APOLLO.IO: Apollo\'s People/Organization Search API does NOT allow
+   APOLLO.IO: Apollo's People/Organization Search API does NOT allow
    cross-origin browser requests (no CORS headers) — any direct fetch
    from this static site will fail with a network/CORS error, NOT an
    auth error, regardless of how valid the key is. Apollo is designed
@@ -732,7 +732,7 @@ const AI_SOURCES=[
    call (in case Apollo enables CORS in future, or if proxied later)
    but DETECTS the CORS failure and returns a clear explanatory error
    instead of silently falling back to mock data — so the UI can show
-   the user exactly what\'s happening rather than pretending it worked.
+   the user exactly what's happening rather than pretending it worked.
 
    To get real Apollo results, the call would need to go through a
    server-side proxy (e.g. a Supabase Edge Function) that holds the
@@ -767,10 +767,10 @@ function hunterEmailToProspect(domainData, emailEntry, vertical, market){
 }
 
 // Real Hunter.io domain search. Requires either a company domain (derived
-// from the query) or falls back to Hunter\'s general "Discover" isn\'t
+// from the query) or falls back to Hunter's general "Discover" isn\'t
 // available on free plans, so we ask the user to search by domain/company
 // name and Hunter resolves it via the domain-search endpoint using a
-// best-guess .com domain if the query doesn\'t look like a domain already.
+// best-guess .com domain if the query doesn't look like a domain already.
 async function hunterSearch(query, apiKey, vertical, market, log){
   if(!apiKey) return {ok:false, reason:"no_key", results:[]};
   if(!query.trim()) return {ok:false, reason:"no_query", results:[]};
@@ -809,12 +809,12 @@ async function hunterSearch(query, apiKey, vertical, market, log){
 }
 
 // Apollo.io People Search — routed through a Supabase Edge Function proxy
-// (supabase/functions/apollo-search) because Apollo\'s API does not send
+// (supabase/functions/apollo-search) because Apollo's API does not send
 // CORS headers and blocks direct browser requests. The Edge Function runs
 // server-side, calls Apollo, and returns the response with CORS headers
 // so the browser can read it.
 //
-// If the Edge Function isn\'t deployed yet, this call fails with a 404 —
+// If the Edge Function isn't deployed yet, this call fails with a 404 —
 // in that case we report a clear "proxy not deployed" message rather than
 // a generic error, with a pointer to SETUP_GUIDE.md for deployment steps.
 async function apolloSearch(query, apiKey, vertical, market, log){
@@ -884,6 +884,99 @@ async function apolloSearch(query, apiKey, vertical, market, log){
   }
 }
 
+/* ════════════════════════════════════════════════════════════════
+   PROPUBLICA NONPROFIT EXPLORER — real nonprofit data, NO API KEY
+   ─────────────────────────────────────────────────────────────
+   Free, public, GET-only JSON API covering 1.8M+ US tax-exempt
+   organizations from IRS Form 990 filings. No registration or key
+   required — this powers the "GuideStar" source with REAL results
+   for nonprofit verticals (GuideStar itself requires a paid API;
+   ProPublica's Nonprofit Explorer aggregates the same underlying
+   IRS data and links to each org's GuideStar profile).
+   Docs: https://projects.propublica.org/nonprofits/api
+════════════════════════════════════════════════════════════════ */
+
+// Map CRM verticals to ProPublica NTEE major-group codes (1-10) where
+// a reasonable mapping exists. Verticals not listed search without an
+// NTEE filter (still scoped to NC nonprofits via state[id]=NC).
+const VERTICAL_TO_NTEE = {
+  "Nonprofits & Associations": null,
+  "Faith-Based Organizations": 8,
+  "Human Services Nonprofits": 5,
+  "Community Development Orgs": 5,
+  "Religious & Faith-Based Nonprofits": 8,
+  "Social Service Agencies": 5,
+  "Arts & Cultural Nonprofits": 1,
+  "Environmental Nonprofits": 3,
+  "Advocacy Organizations": 7,
+  "Foundations & Grantmakers": 7,
+  "Education & Schools": 2,
+};
+
+function proPublicaOrgToProspect(org, vertical, market){
+  const city = org.city ? org.city.replace(/\s+/g," ").trim() : "";
+  const cityTitleCase = city ? city.split(" ").map(w=>w.charAt(0)+w.slice(1).toLowerCase()).join(" ") : "";
+  return {
+    companyName: org.name || "Unknown Organization",
+    contactName: "",
+    title: "",
+    emailPhone: "",
+    cityMarket: cityTitleCase || market || "",
+    market: market || cityTitleCase || "",
+    sourceUrl: org.guidestar_url || (org.ein ? `https://projects.propublica.org/nonprofits/organizations/${org.ein}` : ""),
+    sourceType: "GuideStar (via ProPublica)",
+    verificationNotes: `IRS-registered 501(c)(${org.subseccd||"3"}) nonprofit, EIN ${org.strein||org.ein||"—"}. Email/phone not in IRS data — find a contact via Hunter.io or the organization's website.`,
+    whyFit: `Found via ProPublica Nonprofit Explorer (IRS Form 990 data) for "${vertical||"nonprofit"}" in ${cityTitleCase||market||"NC"}.`,
+    vertical: vertical || "",
+    hrPersonListed: "No",
+    hrPeopleContact: "",
+    orgSize: "",
+    leadPainPoint: "",
+    priorityScore: "",
+    _ein: org.ein,
+  };
+}
+
+// Search ProPublica's Nonprofit Explorer. No API key needed — query is
+// the keyword, vertical maps to an NTEE category when possible, and
+// results are scoped to North Carolina (state[id]=NC) since all CRM
+// markets are NC cities.
+async function guidestarSearch(query, vertical, market, log){
+  const q = query.trim() || vertical || "nonprofit";
+
+  try{
+    const url = new URL("https://projects.propublica.org/nonprofits/api/v2/search.json");
+    url.searchParams.set("q", q);
+    url.searchParams.set("state[id]", "NC");
+    const nteeCode = VERTICAL_TO_NTEE[vertical];
+    if(nteeCode) url.searchParams.set("ntee[id]", String(nteeCode));
+
+    const res = await fetch(url.toString());
+
+    if(!res.ok){
+      log?.(`GuideStar (ProPublica): HTTP ${res.status} — the API may be temporarily unavailable.`);
+      return {ok:false, reason:"api_error", status:res.status, results:[]};
+    }
+
+    const data = await res.json();
+    const orgs = data?.organizations || [];
+
+    if(orgs.length===0){
+      log?.(`GuideStar (ProPublica): No NC nonprofits found for "${q}" — try a broader term (e.g. just the vertical name).`);
+      return {ok:true, results:[]};
+    }
+
+    const results = orgs.slice(0,10).map(org => proPublicaOrgToProspect(org, vertical, market));
+    log?.(`GuideStar (ProPublica): Found ${data.total_results||results.length} NC nonprofit(s) matching "${q}" — showing ${results.length}`);
+    return {ok:true, results};
+  }catch(e){
+    // Likely a CORS or network issue — report honestly rather than
+    // silently falling back, consistent with hunterSearch/apolloSearch.
+    log?.(`GuideStar (ProPublica): ${e.message} — this may be a network/CORS issue with ProPublica's API.`);
+    return {ok:false, reason: e instanceof TypeError ? "cors_blocked" : "network_error", message:e.message, results:[]};
+  }
+}
+
 function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [step,setStep]=useState("search"); // search | results | confirm
   const [query,setQuery]=useState("");
@@ -940,10 +1033,12 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
     const prog={};selectedSources.forEach(s=>{prog[s]="searching";});
     setProgress({...prog});
 
-    // Mock-data sources (simulated, staggered timing) vs live API sources
-    // (hunter/apollo — only "live" when an API key is configured; falls
-    // back to the mock simulation otherwise so the demo still works).
-    const liveSources=selectedSources.filter(s=>(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey));
+    // Mock-data sources (simulated, staggered timing) vs live API sources.
+    // - hunter/apollo: live only when an API key is configured (Apollo via
+    //   the Supabase Edge Function proxy).
+    // - guidestar: ALWAYS live — backed by ProPublica's free, no-key
+    //   Nonprofit Explorer API (real IRS Form 990 data for NC nonprofits).
+    const liveSources=selectedSources.filter(s=>(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||s==="guidestar");
     const mockSources=selectedSources.filter(s=>!liveSources.includes(s));
 
     let allResults=[];
@@ -992,6 +1087,8 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         outcome=await hunterSearch(query,sysSettings.hunterKey,vertical,market,log);
       }else if(src==="apollo"){
         outcome=await apolloSearch(query,sysSettings.apolloKey,vertical,market,log);
+      }else if(src==="guidestar"){
+        outcome=await guidestarSearch(query,vertical,market,log);
       }
 
       if(outcome?.ok){
@@ -1005,8 +1102,10 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         setProgress(p=>({...p,[src]:"error"}));
         const reasonMsg={
           no_proxy:"Apollo proxy not deployed — see SETUP_GUIDE.md to enable live Apollo results",
-          cors_blocked:"blocked by browser (CORS) — requires the Apollo proxy (see SETUP_GUIDE.md)",
-          api_error:`API error — ${outcome?.message||"check your API key in Admin → Plugins"}`,
+          cors_blocked: src==="guidestar"
+            ? "blocked by browser (CORS) — ProPublica's API may not allow direct browser requests from this domain"
+            : "blocked by browser (CORS) — requires the Apollo proxy (see SETUP_GUIDE.md)",
+          api_error:`API error — ${outcome?.message||(src==="guidestar"?"ProPublica API may be temporarily down":"check your API key in Admin → Plugins")}`,
           network_error:`network error — ${outcome?.message||"unknown"}`,
           no_key:"no API key configured",
           no_query:"enter a search query (Hunter/Apollo need a company name or domain)",
@@ -1058,7 +1157,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           {AI_SOURCES.map(s=>{
             const active=selectedSources.includes(s.id);
             const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
-            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey);
+            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||s.id==="guidestar";
             return(
               <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
                 style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
@@ -1154,7 +1253,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             {selectedSources.map(s=>{
               const si=AI_SOURCES.find(x=>x.id===s);
               const st=progress[s];
-              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey);
+              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||s==="guidestar";
               return(
                 <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(255,255,255,0.08)"}`,borderRadius:20}}>
                   <span style={{fontSize:13}}>{si?.icon}</span>
