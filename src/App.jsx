@@ -847,25 +847,36 @@ async function apolloSearch(query, apiKey, vertical, market, log){
     }
 
     const people = data?.people || [];
-    const results = people.map(p => ({
-      companyName: p.organization?.name || p.organization_name || "Unknown Company",
-      contactName: [p.first_name, p.last_name].filter(Boolean).join(" "),
-      title: p.title || "",
-      emailPhone: p.email || "",
-      cityMarket: market || p.city || "",
-      market: market || p.city || "",
-      sourceUrl: p.linkedin_url || "",
-      sourceType: "Apollo.io",
-      verificationNotes: "Found via Apollo.io people search (via proxy)",
-      whyFit: `Found via Apollo.io for "${query}". Title: ${p.title||"—"}.`,
-      vertical: vertical || "",
-      hrPersonListed: /hr|human resources|people|talent/i.test(p.title||"") ? "Yes" : "No",
-      hrPeopleContact: "",
-      orgSize: p.organization?.estimated_num_employees ? String(p.organization.estimated_num_employees) : "",
-      leadPainPoint: "",
-      priorityScore: "",
-    }));
-    log?.(`Apollo.io: Found ${results.length} contact(s) via proxy`);
+    const results = people.map(p => {
+      const hasEmail = !!p.email;
+      return {
+        companyName: p.organization?.name || p.organization_name || "Unknown Company",
+        contactName: [p.first_name, p.last_name].filter(Boolean).join(" "),
+        title: p.title || "",
+        // Apollo's current People Search endpoint (api_search) does NOT
+        // return email/phone — that requires a separate, credit-consuming
+        // Enrichment call. Rather than show a misleadingly blank contact
+        // field, flag it clearly so the user knows to look it up (e.g. via
+        // Hunter.io for the same person/domain, or Apollo's Enrichment UI).
+        emailPhone: p.email || p.phone_number || "",
+        cityMarket: market || p.city || "",
+        market: market || p.city || "",
+        sourceUrl: p.linkedin_url || "",
+        sourceType: "Apollo.io",
+        verificationNotes: hasEmail
+          ? "Found via Apollo.io people search (via proxy)"
+          : "Found via Apollo.io — email/phone not included by this endpoint. Use Apollo Enrichment or search this contact's domain in Hunter.io to find their email.",
+        whyFit: `Found via Apollo.io for "${query}". Title: ${p.title||"—"}.`,
+        vertical: vertical || "",
+        hrPersonListed: /hr|human resources|people|talent/i.test(p.title||"") ? "Yes" : "No",
+        hrPeopleContact: "",
+        orgSize: p.organization?.estimated_num_employees ? String(p.organization.estimated_num_employees) : "",
+        leadPainPoint: "",
+        priorityScore: "",
+      };
+    });
+    const missingEmailCount = results.filter(r=>!r.emailPhone).length;
+    log?.(`Apollo.io: Found ${results.length} contact(s) via proxy${missingEmailCount?` — ${missingEmailCount} missing email (Apollo's search endpoint doesn't include contact info; see notes on each result)`:""}`);
     return {ok:true, results};
   }catch(e){
     log?.(`Apollo.io: ${e.message}`);
