@@ -937,28 +937,44 @@ function proPublicaOrgToProspect(org, vertical, market){
   };
 }
 
-// Search ProPublica's Nonprofit Explorer. No API key needed — query is
-// the keyword, vertical maps to an NTEE category when possible, and
-// results are scoped to North Carolina (state[id]=NC) since all CRM
-// markets are NC cities.
+// Search ProPublica's Nonprofit Explorer — routed through a Supabase
+// Edge Function proxy (supabase/functions/guidestar-search) because
+// ProPublica's API does not send CORS headers and blocks direct
+// browser requests. No API key is involved on either hop; the proxy
+// exists solely to work around the browser CORS restriction.
+//
+// If the Edge Function isn't deployed yet, this call fails with a 404
+// — in that case we report a clear "proxy not deployed" message
+// rather than a generic error, with a pointer to SETUP_GUIDE.md.
 async function guidestarSearch(query, vertical, market, log){
   const q = query.trim() || vertical || "nonprofit";
+  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — GuideStar proxy requires Supabase", results:[]};
 
   try{
-    const url = new URL("https://projects.propublica.org/nonprofits/api/v2/search.json");
-    url.searchParams.set("q", q);
-    url.searchParams.set("state[id]", "NC");
-    const nteeCode = VERTICAL_TO_NTEE[vertical];
-    if(nteeCode) url.searchParams.set("ntee[id]", String(nteeCode));
+    const nteeCode = VERTICAL_TO_NTEE[vertical] || null;
 
-    const res = await fetch(url.toString());
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/guidestar-search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "apikey": SUPABASE_KEY,
+      },
+      body: JSON.stringify({ query: q, state: "NC", nteeCode }),
+    });
 
-    if(!res.ok){
-      log?.(`GuideStar (ProPublica): HTTP ${res.status} — the API may be temporarily unavailable.`);
-      return {ok:false, reason:"api_error", status:res.status, results:[]};
+    if(res.status===404){
+      log?.(`GuideStar (ProPublica): Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the GuideStar proxy" to enable live results.`);
+      return {ok:false, reason:"no_proxy", results:[]};
     }
 
-    const data = await res.json();
+    const data = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      log?.(`GuideStar (ProPublica): ${data?.error||`HTTP ${res.status}`} — the API may be temporarily unavailable.`);
+      return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
+    }
+
     const orgs = data?.organizations || [];
 
     if(orgs.length===0){
@@ -967,12 +983,10 @@ async function guidestarSearch(query, vertical, market, log){
     }
 
     const results = orgs.slice(0,10).map(org => proPublicaOrgToProspect(org, vertical, market));
-    log?.(`GuideStar (ProPublica): Found ${data.total_results||results.length} NC nonprofit(s) matching "${q}" — showing ${results.length}`);
+    log?.(`GuideStar (ProPublica): Found ${data.total_results||results.length} NC nonprofit(s) matching "${q}" via proxy — showing ${results.length}`);
     return {ok:true, results};
   }catch(e){
-    // Likely a CORS or network issue — report honestly rather than
-    // silently falling back, consistent with hunterSearch/apolloSearch.
-    log?.(`GuideStar (ProPublica): ${e.message} — this may be a network/CORS issue with ProPublica's API.`);
+    log?.(`GuideStar (ProPublica): ${e.message}`);
     return {ok:false, reason: e instanceof TypeError ? "cors_blocked" : "network_error", message:e.message, results:[]};
   }
 }
@@ -1101,9 +1115,11 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
       }else{
         setProgress(p=>({...p,[src]:"error"}));
         const reasonMsg={
-          no_proxy:"Apollo proxy not deployed — see SETUP_GUIDE.md to enable live Apollo results",
+          no_proxy: src==="guidestar"
+            ? "GuideStar proxy not deployed — see SETUP_GUIDE.md to enable live results"
+            : "Apollo proxy not deployed — see SETUP_GUIDE.md to enable live Apollo results",
           cors_blocked: src==="guidestar"
-            ? "blocked by browser (CORS) — ProPublica's API may not allow direct browser requests from this domain"
+            ? "blocked by browser (CORS) — requires the GuideStar proxy (see SETUP_GUIDE.md)"
             : "blocked by browser (CORS) — requires the Apollo proxy (see SETUP_GUIDE.md)",
           api_error:`API error — ${outcome?.message||(src==="guidestar"?"ProPublica API may be temporarily down":"check your API key in Admin → Plugins")}`,
           network_error:`network error — ${outcome?.message||"unknown"}`,
