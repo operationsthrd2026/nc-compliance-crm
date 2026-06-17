@@ -42,7 +42,7 @@ Deno.serve(async (req: Request) => {
 
     if (!apiKey || !cseId) {
       return new Response(JSON.stringify({
-        error: "Google API key or Search Engine ID not configured on the server. Run: supabase secrets set GOOGLE_API_KEY=... GOOGLE_CSE_ID=...",
+        error: "Google API key or Search Engine ID not configured on the server. Run: supabase secrets set GOOGLE_API_KEY=AIzaSyDPkG2u7heg4bqdhifZ16MtJnnlp-NcAjs GOOGLE_CSE_ID=b37b5c147a97f4cbd",
       }), {
         status: 500,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
