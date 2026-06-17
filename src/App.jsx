@@ -439,31 +439,6 @@ const SEED=[
 
 const DEFAULT_SYS={siteName:"NC Compliance CRM",orgName:"HR On Demand",senderName:"Melissa Pennington",senderEmail:"melissa@hrondemand.com",senderTitle:"Founder, HR On Demand",honeyLink:"[Schedule Link]",website:"thehrondemand.com",maxProspects:1000,requireMelissaApproval:true,autoArchiveDNR:false,emailGmailDefault:true,apolloKey:"",hunterKey:"",anthropicKey:""};
 
-/* ════════════════════════════════════════════════════════════════
-   AI SEARCH — MOCK PROSPECT DATABASE (simulates API results)
-════════════════════════════════════════════════════════════════ */
-const MOCK_PROSPECTS=[
-  {companyName:"Sunrise Senior Living NC",contactName:"Patricia Moore",title:"Regional Director",emailPhone:"pmoore@sunrisesenior-nc.com",cityMarket:"Raleigh",market:"Raleigh",vertical:"Home Health / Homecare",orgSize:"100-249",sourceType:"Claude AI",whyFit:"Large senior care organization with FLSA wage classification exposure and caregiver staffing compliance needs.",leadPainPoint:"Overtime misclassification, caregiver independent contractor risk",priorityScore:"9"},
-  {companyName:"Healing Hands Home Health",contactName:"Dr. Amara Osei",title:"CEO",emailPhone:"aosei@healinghands-nc.org",cityMarket:"Charlotte",market:"Charlotte",vertical:"Home Health / Homecare",orgSize:"50-99",sourceType:"ChatGPT",whyFit:"Mid-size home health agency facing NC DMA audit exposure and FLSA classification issues.",leadPainPoint:"NC DHHS compliance, aide classification",priorityScore:"8"},
-  {companyName:"Green Sprouts Child Dev Center",contactName:"Maria Vasquez",title:"Director",emailPhone:"mvasquez@greensprouts.org",cityMarket:"Durham",market:"Durham",vertical:"Childcare & Licensed Group Homes",orgSize:"10-49",sourceType:"Gemini",whyFit:"Licensed childcare center; NC DCDEE compliance and worker classification risk.",leadPainPoint:"Staff ratios, I-9 compliance",priorityScore:"7"},
-  {companyName:"Hope Harbor Nonprofit",contactName:"Rev. James Washington",title:"Executive Director",emailPhone:"jwashington@hopeharbor.org",cityMarket:"Greenville",market:"Greenville",vertical:"Human Services Nonprofits",orgSize:"10-49",sourceType:"Claude AI",whyFit:"Faith-adjacent nonprofit with 25+ employees; no dedicated HR function.",leadPainPoint:"HR policy gaps, volunteer vs employee classification",priorityScore:"8"},
-  {companyName:"Piedmont Builders Alliance",contactName:"Keith Reynolds",title:"President",emailPhone:"kreynolds@pbancnc.com",cityMarket:"Greensboro",market:"Greensboro",vertical:"Construction & Contractors",orgSize:"50-99",sourceType:"Apollo.io",whyFit:"Subcontractor-heavy construction firm with NLRB and misclassification exposure.",leadPainPoint:"Subcontractor classification, prevailing wage",priorityScore:"7"},
-  {companyName:"Triangle Arts Collective",contactName:"Sofia Reyes",title:"Managing Director",emailPhone:"sreyes@trianglearts.org",cityMarket:"Chapel Hill",market:"Chapel Hill",vertical:"Arts & Cultural Nonprofits",orgSize:"1-9",sourceType:"Claude AI",whyFit:"Growing arts nonprofit transitioning from all-volunteer to paid staff model.",leadPainPoint:"First-time employer compliance, exempt status",priorityScore:"6"},
-  {companyName:"Coastal Care Alliance",contactName:"Thomas Bradley",title:"COO",emailPhone:"tbradley@coastalcarealliance.org",cityMarket:"Wilmington",market:"Wilmington",vertical:"Social Service Agencies",orgSize:"100-249",sourceType:"GuideStar / Candid",whyFit:"Multi-program social services agency with complex employee classification across grant-funded programs.",leadPainPoint:"Grant-funded position classification, benefits eligibility",priorityScore:"9"},
-  {companyName:"NC Faith Works",contactName:"Pastor Diane Hughes",title:"Executive Director",emailPhone:"dhughes@ncfaithworks.org",cityMarket:"Fayetteville",market:"Fayetteville",vertical:"Religious & Faith-Based Nonprofits",orgSize:"10-49",sourceType:"Gemini",whyFit:"Faith-based org employing community workers with unclear FLSA exempt status.",leadPainPoint:"Minister classification, housing allowance, W-2 vs 1099",priorityScore:"7"},
-  {companyName:"Appalachian Aid Society",contactName:"Wendy Blackburn",title:"President",emailPhone:"wblackburn@appalaid.org",cityMarket:"Asheville",market:"Asheville",vertical:"Community Development Orgs",orgSize:"50-99",sourceType:"IRS 990 Database",whyFit:"Rural community development nonprofit with scattered workforce across multiple counties.",leadPainPoint:"Multi-county compliance, remote worker policy",priorityScore:"8"},
-  {companyName:"MedFirst Home Services",contactName:"Raj Patel",title:"Owner",emailPhone:"rpatel@medfirst-nc.com",cityMarket:"Cary",market:"Cary",vertical:"Healthcare Practices",orgSize:"10-49",sourceType:"Hunter.io",whyFit:"Owner-operated healthcare practice expanding to home visits; no HR infrastructure.",leadPainPoint:"Clinical staff classification, HIPAA + HR crossover",priorityScore:"8"},
-  {companyName:"Brightpath Learning Center",contactName:"Tanya Green",title:"Executive Director",emailPhone:"tgreen@brightpath-ed.org",cityMarket:"Rocky Mount",market:"Rocky Mount",vertical:"Education & Schools",orgSize:"50-99",sourceType:"Claude AI",whyFit:"Charter school with teacher classification issues and substitute worker exposure.",leadPainPoint:"Teacher aide classification, FMLA compliance",priorityScore:"7"},
-  {companyName:"NC Advocacy Network",contactName:"Marcus Bell",title:"Director",emailPhone:"mbell@ncadvocacy.org",cityMarket:"Raleigh",market:"Raleigh",vertical:"Advocacy Organizations",orgSize:"10-49",sourceType:"ChatGPT",whyFit:"Policy advocacy nonprofit scaling quickly without HR systems.",leadPainPoint:"Exempt status for policy staff, intern classification",priorityScore:"6"},
-  {companyName:"CaringBridge Senior Network",contactName:"Estelle Nguyen",title:"Regional VP",emailPhone:"anguyen@caringbridge-nc.org",cityMarket:"Durham",market:"Durham",vertical:"Home Health / Homecare",orgSize:"250-499",sourceType:"LinkedIn",whyFit:"Large home care network with multi-state operations and NC-specific wage exposure.",leadPainPoint:"Multi-state compliance, aide scheduling violations",priorityScore:"9"},
-  {companyName:"First Steps Family Services",contactName:"Denise Carter",title:"CEO",emailPhone:"dcarter@firststepsnc.org",cityMarket:"Charlotte",market:"Charlotte",vertical:"Human Services Nonprofits",orgSize:"100-249",sourceType:"Charity Navigator",whyFit:"Well-funded human services org with complex employee roster across 6 programs.",leadPainPoint:"Cross-program classification, FMLA administration",priorityScore:"8"},
-  {companyName:"Oak Ridge Environmental Group",contactName:"Samuel Park",title:"Executive Director",emailPhone:"spark@oakridgeenv.org",cityMarket:"Chapel Hill",market:"Chapel Hill",vertical:"Environmental Nonprofits",orgSize:"10-49",sourceType:"Gemini",whyFit:"Fast-growing env nonprofit moving from grant-only to mixed staffing model.",leadPainPoint:"First employment handbook, overtime policy",priorityScore:"6"},
-  {companyName:"Trailhead Construction Group",contactName:"Bobby Simmons",title:"GM",emailPhone:"bsimmons@trailheadcg.com",cityMarket:"Greenville",market:"Greenville",vertical:"Construction & Contractors",orgSize:"50-99",sourceType:"Apollo.io",whyFit:"Licensed GC with 40+ field workers and inconsistent 1099 vs W-2 classification.",leadPainPoint:"IRS 1099 exposure, workers comp classification",priorityScore:"8"},
-  {companyName:"Sandhills Family Foundation",contactName:"Helen Marshall",title:"President",emailPhone:"hmarshall@sandhill-ff.org",cityMarket:"Fayetteville",market:"Fayetteville",vertical:"Foundations & Grantmakers",orgSize:"1-9",sourceType:"Claude AI",whyFit:"Small private foundation transitioning to operational phase with first paid employees.",leadPainPoint:"Private foundation employee rules, conflict of interest",priorityScore:"7"},
-  {companyName:"WNC Homecare Partners",contactName:"Craig Lawson",title:"Owner",emailPhone:"clawson@wnchomecare.com",cityMarket:"Asheville",market:"Asheville",vertical:"Home Health / Homecare",orgSize:"10-49",sourceType:"Google Maps",whyFit:"Independent home care agency with scheduling compliance and overtime exposure.",leadPainPoint:"Travel time pay, companion service exemption",priorityScore:"7"},
-  {companyName:"Cape Fear Literacy Council",contactName:"Josephine Adams",title:"Executive Director",emailPhone:"jadams@capefearlit.org",cityMarket:"Wilmington",market:"Wilmington",vertical:"Education & Schools",orgSize:"10-49",sourceType:"State Registry",whyFit:"Literacy nonprofit with tutors classified as contractors — clear misclassification risk.",leadPainPoint:"Tutor contractor vs employee classification",priorityScore:"8"},
-  {companyName:"New Leaf Recovery Services",contactName:"Dr. Paul Chen",title:"Clinical Director",emailPhone:"pchen@newleafrecover.org",cityMarket:"Raleigh",market:"Raleigh",vertical:"Healthcare Practices",orgSize:"50-99",sourceType:"LinkedIn",whyFit:"Behavioral health clinic with clinical and support staff classification complexity.",leadPainPoint:"Clinical exempt status, on-call pay policy",priorityScore:"8"},
-];
 
 /* ════════════════════════════════════════════════════════════════
    EXCEL COLUMN MAP
@@ -706,15 +681,19 @@ function LoginScreen({users,onLogin}){
 /* ════════════════════════════════════════════════════════════════
    PROSPECT FINDER — AI-Powered Search Engine
 ════════════════════════════════════════════════════════════════ */
+// Every source below returns REAL data — no simulated/demo results.
+// Sources requiring an API key show a clear "requires key" state until
+// configured in Admin → Plugins; sources that need no key are always
+// LIVE. Coverage is intentionally scoped to what genuinely has a free,
+// legitimate, accessible data source — no source pretends to search
+// LinkedIn, ChatGPT, Gemini, or Charity Navigator, since none of those
+// have an accessible API for this without a paid/approved integration.
 const AI_SOURCES=[
-  {id:"claude",   label:"Claude AI",    icon:"🤖", color:"#c084fc", desc:"Anthropic's Claude for intelligent prospect discovery"},
-  {id:"chatgpt",  label:"ChatGPT",      icon:"🧠", color:"#10a37f", desc:"OpenAI GPT-4 for broad organizational research"},
-  {id:"gemini",   label:"Gemini",       icon:"✨", color:"#4285F4", desc:"Google Gemini for real-time web-sourced results"},
-  {id:"apollo",   label:"Apollo.io",    icon:"🚀", color:"#7c3aed", desc:"B2B database — requires API key. Live results route through a Supabase Edge Function proxy (required because Apollo blocks direct browser requests)."},
-  {id:"hunter",   label:"Hunter.io",    icon:"🎯", color:"#f59e0b", desc:"Email finder & verifier — requires API key. Returns real results."},
-  {id:"guidestar",label:"GuideStar",    icon:"🏛️", color:"#60a5fa", desc:"Real NC nonprofit data via ProPublica's free Nonprofit Explorer API (IRS Form 990 filings) — no API key needed, always LIVE."},
-  {id:"charity",  label:"Charity Navigator",icon:"⭐",color:"#34d399",desc:"Nonprofit ratings & financial health data"},
-  {id:"linkedin", label:"LinkedIn",     icon:"💼", color:"#0077b5", desc:"Professional network search"},
+  {id:"hunter",   label:"Hunter.io",        icon:"🎯", color:"#f59e0b", desc:"Real contacts + verified emails by company domain. Requires a free Hunter.io API key (Admin → Plugins)."},
+  {id:"apollo",   label:"Apollo.io",        icon:"🚀", color:"#7c3aed", desc:"Real B2B contacts (name, title, company). Requires an Apollo.io API key + the apollo-search proxy deployed. Apollo's API doesn't include email/phone on this endpoint."},
+  {id:"guidestar",label:"GuideStar",        icon:"🏛️", color:"#60a5fa", desc:"Real NC nonprofit data via ProPublica's free Nonprofit Explorer API (IRS Form 990 filings). No API key needed — always LIVE once the guidestar-search proxy is deployed."},
+  {id:"nppes",    label:"NPI Registry",     icon:"🩺", color:"#34d399", desc:"Real NC healthcare organizations (clinics, home health agencies, group practices) via the federal CMS NPI Registry. No API key needed — always LIVE once the nppes-search proxy is deployed."},
+  {id:"google",   label:"Google Search",    icon:"🔎", color:"#4285F4", desc:"Real web search results (company websites, news) via Google Custom Search. NOT a contact database — no email/title included. Requires Google API key configured server-side + the google-search proxy deployed."},
 ];
 
 /* ════════════════════════════════════════════════════════════════
@@ -937,6 +916,205 @@ function proPublicaOrgToProspect(org, vertical, market){
   };
 }
 
+/* ════════════════════════════════════════════════════════════════
+   NPPES NPI REGISTRY — real healthcare/home-health org data, NO KEY
+   ─────────────────────────────────────────────────────────────
+   Free, public, no-auth API maintained by CMS (Centers for Medicare
+   & Medicaid Services) covering 7M+ active healthcare provider
+   records — including organizations (NPI-2: clinics, home health
+   agencies, group practices), not just individual clinicians.
+   Powers REAL results for "Healthcare Practices" and "Home Health /
+   Homecare" verticals — a strong fit since this is exactly the kind
+   of organization HR On Demand targets.
+   Docs: https://npiregistry.cms.hhs.gov/api-page
+════════════════════════════════════════════════════════════════ */
+
+// Map CRM verticals to NUCC taxonomy description search terms (wildcard
+// trailing * supported by the API after 2+ characters). Verticals not
+// listed here aren't covered by NPPES (it's healthcare-provider data
+// only) — runSearch() only routes matching verticals to this source.
+const VERTICAL_TO_NPPES_TAXONOMY = {
+  "Healthcare Practices": "",          // no taxonomy filter — broadest match across all practice types
+  "Home Health / Homecare": "Home Health",
+};
+
+function nppesOrgToProspect(record, vertical, market){
+  const org = record.basic?.organization_name || [record.basic?.first_name,record.basic?.last_name].filter(Boolean).join(" ") || "Unknown Provider";
+  const loc = (record.addresses||[]).find(a=>a.address_purpose==="LOCATION") || record.addresses?.[0] || {};
+  const cityTitleCase = loc.city ? loc.city.split(" ").map(w=>w.charAt(0)+(w.slice(1)||"").toLowerCase()).join(" ") : "";
+  const phone = loc.telephone_number || "";
+  const primaryTaxonomy = (record.taxonomies||[]).find(t=>t.primary) || record.taxonomies?.[0] || {};
+  const authOfficial = record.basic?.authorized_official_first_name
+    ? [record.basic.authorized_official_first_name, record.basic.authorized_official_last_name].filter(Boolean).join(" ")
+    : "";
+  return {
+    companyName: org,
+    contactName: authOfficial,
+    title: authOfficial ? (record.basic?.authorized_official_title_or_position || "Authorized Official") : "",
+    // NPPES provides a phone number (rare among our other sources!) but
+    // never an email — be explicit about which one this is.
+    emailPhone: phone || "",
+    cityMarket: cityTitleCase || market || "",
+    market: market || cityTitleCase || "",
+    sourceUrl: `https://npiregistry.cms.hhs.gov/registry/provider-view/${record.number}`,
+    sourceType: "NPI Registry (NPPES/CMS)",
+    verificationNotes: `NPI ${record.number} — ${primaryTaxonomy.desc||"Healthcare provider"}.${phone?` Phone: ${phone}.`:" No phone on file."} Email not available via NPPES — try the organization's website or Hunter.io.`,
+    whyFit: `Found via the federal NPI Registry (CMS) for "${vertical}" in ${cityTitleCase||market||"NC"}. Taxonomy: ${primaryTaxonomy.desc||"—"}.`,
+    vertical: vertical || "",
+    hrPersonListed: "No",
+    hrPeopleContact: "",
+    orgSize: "",
+    leadPainPoint: "",
+    priorityScore: "",
+    _npi: record.number,
+  };
+}
+
+// Search the NPPES NPI Registry — routed through a Supabase Edge
+// Function proxy (supabase/functions/nppes-search) since this API's
+// CORS support is unconfirmed/inconsistent. No API key involved.
+// enumeration_type=NPI-2 restricts results to ORGANIZATIONS (clinics,
+// agencies, group practices) rather than individual clinicians, since
+// the CRM targets organizational HR compliance prospects.
+async function nppesSearch(query, vertical, market, log){
+  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — NPI Registry proxy requires Supabase", results:[]};
+
+  try{
+    const taxonomy = VERTICAL_TO_NPPES_TAXONOMY[vertical];
+    const orgName = query.trim() ? `${query.trim()}*` : null;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/nppes-search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "apikey": SUPABASE_KEY,
+      },
+      body: JSON.stringify({
+        organizationName: orgName,
+        taxonomyDescription: taxonomy || null,
+        state: "NC",
+      }),
+    });
+
+    if(res.status===404){
+      log?.(`NPI Registry (CMS): Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the NPI Registry proxy" to enable live results.`);
+      return {ok:false, reason:"no_proxy", results:[]};
+    }
+
+    const data = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      log?.(`NPI Registry (CMS): ${data?.error||`HTTP ${res.status}`}`);
+      return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
+    }
+
+    const records = (data?.results||[]).filter(r=>r.enumeration_type==="NPI-2"); // orgs only
+    if(records.length===0){
+      log?.(`NPI Registry (CMS): No NC ${vertical||"healthcare"} organizations found for "${query||"(any)"}" — try a broader org name or remove the keyword.`);
+      return {ok:true, results:[]};
+    }
+
+    const results = records.slice(0,10).map(r => nppesOrgToProspect(r, vertical, market));
+    log?.(`NPI Registry (CMS): Found ${data.result_count||records.length} NC organization(s) via proxy — showing ${results.length}`);
+    return {ok:true, results};
+  }catch(e){
+    log?.(`NPI Registry (CMS): ${e.message}`);
+    return {ok:false, reason:"network_error", message:e.message, results:[]};
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   GOOGLE CUSTOM SEARCH — real web search results, requires API key
+   ─────────────────────────────────────────────────────────────
+   IMPORTANT — this is NOT a contact database. Google Custom Search
+   returns web page results (title, URL, snippet) — it has no concept
+   of a person's name, email, or job title. This source is useful for
+   finding a company's website, recent news, or general presence —
+   the CRM maps results into companyName/sourceUrl/whyFit, and leaves
+   contactName/title/emailPhone honestly blank rather than guessing.
+   Pair this with Hunter.io (same company domain) to find a contact.
+
+   Routed through a Supabase Edge Function proxy (supabase/functions/
+   google-search) because the API key must stay server-side — Google's
+   key restrictions can limit it to specific HTTP referrers, but a
+   proxy is the more robust approach since the key is configured as a
+   Supabase secret, not sent from the browser at all.
+   Docs: https://developers.google.com/custom-search/v1/overview
+════════════════════════════════════════════════════════════════ */
+function googleResultToProspect(item, vertical, market){
+  let domain = "";
+  try{ domain = new URL(item.link).hostname.replace(/^www\./,""); }catch{}
+  return {
+    companyName: item.title || domain || "Unknown",
+    contactName: "",
+    title: "",
+    // Honestly blank — Google web search has no contact data. Left
+    // blank rather than guessed so the field never shows wrong info.
+    emailPhone: "",
+    cityMarket: market || "",
+    market: market || "",
+    sourceUrl: item.link || "",
+    sourceType: "Google Search",
+    verificationNotes: `Found via Google web search — not a contact database. No email/phone available; search "${domain}" in Hunter.io to find a contact.`,
+    whyFit: item.snippet || `Found via Google search for "${vertical||"organizations"}" in ${market||"NC"}.`,
+    vertical: vertical || "",
+    hrPersonListed: "No",
+    hrPeopleContact: "",
+    orgSize: "",
+    leadPainPoint: "",
+    priorityScore: "",
+  };
+}
+
+async function googleSearch(query, vertical, market, log){
+  if(!query.trim()&&!vertical) return {ok:false, reason:"no_query", results:[]};
+  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — Google Search proxy requires Supabase", results:[]};
+
+  try{
+    // Build a query that actually targets NC organizations in the
+    // chosen vertical, rather than a bare keyword — Google web search
+    // needs more context than a domain-search API does.
+    const parts = [query.trim(), vertical, market||"North Carolina"].filter(Boolean);
+    const q = parts.join(" ");
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/google-search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "apikey": SUPABASE_KEY,
+      },
+      body: JSON.stringify({ query: q, num: 10 }),
+    });
+
+    if(res.status===404){
+      log?.(`Google Search: Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the Google Search proxy" to enable live results.`);
+      return {ok:false, reason:"no_proxy", results:[]};
+    }
+
+    const data = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      log?.(`Google Search: ${data?.error||`HTTP ${res.status}`}`);
+      return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
+    }
+
+    const items = data?.items || [];
+    if(items.length===0){
+      log?.(`Google Search: No results for "${q}" — try a broader query.`);
+      return {ok:true, results:[]};
+    }
+
+    const results = items.map(item => googleResultToProspect(item, vertical, market));
+    log?.(`Google Search: Found ${results.length} result(s) for "${q}" — note: web results, not a contact database.`);
+    return {ok:true, results};
+  }catch(e){
+    log?.(`Google Search: ${e.message}`);
+    return {ok:false, reason:"network_error", message:e.message, results:[]};
+  }
+}
+
 // Search ProPublica's Nonprofit Explorer — routed through a Supabase
 // Edge Function proxy (supabase/functions/guidestar-search) because
 // ProPublica's API does not send CORS headers and blocks direct
@@ -998,7 +1176,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [market,setMarket]=useState("");
   const [orgSize,setOrgSize]=useState("");
   const [orgType,setOrgType]=useState("all"); // all | nonprofit | smb
-  const [selectedSources,setSelectedSources]=useState(["claude","chatgpt","gemini"]);
+  const [selectedSources,setSelectedSources]=useState(["guidestar","nppes"]); // default to the always-live, no-key sources
   const [searching,setSearching]=useState(false);
   const [results,setResults]=useState([]);
   const [selected,setSelected]=useState(new Set());
@@ -1047,51 +1225,14 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
     const prog={};selectedSources.forEach(s=>{prog[s]="searching";});
     setProgress({...prog});
 
-    // Mock-data sources (simulated, staggered timing) vs live API sources.
-    // - hunter/apollo: live only when an API key is configured (Apollo via
-    //   the Supabase Edge Function proxy).
-    // - guidestar: ALWAYS live — backed by ProPublica's free, no-key
-    //   Nonprofit Explorer API (real IRS Form 990 data for NC nonprofits).
-    const liveSources=selectedSources.filter(s=>(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||s==="guidestar");
-    const mockSources=selectedSources.filter(s=>!liveSources.includes(s));
-
     let allResults=[];
     const pushResults=(chunk)=>{allResults=[...allResults,...chunk];setResults([...allResults]);};
 
-    // ── Mock sources — original simulated search over MOCK_PROSPECTS ──
-    const filtered=MOCK_PROSPECTS.filter(p=>{
-      const qL=query.toLowerCase();
-      const matchQ=!query||(p.companyName+p.contactName+p.whyFit+p.leadPainPoint+p.vertical+p.cityMarket).toLowerCase().includes(qL);
-      const matchV=!vertical||p.vertical===vertical;
-      const matchM=!market||p.market===market;
-      const matchS=!orgSize||p.orgSize===orgSize;
-      const matchT=orgType==="all"||(orgType==="nonprofit"&&(p.vertical||"").toLowerCase().includes("nonprofit")||orgType==="nonprofit"&&["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical))||(orgType==="smb"&&!["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical));
-      return matchQ&&matchV&&matchM&&matchS&&matchT;
-    });
-
-    const total=filtered.length;
-    const perSource=Math.max(2,Math.ceil(total/Math.max(mockSources.length,1)));
-
-    for(let i=0;i<mockSources.length;i++){
-      const src=mockSources[i];
-      const delay=i*700+400;
-      setTimeout(()=>{
-        const srcInfo=AI_SOURCES.find(s=>s.id===src);
-        log(`${srcInfo?.label||src}: Searching…`);
-        setProgress(p=>({...p,[src]:"loading"}));
-      },delay);
-      setTimeout(()=>{
-        const start=i*perSource;
-        const chunk=filtered.slice(start,start+perSource).map(p=>({...p,_id:uid(),_source:src,_verified:Math.random()>0.3}));
-        const srcInfo=AI_SOURCES.find(s=>s.id===src);
-        log(`${srcInfo?.label||src}: Found ${chunk.length} prospects (demo data)`);
-        setProgress(p=>({...p,[src]:"done"}));
-        pushResults(chunk);
-      },delay+900);
-    }
-
-    // ── Live sources — real API calls to Hunter.io / Apollo.io ──
-    for(const src of liveSources){
+    // Every source is a real API call — no simulated/demo data exists
+    // anywhere in this flow. Sources run in sequence (not parallel) so
+    // the search log reads top-to-bottom in the order selected, and so
+    // a slow/failing source doesn't block the others from completing.
+    for(const src of selectedSources){
       const srcInfo=AI_SOURCES.find(s=>s.id===src);
       log(`${srcInfo?.label||src}: Searching live API…`);
       setProgress(p=>({...p,[src]:"loading"}));
@@ -1103,6 +1244,10 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         outcome=await apolloSearch(query,sysSettings.apolloKey,vertical,market,log);
       }else if(src==="guidestar"){
         outcome=await guidestarSearch(query,vertical,market,log);
+      }else if(src==="nppes"){
+        outcome=await nppesSearch(query,vertical,market,log);
+      }else if(src==="google"){
+        outcome=await googleSearch(query,vertical,market,log);
       }
 
       if(outcome?.ok){
@@ -1114,14 +1259,13 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         }
       }else{
         setProgress(p=>({...p,[src]:"error"}));
+        const PROXY_LABELS={guidestar:"GuideStar",nppes:"NPI Registry",google:"Google Search",apollo:"Apollo"};
+        const proxyLabel=PROXY_LABELS[src]||srcInfo?.label||src;
+        const isGovApi=["guidestar","nppes"].includes(src);
         const reasonMsg={
-          no_proxy: src==="guidestar"
-            ? "GuideStar proxy not deployed — see SETUP_GUIDE.md to enable live results"
-            : "Apollo proxy not deployed — see SETUP_GUIDE.md to enable live Apollo results",
-          cors_blocked: src==="guidestar"
-            ? "blocked by browser (CORS) — requires the GuideStar proxy (see SETUP_GUIDE.md)"
-            : "blocked by browser (CORS) — requires the Apollo proxy (see SETUP_GUIDE.md)",
-          api_error:`API error — ${outcome?.message||(src==="guidestar"?"ProPublica API may be temporarily down":"check your API key in Admin → Plugins")}`,
+          no_proxy:`${proxyLabel} proxy not deployed — see SETUP_GUIDE.md to enable live results`,
+          cors_blocked:`blocked by browser (CORS) — requires the ${proxyLabel} proxy (see SETUP_GUIDE.md)`,
+          api_error:`API error — ${outcome?.message||(isGovApi?"the government API may be temporarily down":"check your API key in Admin → Plugins")}`,
           network_error:`network error — ${outcome?.message||"unknown"}`,
           no_key:"no API key configured",
           no_query:"enter a search query (Hunter/Apollo need a company name or domain)",
@@ -1130,10 +1274,10 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
       }
     }
 
-    setTimeout(()=>{
-      setSearching(false);
-      log("Search complete.");
-    },mockSources.length>0?mockSources.length*700+1400:200);
+    // All sources have been awaited sequentially above — search is
+    // already complete by this point, no artificial delay needed.
+    setSearching(false);
+    log("Search complete.");
   };
 
   const doAdd=()=>{
@@ -1173,7 +1317,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           {AI_SOURCES.map(s=>{
             const active=selectedSources.includes(s.id);
             const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
-            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||s.id==="guidestar";
+            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","google"].includes(s.id);
             return(
               <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
                 style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
@@ -1223,10 +1367,17 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             )}
           </FG>
           <FG label="Organization Type">
-            <select value={orgType} onChange={e=>setOrgType(e.target.value)} style={{...inp(),cursor:"pointer"}}>
+            <select value={orgType} onChange={e=>{
+              const v=e.target.value; setOrgType(v);
+              // Nudge the source selection toward the sources that actually
+              // cover this org type — doesn't force it, just helps.
+              if(v==="nonprofit"&&!selectedSources.includes("guidestar")) setSelectedSources(s=>[...s,"guidestar"]);
+              if(v==="healthcare"&&!selectedSources.includes("nppes")) setSelectedSources(s=>[...s,"nppes"]);
+            }} style={{...inp(),cursor:"pointer"}}>
               <option value="all">All Organizations</option>
-              <option value="nonprofit">Nonprofits Only</option>
-              <option value="smb">SMB / For-Profit Only</option>
+              <option value="nonprofit">Nonprofits (501c) — best with GuideStar</option>
+              <option value="healthcare">Healthcare / Home Health — best with NPI Registry</option>
+              <option value="smb">SMB / For-Profit — best with Hunter.io / Apollo.io</option>
             </select>
           </FG>
           <FG label="Vertical / Industry">
@@ -1237,11 +1388,6 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           <FG label="Market / City">
             <select value={market} onChange={e=>setMarket(e.target.value)} style={{...inp(),cursor:"pointer"}}>
               <option value="">All Markets</option>{MARKETS.map(m=><option key={m}>{m}</option>)}
-            </select>
-          </FG>
-          <FG label="Org Size">
-            <select value={orgSize} onChange={e=>setOrgSize(e.target.value)} style={{...inp(),cursor:"pointer"}}>
-              <option value="">Any Size</option>{ORG_SIZES.map(s=><option key={s}>{s}</option>)}
             </select>
           </FG>
           <FG label="&nbsp;">
@@ -1269,7 +1415,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             {selectedSources.map(s=>{
               const si=AI_SOURCES.find(x=>x.id===s);
               const st=progress[s];
-              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||s==="guidestar";
+              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","google"].includes(s);
               return(
                 <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(255,255,255,0.08)"}`,borderRadius:20}}>
                   <span style={{fontSize:13}}>{si?.icon}</span>
@@ -1374,9 +1520,8 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
               <div style={{textAlign:"center",padding:"32px 0",color:WD}}>
                 <p style={{fontSize:40,margin:"0 0 10px"}}>🔍</p>
                 <p style={{margin:0,fontSize:14,color:WM}}>No prospects found for this search</p>
-                <p style={{margin:"6px 0 0",fontSize:12}}>Try broadening your filters — remove the org size, switch verticals, or search "All Markets"</p>
+                <p style={{margin:"6px 0 0",fontSize:12}}>Try a broader keyword, switch verticals, or search "All Markets"</p>
                 <div style={{display:"flex",gap:7,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
-                  {orgSize&&<button onClick={()=>setOrgSize("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Org Size</button>}
                   {vertical&&<button onClick={()=>setVertical("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Vertical</button>}
                   {market&&<button onClick={()=>setMarket("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Market</button>}
                   {orgType!=="all"&&<button onClick={()=>setOrgType("all")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>All Org Types</button>}
