@@ -693,7 +693,7 @@ const AI_SOURCES=[
   {id:"apollo",   label:"Apollo.io",        icon:"🚀", color:"#7c3aed", desc:"Real B2B contacts (name, title, company). Requires an Apollo.io API key + the apollo-search proxy deployed. Apollo's API doesn't include email/phone on this endpoint."},
   {id:"guidestar",label:"GuideStar",        icon:"🏛️", color:"#60a5fa", desc:"Real NC nonprofit data via ProPublica's free Nonprofit Explorer API (IRS Form 990 filings). No API key needed — always LIVE once the guidestar-search proxy is deployed."},
   {id:"nppes",    label:"NPI Registry",     icon:"🩺", color:"#34d399", desc:"Real NC healthcare organizations (clinics, home health agencies, group practices) via the federal CMS NPI Registry. No API key needed — always LIVE once the nppes-search proxy is deployed."},
-  {id:"google",   label:"Google Search",    icon:"🔎", color:"#4285F4", desc:"Real web search results (company websites, news) via Google Custom Search. NOT a contact database — no email/title included. Requires Google API key configured server-side + the google-search proxy deployed."},
+  {id:"osm",      label:"Local Business Directory", icon:"🗺️", color:"#84cc16", desc:"Real local businesses (construction, manufacturing, childcare, general SMB) via OpenStreetMap's free, no-key Overpass API. Coverage varies by area — community-mapped data, not a complete census."},
 ];
 
 /* ════════════════════════════════════════════════════════════════
@@ -1025,39 +1025,75 @@ async function nppesSearch(query, vertical, market, log){
 }
 
 /* ════════════════════════════════════════════════════════════════
-   GOOGLE CUSTOM SEARCH — real web search results, requires API key
+   OPENSTREETMAP / OVERPASS API — real local business data, NO KEY
    ─────────────────────────────────────────────────────────────
-   IMPORTANT — this is NOT a contact database. Google Custom Search
-   returns web page results (title, URL, snippet) — it has no concept
-   of a person's name, email, or job title. This source is useful for
-   finding a company's website, recent news, or general presence —
-   the CRM maps results into companyName/sourceUrl/whyFit, and leaves
-   contactName/title/emailPhone honestly blank rather than guessing.
-   Pair this with Hunter.io (same company domain) to find a contact.
+   Free, public, no-auth, no-billing API serving OpenStreetMap's
+   community-maintained business/POI data — 10,000 requests/day per
+   IP, no signup required. Fills the gap GuideStar (nonprofits) and
+   NPI Registry (healthcare) don't cover: construction, manufacturing/
+   logistics, childcare, and general SMB — exactly the verticals this
+   CRM otherwise has no real source for.
 
-   Routed through a Supabase Edge Function proxy (supabase/functions/
-   google-search) because the API key must stay server-side — Google's
-   key restrictions can limit it to specific HTTP referrers, but a
-   proxy is the more robust approach since the key is configured as a
-   Supabase secret, not sent from the browser at all.
-   Docs: https://developers.google.com/custom-search/v1/overview
+   Coverage caveat, stated honestly: OSM data is community-contributed
+   and coverage varies by area and category. Major/established
+   businesses are usually well-tagged; small or newer businesses may
+   be missing or have incomplete contact info. This is real data, not
+   a complete census — treat sparse results as "OSM doesn't have this
+   indexed yet," not as "no businesses exist."
+   Docs: https://wiki.openstreetmap.org/wiki/Overpass_API
 ════════════════════════════════════════════════════════════════ */
-function googleResultToProspect(item, vertical, market){
-  let domain = "";
-  try{ domain = new URL(item.link).hostname.replace(/^www\./,""); }catch{}
+
+// Map CRM verticals to OSM tag queries. Each entry is a list of
+// [key,value] tag pairs ORed together — e.g. Construction matches
+// craft=electrician OR craft=plumber OR office=construction, etc.
+const VERTICAL_TO_OSM_TAGS = {
+  "Construction & Contractors": [["office","construction"],["craft","electrician"],["craft","plumber"],["craft","carpenter"],["craft","painter"],["craft","roofer"],["craft","hvac"]],
+  "Light Manufacturing & Logistics": [["man_made","works"],["industrial","factory"],["building","warehouse"],["office","logistics"]],
+  "Childcare & Licensed Group Homes": [["amenity","childcare"],["amenity","kindergarten"]],
+  "Education & Schools": [["amenity","school"],["amenity","college"]],
+};
+// Fallback when the vertical has no specific mapping (or "All
+// Verticals" is selected) — searches general small-business office/
+// shop categories rather than returning nothing.
+const OSM_FALLBACK_TAGS = [["office","company"],["office","yes"],["shop","yes"]];
+
+// NC city centers used to anchor the Overpass "around" radius search.
+// Overpass needs a coordinate, not just a city name — these are
+// approximate downtown coordinates for each CRM market.
+const NC_CITY_COORDS = {
+  "Raleigh":[35.7796,-78.6382], "Durham":[35.9940,-78.8986], "Chapel Hill":[35.9132,-79.0558],
+  "Greenville":[35.6127,-77.3664], "Cary":[35.7915,-78.7811], "Wilmington":[34.2257,-77.9447],
+  "Charlotte":[35.2271,-80.8431], "Asheville":[35.5951,-82.5515], "Fayetteville":[35.0527,-78.8784],
+  "Greensboro":[36.0726,-79.7920], "Winston-Salem":[36.0999,-80.2442], "High Point":[35.9557,-80.0053],
+  "Rocky Mount":[35.9382,-77.7905], "Goldsboro":[35.3849,-77.9928],
+};
+const DEFAULT_NC_COORDS = [35.7596,-79.0193]; // geographic center of NC, used when no market is selected
+
+function osmTagsToOverpassQuery(tags, lat, lon, radiusMeters){
+  const clauses = tags.map(([k,v])=>`node["${k}"="${v}"](around:${radiusMeters},${lat},${lon});way["${k}"="${v}"](around:${radiusMeters},${lat},${lon});`).join("");
+  return `[out:json][timeout:25];(${clauses});out center 20;`;
+}
+
+function osmElementToProspect(el, vertical, market){
+  const tags = el.tags || {};
+  const name = tags.name || tags["operator"] || "Unnamed business (OSM)";
+  const addrParts = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
+  const city = tags["addr:city"] || market || "";
+  const phone = tags.phone || tags["contact:phone"] || "";
+  const website = tags.website || tags["contact:website"] || "";
+  const category = tags.craft || tags.office || tags.shop || tags.amenity || tags.man_made || tags.industrial || tags.building || "business";
   return {
-    companyName: item.title || domain || "Unknown",
+    companyName: name,
     contactName: "",
     title: "",
-    // Honestly blank — Google web search has no contact data. Left
-    // blank rather than guessed so the field never shows wrong info.
-    emailPhone: "",
-    cityMarket: market || "",
-    market: market || "",
-    sourceUrl: item.link || "",
-    sourceType: "Google Search",
-    verificationNotes: `Found via Google web search — not a contact database. No email/phone available; search "${domain}" in Hunter.io to find a contact.`,
-    whyFit: item.snippet || `Found via Google search for "${vertical||"organizations"}" in ${market||"NC"}.`,
+    // OSM sometimes has a phone number but never an email — be explicit.
+    emailPhone: phone || "",
+    cityMarket: city,
+    market: market || city,
+    sourceUrl: website || (el.id ? `https://www.openstreetmap.org/${el.type}/${el.id}` : ""),
+    sourceType: "OpenStreetMap (Overpass)",
+    verificationNotes: `Community-mapped OSM data (category: ${category}).${addrParts?` Address: ${addrParts}, ${city}.`:""}${phone?` Phone: ${phone}.`:""} Email not available — check the website${website?"":" (not listed)"} or try Hunter.io for this domain.`,
+    whyFit: `Found via OpenStreetMap for "${vertical||category}" near ${market||"NC"}.`,
     vertical: vertical || "",
     hrPersonListed: "No",
     hrPeopleContact: "",
@@ -1067,50 +1103,58 @@ function googleResultToProspect(item, vertical, market){
   };
 }
 
-async function googleSearch(query, vertical, market, log){
-  if(!query.trim()&&!vertical) return {ok:false, reason:"no_query", results:[]};
-  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — Google Search proxy requires Supabase", results:[]};
+// Search OpenStreetMap via the Overpass API — routed through a
+// Supabase Edge Function proxy (supabase/functions/osm-search) since
+// Overpass's CORS support is inconsistent across its public mirror
+// servers. No API key involved on either hop; OSM data is fully open
+// (ODbL license — attribution required, which the UI provides).
+async function osmSearch(query, vertical, market, log){
+  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — OpenStreetMap proxy requires Supabase", results:[]};
 
   try{
-    // Build a query that actually targets NC organizations in the
-    // chosen vertical, rather than a bare keyword — Google web search
-    // needs more context than a domain-search API does.
-    const parts = [query.trim(), vertical, market||"North Carolina"].filter(Boolean);
-    const q = parts.join(" ");
+    const [lat,lon] = market && NC_CITY_COORDS[market] ? NC_CITY_COORDS[market] : DEFAULT_NC_COORDS;
+    const radius = market ? 15000 : 60000; // tighter radius for a specific city, wider for "All Markets"
+    const tags = VERTICAL_TO_OSM_TAGS[vertical] || OSM_FALLBACK_TAGS;
+    const overpassQL = osmTagsToOverpassQuery(tags, lat, lon, radius);
 
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/google-search`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/osm-search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SUPABASE_KEY}`,
         "apikey": SUPABASE_KEY,
       },
-      body: JSON.stringify({ query: q, num: 10 }),
+      body: JSON.stringify({ overpassQL }),
     });
 
     if(res.status===404){
-      log?.(`Google Search: Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the Google Search proxy" to enable live results.`);
+      log?.(`OpenStreetMap: Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the OpenStreetMap proxy" to enable live results.`);
       return {ok:false, reason:"no_proxy", results:[]};
     }
 
     const data = await res.json().catch(()=>({}));
 
     if(!res.ok){
-      log?.(`Google Search: ${data?.error||`HTTP ${res.status}`}`);
+      log?.(`OpenStreetMap: ${data?.error||`HTTP ${res.status}`}`);
       return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
     }
 
-    const items = data?.items || [];
-    if(items.length===0){
-      log?.(`Google Search: No results for "${q}" — try a broader query.`);
+    const elements = (data?.elements||[]).filter(el=>el.tags?.name); // skip unnamed nodes
+    if(elements.length===0){
+      log?.(`OpenStreetMap: No tagged businesses found near ${market||"NC"} for "${vertical||"this category"}" — OSM coverage varies by area; try a nearby city or a broader vertical.`);
       return {ok:true, results:[]};
     }
 
-    const results = items.map(item => googleResultToProspect(item, vertical, market));
-    log?.(`Google Search: Found ${results.length} result(s) for "${q}" — note: web results, not a contact database.`);
+    // Apply free-text query as a simple name/category filter if provided
+    const qL = query.trim().toLowerCase();
+    const filtered = qL ? elements.filter(el=>(el.tags.name||"").toLowerCase().includes(qL)) : elements;
+    const finalEls = (filtered.length>0?filtered:elements).slice(0,10);
+
+    const results = finalEls.map(el => osmElementToProspect(el, vertical, market));
+    log?.(`OpenStreetMap: Found ${elements.length} business(es) via proxy — showing ${results.length} (data © OpenStreetMap contributors, ODbL)`);
     return {ok:true, results};
   }catch(e){
-    log?.(`Google Search: ${e.message}`);
+    log?.(`OpenStreetMap: ${e.message}`);
     return {ok:false, reason:"network_error", message:e.message, results:[]};
   }
 }
@@ -1176,7 +1220,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [market,setMarket]=useState("");
   const [orgSize,setOrgSize]=useState("");
   const [orgType,setOrgType]=useState("all"); // all | nonprofit | smb
-  const [selectedSources,setSelectedSources]=useState(["guidestar","nppes"]); // default to the always-live, no-key sources
+  const [selectedSources,setSelectedSources]=useState(["guidestar","nppes","osm"]); // default to the always-live, no-key sources
   const [searching,setSearching]=useState(false);
   const [results,setResults]=useState([]);
   const [selected,setSelected]=useState(new Set());
@@ -1246,8 +1290,8 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         outcome=await guidestarSearch(query,vertical,market,log);
       }else if(src==="nppes"){
         outcome=await nppesSearch(query,vertical,market,log);
-      }else if(src==="google"){
-        outcome=await googleSearch(query,vertical,market,log);
+      }else if(src==="osm"){
+        outcome=await osmSearch(query,vertical,market,log);
       }
 
       if(outcome?.ok){
@@ -1259,13 +1303,13 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         }
       }else{
         setProgress(p=>({...p,[src]:"error"}));
-        const PROXY_LABELS={guidestar:"GuideStar",nppes:"NPI Registry",google:"Google Search",apollo:"Apollo"};
+        const PROXY_LABELS={guidestar:"GuideStar",nppes:"NPI Registry",osm:"OpenStreetMap",apollo:"Apollo"};
         const proxyLabel=PROXY_LABELS[src]||srcInfo?.label||src;
-        const isGovApi=["guidestar","nppes"].includes(src);
+        const noKeySource=["guidestar","nppes","osm"].includes(src);
         const reasonMsg={
           no_proxy:`${proxyLabel} proxy not deployed — see SETUP_GUIDE.md to enable live results`,
           cors_blocked:`blocked by browser (CORS) — requires the ${proxyLabel} proxy (see SETUP_GUIDE.md)`,
-          api_error:`API error — ${outcome?.message||(isGovApi?"the government API may be temporarily down":"check your API key in Admin → Plugins")}`,
+          api_error:`API error — ${outcome?.message||(noKeySource?"the underlying API may be temporarily unavailable":"check your API key in Admin → Plugins")}`,
           network_error:`network error — ${outcome?.message||"unknown"}`,
           no_key:"no API key configured",
           no_query:"enter a search query (Hunter/Apollo need a company name or domain)",
@@ -1317,7 +1361,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
           {AI_SOURCES.map(s=>{
             const active=selectedSources.includes(s.id);
             const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
-            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","google"].includes(s.id);
+            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s.id);
             return(
               <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
                 style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
@@ -1415,7 +1459,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             {selectedSources.map(s=>{
               const si=AI_SOURCES.find(x=>x.id===s);
               const st=progress[s];
-              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","google"].includes(s);
+              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s);
               return(
                 <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(255,255,255,0.08)"}`,borderRadius:20}}>
                   <span style={{fontSize:13}}>{si?.icon}</span>
@@ -1465,6 +1509,9 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                   <button key={k} onClick={()=>setSortBy(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${sortBy===k?"rgba(96,165,250,0.4)":BR}`,background:sortBy===k?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.03)",color:sortBy===k?"#60a5fa":WD,cursor:"pointer",fontWeight:sortBy===k?700:500}}>{l}</button>
                 ))}
               </div>
+              {results.some(r=>r._source==="osm")&&(
+                <p style={{margin:0,fontSize:9,color:WD}}>Local Business Directory results © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" style={{color:WD,textDecoration:"underline"}}>OpenStreetMap contributors</a>, ODbL.</p>
+              )}
             </div>
           )}
 
