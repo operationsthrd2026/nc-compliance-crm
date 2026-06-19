@@ -1213,8 +1213,45 @@ async function guidestarSearch(query, vertical, market, log){
   }
 }
 
+/* ════════════════════════════════════════════════════════════════
+   NC CHAMBER OF COMMERCE DIRECTORY — manual-search reference, NOT
+   an automated source.
+   ─────────────────────────────────────────────────────────────
+   Local chamber-of-commerce member directories are real, valuable
+   prospect sources, but none offer a public API and most explicitly
+   prohibit automated/scripted access in their terms of use (same
+   restriction as the NC Secretary of State's business registry).
+   Rather than scrape them — which would violate their terms — this
+   is a curated list of direct links to each chamber's own member/
+   business directory search page, for the VA to search manually.
+   This is intentionally separate from AI_SOURCES/runSearch since it
+   is not a "click search, get results" automated flow.
+════════════════════════════════════════════════════════════════ */
+const NC_CHAMBER_DIRECTORY = [
+  {market:"Raleigh",       name:"Greater Raleigh Chamber of Commerce",        url:"https://www.raleighchamber.org/",                 directoryUrl:"https://web.raleighchamber.org/directory/", note:"1,800+ member firms — Wake County's largest business org"},
+  {market:"Durham",        name:"Greater Durham Chamber of Commerce",         url:"https://durhamchamber.org/",                      directoryUrl:"https://durhamchamber.org/business-directory/"},
+  {market:"Chapel Hill",   name:"Chapel Hill–Carrboro Chamber of Commerce",   url:"https://www.carolinachamber.org/",                directoryUrl:"https://www.carolinachamber.org/list/"},
+  {market:"Cary",          name:"Cary Chamber of Commerce",                  url:"https://www.carychamber.com/",                    directoryUrl:"https://www.carychamber.com/list/"},
+  {market:"Charlotte",     name:"Charlotte Regional Business Alliance",       url:"https://charlotteregion.com/",                    directoryUrl:"https://charlotteregion.com/membership-directory/"},
+  {market:"Greensboro",    name:"Greensboro Chamber of Commerce",             url:"https://greensboro.org/",                         directoryUrl:"https://greensboro.org/member-directory/"},
+  {market:"Winston-Salem", name:"Winston-Salem Chamber of Commerce",          url:"https://winstonsalem.com/",                       directoryUrl:"https://winstonsalem.com/directory/"},
+  {market:"High Point",    name:"High Point Chamber of Commerce",             url:"https://www.highpointnc.org/",                    directoryUrl:"https://www.highpointnc.org/member-directory/"},
+  {market:"Wilmington",    name:"Wilmington Chamber of Commerce",             url:"https://wilmingtonchamber.org/",                  directoryUrl:"https://wilmingtonchamber.org/directory/", note:"1,000+ members, southeastern NC"},
+  {market:"Asheville",     name:"Asheville Area Chamber of Commerce",         url:"https://www.ashevillechamber.org/",               directoryUrl:"https://www.ashevillechamber.org/member-directory/"},
+  {market:"Fayetteville",  name:"Fayetteville Chamber of Commerce",           url:"https://www.fayettevillencchamber.org/",          directoryUrl:"https://www.fayettevillencchamber.org/list/"},
+  {market:"Rocky Mount",   name:"Rocky Mount Area Chamber of Commerce",       url:"https://rockymountchamber.org/",                  directoryUrl:"https://rockymountchamber.org/directory/"},
+  {market:"Goldsboro",     name:"Greater Goldsboro Chamber of Commerce",      url:"https://goldsborochamber.org/",                   directoryUrl:"https://goldsborochamber.org/directory/"},
+];
+// Statewide resources that don't map to a single CRM market
+const NC_STATEWIDE_DIRECTORIES = [
+  {name:"NC Chamber Federation — full list of 60+ local chambers", url:"https://ncchamber.com/membership/local-chambers/", note:"Use this if your target city isn't in the list above"},
+  {name:"NC Secretary of State Business Registration Search",      url:"https://www.sosnc.gov/online_services/search/by_title/_Business_Registration", note:"Official NC business registry — manual search only; automated access isn't permitted per their terms"},
+  {name:"US Chamber of Commerce — NC Chamber Finder",               url:"https://www.uschamber.com/co/chambers/north-carolina", note:"Searchable by city if you need a chamber not listed above"},
+];
+
 function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [step,setStep]=useState("search"); // search | results | confirm
+  const [showChambers,setShowChambers]=useState(false);
   const [query,setQuery]=useState("");
   const [vertical,setVertical]=useState("");
   const [market,setMarket]=useState("");
@@ -1356,7 +1393,36 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
     <DW onClose={onClose} title="🔍 AI Prospect Finder" width={860}>
       {/* Source selector tabs */}
       <div style={{marginBottom:18}}>
-        <p style={{margin:"0 0 10px",fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Select Search Sources</p>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Select Search Sources</p>
+          <button onClick={()=>setShowChambers(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showChambers?"rgba(132,204,22,0.4)":BR}`,background:showChambers?"rgba(132,204,22,0.1)":"rgba(255,255,255,0.03)",color:showChambers?"#84cc16":WM,cursor:"pointer",fontWeight:600}}>
+            🏛️ NC Chamber Directories {showChambers?"▲":"▼"}
+          </button>
+        </div>
+        {showChambers&&(
+          <div style={{background:"rgba(132,204,22,0.05)",border:"1px solid rgba(132,204,22,0.2)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <p style={{margin:"0 0 8px",fontSize:11,color:WM,lineHeight:1.5}}>
+              Chamber-of-commerce member directories are real, valuable prospect sources, but none offer a public search API — most explicitly disallow automated access. These are direct links to search each chamber's directory <strong style={{color:GL}}>manually</strong>; not part of the automated search above.
+            </p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:6,marginBottom:10}}>
+              {NC_CHAMBER_DIRECTORY.map(c=>(
+                <a key={c.market} href={c.directoryUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",padding:"8px 11px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:`1px solid ${BR}`,textDecoration:"none",transition:"all 0.15s"}} className="rh">
+                  <p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>{c.market}</p>
+                  <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name} ↗</p>
+                  {c.note&&<p style={{margin:"2px 0 0",fontSize:9,color:WD}}>{c.note}</p>}
+                </a>
+              ))}
+            </div>
+            <p style={{margin:"0 0 6px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Statewide / Other</p>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {NC_STATEWIDE_DIRECTORIES.map(d=>(
+                <a key={d.name} href={d.url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#60a5fa",textDecoration:"none"}}>
+                  {d.name} ↗ <span style={{color:WD,fontWeight:400}}>— {d.note}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
           {AI_SOURCES.map(s=>{
             const active=selectedSources.includes(s.id);
