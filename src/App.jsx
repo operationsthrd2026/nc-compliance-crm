@@ -718,6 +718,56 @@ const AI_SOURCES=[
    API key and forwards the request — a larger infrastructure change.
 ════════════════════════════════════════════════════════════════ */
 
+// NC city center coordinates — used to anchor the Overpass "around"
+// radius search, and as a city-level map pin fallback for sources
+// that don't return precise coordinates (Hunter, Apollo, GuideStar,
+// NPI Registry all return a street address or city, not lat/lon).
+// These are approximate downtown coordinates for each CRM market.
+const NC_CITY_COORDS = {
+  "Raleigh":[35.7796,-78.6382], "Durham":[35.9940,-78.8986], "Chapel Hill":[35.9132,-79.0558],
+  "Greenville":[35.6127,-77.3664], "Cary":[35.7915,-78.7811], "Wilmington":[34.2257,-77.9447],
+  "Charlotte":[35.2271,-80.8431], "Asheville":[35.5951,-82.5515], "Fayetteville":[35.0527,-78.8784],
+  "Greensboro":[36.0726,-79.7920], "Winston-Salem":[36.0999,-80.2442], "High Point":[35.9557,-80.0053],
+  "Rocky Mount":[35.9382,-77.7905], "Goldsboro":[35.3849,-77.9928],
+};
+const DEFAULT_NC_COORDS = [35.7596,-79.0193]; // geographic center of NC, used when no market is selected
+
+// Small deterministic offset (±~800m) so multiple city-level pins for
+// the same market don't stack exactly on top of one another on the
+// map. Deterministic (seeded by a string, not Math.random) so the
+// same prospect always lands in the same spot across re-renders.
+function jitterCoord([lat,lon], seed){
+  let h=0; for(let i=0;i<seed.length;i++){h=(h*31+seed.charCodeAt(i))|0;}
+  const dLat=((h%1000)/1000-0.5)*0.012;
+  const dLon=(((h>>10)%1000)/1000-0.5)*0.012;
+  return [lat+dLat, lon+dLon];
+}
+function cityFallbackCoord(market, seed){
+  const base = market && NC_CITY_COORDS[market] ? NC_CITY_COORDS[market] : DEFAULT_NC_COORDS;
+  return jitterCoord(base, seed||market||"x");
+}
+
+/* ── Fit Score — transparent, NOT a conversion rate ──────────────
+   This is intentionally NOT presented as "conversion rate" or any
+   implied probability of closing a deal — we have no historical
+   outcome data to base that on. It's a simple, fully-explainable
+   heuristic from signals actually present on each result: having a
+   website, a phone number, a named contact, and an exact vertical
+   match each add points. The breakdown is shown to the user on
+   request so nothing here is a black box.                         */
+function computeFitScore(prospect){
+  let score = 30; // baseline
+  const reasons = [];
+  if(prospect.sourceUrl){ score+=20; reasons.push("Has a website (+20)"); }
+  if(prospect.emailPhone){ score+=20; reasons.push("Has contact info (+20)"); }
+  if(prospect.contactName){ score+=15; reasons.push("Named contact available (+15)"); }
+  if(prospect._verified){ score+=10; reasons.push("Verified result (+10)"); }
+  if(prospect._geoPrecise){ score+=5; reasons.push("Precise location data (+5)"); }
+  score = Math.max(0, Math.min(100, score));
+  const label = score>=70?"Strong fit":score>=45?"Possible fit":"Limited info";
+  return { score, label, reasons };
+}
+
 // Convert a Hunter.io domain-search "email" entry into a CRM prospect shape
 function hunterEmailToProspect(domainData, emailEntry, vertical, market){
   const company = domainData.organization || domainData.domain || "Unknown Company";
@@ -742,6 +792,8 @@ function hunterEmailToProspect(domainData, emailEntry, vertical, market){
     orgSize: "",
     leadPainPoint: "",
     priorityScore: emailEntry.confidence ? String(Math.max(1, Math.min(10, Math.round(emailEntry.confidence/10)))) : "",
+    // Hunter doesn't return coordinates — city-level fallback only.
+    _lat: cityFallbackCoord(market, company)[0], _lon: cityFallbackCoord(market, company)[1], _geoPrecise: false,
   };
 }
 
@@ -913,6 +965,11 @@ function proPublicaOrgToProspect(org, vertical, market){
     leadPainPoint: "",
     priorityScore: "",
     _ein: org.ein,
+    // ProPublica doesn't return coordinates — fall back to the org's
+    // own city if we recognize it, else the search market.
+    _lat: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, org.ein||org.name)[0],
+    _lon: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, org.ein||org.name)[1],
+    _geoPrecise: false,
   };
 }
 
@@ -967,6 +1024,11 @@ function nppesOrgToProspect(record, vertical, market){
     leadPainPoint: "",
     priorityScore: "",
     _npi: record.number,
+    // NPPES doesn't return coordinates in this response — fall back
+    // to the provider's own city if recognized, else search market.
+    _lat: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, record.number)[0],
+    _lon: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, record.number)[1],
+    _geoPrecise: false,
   };
 }
 
@@ -1057,18 +1119,6 @@ const VERTICAL_TO_OSM_TAGS = {
 // shop categories rather than returning nothing.
 const OSM_FALLBACK_TAGS = [["office","company"],["office","yes"],["shop","yes"]];
 
-// NC city centers used to anchor the Overpass "around" radius search.
-// Overpass needs a coordinate, not just a city name — these are
-// approximate downtown coordinates for each CRM market.
-const NC_CITY_COORDS = {
-  "Raleigh":[35.7796,-78.6382], "Durham":[35.9940,-78.8986], "Chapel Hill":[35.9132,-79.0558],
-  "Greenville":[35.6127,-77.3664], "Cary":[35.7915,-78.7811], "Wilmington":[34.2257,-77.9447],
-  "Charlotte":[35.2271,-80.8431], "Asheville":[35.5951,-82.5515], "Fayetteville":[35.0527,-78.8784],
-  "Greensboro":[36.0726,-79.7920], "Winston-Salem":[36.0999,-80.2442], "High Point":[35.9557,-80.0053],
-  "Rocky Mount":[35.9382,-77.7905], "Goldsboro":[35.3849,-77.9928],
-};
-const DEFAULT_NC_COORDS = [35.7596,-79.0193]; // geographic center of NC, used when no market is selected
-
 function osmTagsToOverpassQuery(tags, lat, lon, radiusMeters){
   const clauses = tags.map(([k,v])=>`node["${k}"="${v}"](around:${radiusMeters},${lat},${lon});way["${k}"="${v}"](around:${radiusMeters},${lat},${lon});`).join("");
   return `[out:json][timeout:25];(${clauses});out center 20;`;
@@ -1082,6 +1132,10 @@ function osmElementToProspect(el, vertical, market){
   const phone = tags.phone || tags["contact:phone"] || "";
   const website = tags.website || tags["contact:website"] || "";
   const category = tags.craft || tags.office || tags.shop || tags.amenity || tags.man_made || tags.industrial || tags.building || "business";
+  // OSM nodes have lat/lon directly; ways/relations return a "center"
+  // point instead (we requested `out center` in the Overpass query).
+  const lat = el.lat ?? el.center?.lat ?? null;
+  const lon = el.lon ?? el.center?.lon ?? null;
   return {
     companyName: name,
     contactName: "",
@@ -1100,6 +1154,9 @@ function osmElementToProspect(el, vertical, market){
     orgSize: "",
     leadPainPoint: "",
     priorityScore: "",
+    // Real, precise coordinates from OSM — _geoPrecise marks this as
+    // exact (vs. city-level fallback used by other sources).
+    _lat: lat, _lon: lon, _geoPrecise: lat!=null&&lon!=null,
   };
 }
 
@@ -1390,7 +1447,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const verifiedCount=results.filter(r=>r._verified).length;
 
   return(
-    <DW onClose={onClose} title="🔍 AI Prospect Finder" width={860}>
+    <DW onClose={onClose} title="🔍 AI Prospect Finder" width={1080}>
       {/* Source selector tabs */}
       <div style={{marginBottom:18}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
@@ -1576,51 +1633,156 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                 ))}
               </div>
               {results.some(r=>r._source==="osm")&&(
-                <p style={{margin:0,fontSize:9,color:WD}}>Local Business Directory results © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" style={{color:WD,textDecoration:"underline"}}>OpenStreetMap contributors</a>, ODbL.</p>
+                <p style={{margin:0,fontSize:9,color:WD}}>Map &amp; Local Business Directory results © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" style={{color:WD,textDecoration:"underline"}}>OpenStreetMap contributors</a>, ODbL.</p>
               )}
             </div>
           )}
 
-          {/* Result cards */}
-          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:360,overflowY:"auto",paddingRight:2}}>
+          {/* ═══ MAP VIEW ═══ */}
+          {results.length>0&&(()=>{
+            // Project NC lat/lon onto a simple SVG viewbox. NC's bounding
+            // box (roughly): lat 33.8–36.6, lon -84.3– -75.4. No external
+            // map tiles/keys needed — this is a lightweight schematic
+            // projection, not a literal road map, similar in spirit to
+            // how the reference screenshot shows pins over a green base.
+            const MAP_W=1000, MAP_H=340;
+            const LAT_MIN=33.7, LAT_MAX=36.7, LON_MIN=-84.4, LON_MAX=-75.3;
+            const project=(lat,lon)=>{
+              const x = ((lon-LON_MIN)/(LON_MAX-LON_MIN))*MAP_W;
+              const y = MAP_H - ((lat-LAT_MIN)/(LAT_MAX-LAT_MIN))*MAP_H;
+              return [x,y];
+            };
+            const pinned = displayedResults.filter(r=>r._lat!=null&&r._lon!=null);
+            return(
+              <div style={{position:"relative",borderRadius:12,overflow:"hidden",border:`1px solid ${BR}`,marginBottom:14,background:"#0d1f14"}}>
+                <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{width:"100%",height:220,display:"block"}}>
+                  <rect width={MAP_W} height={MAP_H} fill="#0d1f14"/>
+                  {/* faint grid for visual texture, no real geographic meaning */}
+                  {Array.from({length:10}).map((_,i)=>(
+                    <line key={"v"+i} x1={i*MAP_W/10} y1={0} x2={i*MAP_W/10} y2={MAP_H} stroke="rgba(255,255,255,0.03)" strokeWidth={1}/>
+                  ))}
+                  {Array.from({length:6}).map((_,i)=>(
+                    <line key={"h"+i} x1={0} y1={i*MAP_H/6} x2={MAP_W} y2={i*MAP_H/6} stroke="rgba(255,255,255,0.03)" strokeWidth={1}/>
+                  ))}
+                  {/* NC city reference labels for orientation */}
+                  {Object.entries(NC_CITY_COORDS).map(([name,[lat,lon]])=>{
+                    const [x,y]=project(lat,lon);
+                    return(
+                      <g key={name} opacity={0.35}>
+                        <circle cx={x} cy={y} r={2} fill="rgba(255,255,255,0.4)"/>
+                        <text x={x+5} y={y+3} fontSize={9} fill="rgba(255,255,255,0.4)">{name}</text>
+                      </g>
+                    );
+                  })}
+                  {/* Result pins */}
+                  {pinned.map(r=>{
+                    const [x,y]=project(r._lat,r._lon);
+                    const sel=selected.has(r._id);
+                    const si=AI_SOURCES.find(s=>s.id===r._source);
+                    return(
+                      <g key={r._id} transform={`translate(${x},${y})`} style={{cursor:"pointer"}} onClick={()=>toggleSel(r._id)}>
+                        <circle r={sel?9:7} fill={sel?G:(si?.color||"#84cc16")} stroke="#0d1f14" strokeWidth={2}/>
+                        {!r._geoPrecise&&<circle r={sel?9:7} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth={1} strokeDasharray="2,2"/>}
+                        {sel&&<text y={3} textAnchor="middle" fontSize={9} fontWeight={900} fill={N}>✓</text>}
+                      </g>
+                    );
+                  })}
+                </svg>
+                <div style={{position:"absolute",bottom:8,left:10,fontSize:9,color:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:10}}>
+                  <span>📍 {pinned.length} of {displayedResults.length} mapped</span>
+                  <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:7,height:7,borderRadius:"50%",background:"#84cc16",display:"inline-block",border:"1px dashed rgba(255,255,255,0.5)"}}/> city-level estimate</span>
+                  <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:7,height:7,borderRadius:"50%",background:"#84cc16",display:"inline-block"}}/> precise location</span>
+                </div>
+                <div style={{position:"absolute",top:8,right:10,fontSize:9,color:"rgba(255,255,255,0.35)"}}>Schematic NC map — not to map-tile scale</div>
+              </div>
+            );
+          })()}
+
+          {/* ═══ RESULTS TABLE (GHL-style) ═══ */}
+          <div style={{border:`1px solid ${BR}`,borderRadius:11,overflow:"hidden",maxHeight:360,overflowY:"auto"}}>
             {searching&&results.length===0&&(
               <div style={{textAlign:"center",padding:"32px 0"}}>
                 <Spin s={36} c={G}/>
                 <p style={{color:WM,marginTop:12,fontSize:13}}>Searching across {selectedSources.length} source{selectedSources.length!==1?"s":""}…</p>
               </div>
             )}
-            {displayedResults.map(r=>{
-              const sel=selected.has(r._id);
-              const si=AI_SOURCES.find(s=>s.id===r._source);
-              const alreadyIn=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
-              return(
-                <div key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{background:sel?"rgba(201,150,58,0.08)":alreadyIn?"rgba(255,255,255,0.02)":"rgba(255,255,255,0.03)",border:`1.5px solid ${sel?G:alreadyIn?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 14px",cursor:alreadyIn?"default":"pointer",transition:"all 0.15s",opacity:alreadyIn?0.5:1}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-                    <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${sel?G:"rgba(255,255,255,0.15)"}`,background:sel?G:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"all 0.15s"}}>
-                      {sel&&<span style={{fontSize:11,color:N,fontWeight:900}}>✓</span>}
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
-                        <span style={{fontSize:13,fontWeight:700,color:W}}>{r.companyName}</span>
-                        {alreadyIn&&<span style={{fontSize:9,color:"#34d399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:20,padding:"1px 7px",fontWeight:700}}>Already in CRM</span>}
-                        {r._verified&&!alreadyIn&&<span style={{fontSize:9,color:"#34d399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:20,padding:"1px 7px"}}>✓ Verified</span>}
-                        <span style={{fontSize:9,padding:"2px 8px",background:`rgba(201,150,58,0.1)`,border:`1px solid rgba(201,150,58,0.2)`,borderRadius:20,color:GL,fontWeight:700}}>{r.vertical}</span>
-                        <span style={{fontSize:9,padding:"2px 8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:20,color:WM}}>{r.market}</span>
-                        <span style={{marginLeft:"auto",fontSize:9,color:si?.color,border:`1px solid ${si?.color}44`,borderRadius:20,padding:"1px 8px"}}>{si?.icon} {si?.label}</span>
-                      </div>
-                      <div style={{display:"flex",gap:12,fontSize:11,color:WM,flexWrap:"wrap",marginBottom:4}}>
-                        <span>👤 {r.contactName} · {r.title}</span>
-                        <span>📧 {r.emailPhone}</span>
-                        <span>🏢 {r.orgSize} employees</span>
-                        {r.priorityScore&&<span style={{color:parseInt(r.priorityScore)>=8?"#f472b6":GL,fontWeight:700}}>⭐ Priority {r.priorityScore}</span>}
-                      </div>
-                      <p style={{margin:0,fontSize:11,color:WD,lineHeight:1.4}}><span style={{color:WM,fontWeight:600}}>Why fit:</span> {r.whyFit}</p>
-                      {r.leadPainPoint&&<p style={{margin:"3px 0 0",fontSize:11,color:WD}}><span style={{color:"#f472b6",fontWeight:600}}>Pain:</span> {r.leadPainPoint}</p>}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {displayedResults.length>0&&(
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead>
+                  <tr style={{background:"rgba(255,255,255,0.03)",borderBottom:`1px solid ${BR}`}}>
+                    <th style={{width:36,padding:"9px 8px"}}>
+                      <input type="checkbox" checked={displayedResults.every(r=>selected.has(r._id)||existingIds.has(r.companyName?.toLowerCase()))} onChange={()=>{
+                        const allSel = displayedResults.every(r=>selected.has(r._id));
+                        setSelected(prev=>{
+                          const next=new Set(prev);
+                          displayedResults.forEach(r=>{
+                            const already=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
+                            if(already)return;
+                            if(allSel)next.delete(r._id);else next.add(r._id);
+                          });
+                          return next;
+                        });
+                      }} style={{cursor:"pointer"}}/>
+                    </th>
+                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Business</th>
+                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Fit Score</th>
+                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Online Presence</th>
+                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Source</th>
+                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Status</th>
+                    <th style={{textAlign:"right",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedResults.map(r=>{
+                    const sel=selected.has(r._id);
+                    const si=AI_SOURCES.find(s=>s.id===r._source);
+                    const alreadyIn=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
+                    const fit=computeFitScore(r);
+                    const fitColor=fit.score>=70?"#34d399":fit.score>=45?"#fbbf24":WD;
+                    return(
+                      <tr key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{borderBottom:`1px solid rgba(255,255,255,0.04)`,background:sel?"rgba(201,150,58,0.06)":"transparent",cursor:alreadyIn?"default":"pointer",opacity:alreadyIn?0.5:1}} className={alreadyIn?"":"rh"}>
+                        <td style={{padding:"10px 8px"}} onClick={e=>e.stopPropagation()}>
+                          <input type="checkbox" checked={sel} disabled={alreadyIn} onChange={()=>!alreadyIn&&toggleSel(r._id)} style={{cursor:alreadyIn?"default":"pointer"}}/>
+                        </td>
+                        <td style={{padding:"10px 8px",maxWidth:240}}>
+                          <p style={{margin:0,fontSize:12,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.companyName}</p>
+                          <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.contactName?`${r.contactName} · `:""}{r.cityMarket||r.market||"NC"}</p>
+                          {alreadyIn&&<span style={{fontSize:8,color:"#34d399",fontWeight:700}}>Already in CRM</span>}
+                        </td>
+                        <td style={{padding:"10px 8px"}} title={fit.reasons.join(" · ")||"No bonus signals present"}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:11,fontWeight:800,padding:"2px 9px",borderRadius:20,background:`${fitColor}22`,color:fitColor}}>{fit.score}%</span>
+                            <span style={{fontSize:9,color:WD}}>{fit.label}</span>
+                          </div>
+                        </td>
+                        <td style={{padding:"10px 8px"}}>
+                          <div style={{display:"flex",gap:5}}>
+                            <span title={r.sourceUrl?"Has a website":"No website found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.sourceUrl?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.04)",fontSize:10}}>{r.sourceUrl?"🌐":"—"}</span>
+                            <span title={r.emailPhone?"Has contact info":"No contact info found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.emailPhone?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.04)",fontSize:10}}>{r.emailPhone?"☎️":"—"}</span>
+                          </div>
+                        </td>
+                        <td style={{padding:"10px 8px"}}>
+                          <span style={{fontSize:9,color:si?.color,border:`1px solid ${si?.color}44`,borderRadius:20,padding:"2px 9px",whiteSpace:"nowrap"}}>{si?.icon} {si?.label}</span>
+                        </td>
+                        <td style={{padding:"10px 8px"}}>
+                          <span style={{fontSize:10,color:alreadyIn?"#34d399":WD,fontWeight:600}}>{alreadyIn?"In CRM":"Not added"}</span>
+                        </td>
+                        <td style={{padding:"10px 8px",textAlign:"right"}} onClick={e=>e.stopPropagation()}>
+                          {alreadyIn?(
+                            <span style={{fontSize:10,color:WD}}>—</span>
+                          ):(
+                            <button onClick={()=>{
+                              setSelected(new Set([r._id]));
+                              setTimeout(doAdd,0);
+                            }} style={{fontSize:11,fontWeight:700,color:GL,background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>+ Add</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
             {!searching&&results.length>0&&displayedResults.length===0&&(
               <div style={{textAlign:"center",padding:"32px 0",color:WD}}>
                 <p style={{fontSize:40,margin:"0 0 10px"}}>🗂️</p>
