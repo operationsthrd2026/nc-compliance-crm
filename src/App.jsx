@@ -1366,7 +1366,8 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const [market,setMarket]=useState("");
   const [orgSize,setOrgSize]=useState("");
   const [orgType,setOrgType]=useState("all"); // all | nonprofit | smb
-  const [selectedSources,setSelectedSources]=useState(["guidestar","nppes","osm"]); // default to the always-live, no-key sources
+  const [selectedSources,setSelectedSources]=useState(AI_SOURCES.map(s=>s.id)); // search every real source by default — no manual source-picking needed
+  const [showSourcePicker,setShowSourcePicker]=useState(false); // advanced: narrow down to specific sources
   const [searching,setSearching]=useState(false);
   const [results,setResults]=useState([]);
   const [selected,setSelected]=useState(new Set());
@@ -1400,6 +1401,11 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
 
   const runSearch=async()=>{
     if(!query.trim()&&!vertical&&!market){return;}
+    if(selectedSources.length===0){
+      setStep("results");
+      setSearchLog([{t:tsNow().slice(11),msg:"No sources selected — open \"Customize Sources\" and select at least one, or click \"Select All\"."}]);
+      return;
+    }
     setSearching(true);setResults([]);setSelected(new Set());setSearchLog([]);
     setStep("results");
 
@@ -1500,14 +1506,65 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
 
   return(
     <DW onClose={onClose} title="🔍 AI Prospect Finder" width={1080}>
-      {/* Source selector tabs */}
+      {/* Source selector — searches everything by default */}
       <div style={{marginBottom:18}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-          <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Select Search Sources</p>
-          <button onClick={()=>setShowChambers(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showChambers?"rgba(132,204,22,0.4)":BR}`,background:showChambers?"rgba(132,204,22,0.1)":"rgba(255,255,255,0.03)",color:showChambers?"#84cc16":WM,cursor:"pointer",fontWeight:600}}>
-            🏛️ NC Chamber Directories {showChambers?"▲":"▼"}
-          </button>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Search Sources</p>
+            <span style={{fontSize:11,fontWeight:600,color:selectedSources.length===0?"#f87171":selectedSources.length===AI_SOURCES.length?"#34d399":"#fbbf24"}}>
+              {selectedSources.length===0
+                ? "⚠️ No sources selected"
+                : selectedSources.length===AI_SOURCES.length
+                ? `✓ Searching all ${AI_SOURCES.length} sources`
+                : `Searching ${selectedSources.length} of ${AI_SOURCES.length} sources`}
+            </span>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setShowSourcePicker(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showSourcePicker?"rgba(96,165,250,0.4)":BR}`,background:showSourcePicker?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.03)",color:showSourcePicker?"#60a5fa":WM,cursor:"pointer",fontWeight:600}}>
+              ⚙️ Customize Sources {showSourcePicker?"▲":"▼"}
+            </button>
+            <button onClick={()=>setShowChambers(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showChambers?"rgba(132,204,22,0.4)":BR}`,background:showChambers?"rgba(132,204,22,0.1)":"rgba(255,255,255,0.03)",color:showChambers?"#84cc16":WM,cursor:"pointer",fontWeight:600}}>
+              🏛️ NC Chamber Directories {showChambers?"▲":"▼"}
+            </button>
+          </div>
         </div>
+
+        {/* Advanced: per-source picker, hidden by default since "search
+            everything" is now the normal flow — only needed if someone
+            wants to deliberately narrow the search (e.g. nonprofits only). */}
+        {showSourcePicker&&(
+          <div style={{background:"rgba(96,165,250,0.05)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:9}}>
+              <p style={{margin:0,fontSize:11,color:WM,lineHeight:1.5}}>Every search runs against all sources by default. Deselect any you want to skip for this search.</p>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button onClick={()=>setSelectedSources(AI_SOURCES.map(s=>s.id))} style={{...B.ghost,fontSize:10,padding:"4px 10px"}}>Select All</button>
+                <button onClick={()=>setSelectedSources([])} style={{...B.ghost,fontSize:10,padding:"4px 10px"}}>Clear All</button>
+              </div>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+              {AI_SOURCES.map(s=>{
+                const active=selectedSources.includes(s.id);
+                const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
+                const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s.id);
+                return(
+                  <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
+                    style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
+                    <span style={{fontSize:16}}>{s.icon}</span>
+                    <div style={{textAlign:"left"}}>
+                      <p style={{margin:0,fontSize:11,fontWeight:700,color:active?GL:WM,display:"flex",alignItems:"center",gap:5}}>
+                        {s.label}
+                        {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:800}}>LIVE</span>}
+                      </p>
+                      {needsKey&&<p style={{margin:0,fontSize:9,color:"#f87171"}}>API key required</p>}
+                    </div>
+                    {active&&<span style={{marginLeft:2,fontSize:10,color:GL}}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {showChambers&&(
           <div style={{background:"rgba(132,204,22,0.05)",border:"1px solid rgba(132,204,22,0.2)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
             <p style={{margin:"0 0 8px",fontSize:11,color:WM,lineHeight:1.5}}>
@@ -1532,27 +1589,6 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             </div>
           </div>
         )}
-        <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-          {AI_SOURCES.map(s=>{
-            const active=selectedSources.includes(s.id);
-            const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
-            const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s.id);
-            return(
-              <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
-                style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
-                <span style={{fontSize:16}}>{s.icon}</span>
-                <div style={{textAlign:"left"}}>
-                  <p style={{margin:0,fontSize:11,fontWeight:700,color:active?GL:WM,display:"flex",alignItems:"center",gap:5}}>
-                    {s.label}
-                    {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:800}}>LIVE</span>}
-                  </p>
-                  {needsKey&&<p style={{margin:0,fontSize:9,color:"#f87171"}}>API key required</p>}
-                </div>
-                {active&&<span style={{marginLeft:2,fontSize:10,color:GL}}>✓</span>}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
 
