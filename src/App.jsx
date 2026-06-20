@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 /* ════════════════════════════════════════════════════════════════
    SUPABASE CONFIG
@@ -731,6 +734,55 @@ const NC_CITY_COORDS = {
   "Rocky Mount":[35.9382,-77.7905], "Goldsboro":[35.3849,-77.9928],
 };
 const DEFAULT_NC_COORDS = [35.7596,-79.0193]; // geographic center of NC, used when no market is selected
+
+// Leaflet's default marker images reference relative file paths that
+// break under Vite's bundler — this is the standard fix, pointing
+// Leaflet at CDN-hosted copies of its own default icons instead.
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
+
+// Custom colored pin matching the CRM theme / source colors, built as
+// a small inline SVG data URI — no extra image assets needed.
+function makeColoredPin(color, selected){
+  const size = selected ? 34 : 26;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size*1.3}" viewBox="0 0 24 31">
+    <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 19 12 19s12-10 12-19c0-6.6-5.4-12-12-12z" fill="${color}" stroke="${selected?"#F0F4FF":"#0B1426"}" stroke-width="${selected?2:1.5}"/>
+    <circle cx="12" cy="12" r="4.5" fill="#0B1426"/>
+  </svg>`;
+  return new L.Icon({
+    iconUrl: "data:image/svg+xml;base64," + btoa(svg),
+    iconSize: [size, size*1.3],
+    iconAnchor: [size/2, size*1.3],
+    popupAnchor: [0, -size*1.1],
+  });
+}
+
+// react-leaflet child component that auto-fits the map's viewport to
+// contain every pinned result whenever the result set changes (e.g.
+// after a new search). Falls back to centering on the selected/default
+// NC location when there are no pins to fit yet.
+function FitToPins({pinned, fallbackCenter}){
+  const map = useMap();
+  useEffect(()=>{
+    if(pinned.length===0){
+      map.setView(fallbackCenter, 7);
+      return;
+    }
+    if(pinned.length===1){
+      map.setView([pinned[0]._lat,pinned[0]._lon], 12);
+      return;
+    }
+    const bounds = L.latLngBounds(pinned.map(r=>[r._lat,r._lon]));
+    map.fitBounds(bounds, {padding:[30,30], maxZoom:13});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[pinned.map(r=>r._id).join(","), fallbackCenter[0], fallbackCenter[1]]);
+  return null;
+}
+
 
 // Small deterministic offset (±~800m) so multiple city-level pins for
 // the same market don't stack exactly on top of one another on the
@@ -1638,62 +1690,48 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
             </div>
           )}
 
-          {/* ═══ MAP VIEW ═══ */}
+          {/* ═══ MAP VIEW — real tile-based map via Leaflet/OpenStreetMap ═══ */}
           {results.length>0&&(()=>{
-            // Project NC lat/lon onto a simple SVG viewbox. NC's bounding
-            // box (roughly): lat 33.8–36.6, lon -84.3– -75.4. No external
-            // map tiles/keys needed — this is a lightweight schematic
-            // projection, not a literal road map, similar in spirit to
-            // how the reference screenshot shows pins over a green base.
-            const MAP_W=1000, MAP_H=340;
-            const LAT_MIN=33.7, LAT_MAX=36.7, LON_MIN=-84.4, LON_MAX=-75.3;
-            const project=(lat,lon)=>{
-              const x = ((lon-LON_MIN)/(LON_MAX-LON_MIN))*MAP_W;
-              const y = MAP_H - ((lat-LAT_MIN)/(LAT_MAX-LAT_MIN))*MAP_H;
-              return [x,y];
-            };
             const pinned = displayedResults.filter(r=>r._lat!=null&&r._lon!=null);
+            const center = market && NC_CITY_COORDS[market] ? NC_CITY_COORDS[market] : DEFAULT_NC_COORDS;
             return(
-              <div style={{position:"relative",borderRadius:12,overflow:"hidden",border:`1px solid ${BR}`,marginBottom:14,background:"#0d1f14"}}>
-                <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{width:"100%",height:220,display:"block"}}>
-                  <rect width={MAP_W} height={MAP_H} fill="#0d1f14"/>
-                  {/* faint grid for visual texture, no real geographic meaning */}
-                  {Array.from({length:10}).map((_,i)=>(
-                    <line key={"v"+i} x1={i*MAP_W/10} y1={0} x2={i*MAP_W/10} y2={MAP_H} stroke="rgba(255,255,255,0.03)" strokeWidth={1}/>
-                  ))}
-                  {Array.from({length:6}).map((_,i)=>(
-                    <line key={"h"+i} x1={0} y1={i*MAP_H/6} x2={MAP_W} y2={i*MAP_H/6} stroke="rgba(255,255,255,0.03)" strokeWidth={1}/>
-                  ))}
-                  {/* NC city reference labels for orientation */}
-                  {Object.entries(NC_CITY_COORDS).map(([name,[lat,lon]])=>{
-                    const [x,y]=project(lat,lon);
-                    return(
-                      <g key={name} opacity={0.35}>
-                        <circle cx={x} cy={y} r={2} fill="rgba(255,255,255,0.4)"/>
-                        <text x={x+5} y={y+3} fontSize={9} fill="rgba(255,255,255,0.4)">{name}</text>
-                      </g>
-                    );
-                  })}
-                  {/* Result pins */}
+              <div style={{position:"relative",borderRadius:12,overflow:"hidden",border:`1px solid ${BR}`,marginBottom:14}}>
+                <MapContainer center={center} zoom={market?11:7} style={{height:280,width:"100%"}} scrollWheelZoom={true}>
+                  <TileLayer
+                    attribution='© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <FitToPins pinned={pinned} fallbackCenter={center}/>
                   {pinned.map(r=>{
-                    const [x,y]=project(r._lat,r._lon);
                     const sel=selected.has(r._id);
                     const si=AI_SOURCES.find(s=>s.id===r._source);
+                    const alreadyIn=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
                     return(
-                      <g key={r._id} transform={`translate(${x},${y})`} style={{cursor:"pointer"}} onClick={()=>toggleSel(r._id)}>
-                        <circle r={sel?9:7} fill={sel?G:(si?.color||"#84cc16")} stroke="#0d1f14" strokeWidth={2}/>
-                        {!r._geoPrecise&&<circle r={sel?9:7} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth={1} strokeDasharray="2,2"/>}
-                        {sel&&<text y={3} textAnchor="middle" fontSize={9} fontWeight={900} fill={N}>✓</text>}
-                      </g>
+                      <Marker key={r._id} position={[r._lat,r._lon]} icon={makeColoredPin(sel?"#C9963A":(si?.color||"#84cc16"), sel)}
+                        eventHandlers={{click:()=>!alreadyIn&&toggleSel(r._id)}}>
+                        <Popup>
+                          <div style={{minWidth:180,fontFamily:"inherit"}}>
+                            <p style={{margin:"0 0 3px",fontWeight:700,fontSize:13}}>{r.companyName}</p>
+                            <p style={{margin:"0 0 3px",fontSize:11,color:"#555"}}>{r.cityMarket||r.market||"NC"}{!r._geoPrecise?" (city-level estimate)":""}</p>
+                            {r.contactName&&<p style={{margin:"0 0 3px",fontSize:11}}>{r.contactName}{r.title?` · ${r.title}`:""}</p>}
+                            {r.emailPhone&&<p style={{margin:"0 0 3px",fontSize:11}}>{r.emailPhone}</p>}
+                            <p style={{margin:"4px 0 0",fontSize:10,color:si?.color}}>{si?.icon} {si?.label}</p>
+                            {!alreadyIn&&(
+                              <button onClick={()=>toggleSel(r._id)} style={{marginTop:6,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"none",background:sel?"#C9963A":"#1B2A4A",color:sel?"#0B1426":"#fff",cursor:"pointer"}}>
+                                {sel?"✓ Selected":"+ Select"}
+                              </button>
+                            )}
+                            {alreadyIn&&<p style={{margin:"6px 0 0",fontSize:10,color:"#34d399",fontWeight:700}}>Already in CRM</p>}
+                          </div>
+                        </Popup>
+                      </Marker>
                     );
                   })}
-                </svg>
-                <div style={{position:"absolute",bottom:8,left:10,fontSize:9,color:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:10}}>
+                </MapContainer>
+                <div style={{position:"absolute",bottom:8,left:10,zIndex:1000,fontSize:9,color:"#fff",background:"rgba(11,20,38,0.75)",padding:"4px 9px",borderRadius:6,display:"flex",alignItems:"center",gap:10}}>
                   <span>📍 {pinned.length} of {displayedResults.length} mapped</span>
-                  <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:7,height:7,borderRadius:"50%",background:"#84cc16",display:"inline-block",border:"1px dashed rgba(255,255,255,0.5)"}}/> city-level estimate</span>
-                  <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:7,height:7,borderRadius:"50%",background:"#84cc16",display:"inline-block"}}/> precise location</span>
+                  <span style={{display:"flex",alignItems:"center",gap:4}}>city-level estimate vs. precise — see pin popup</span>
                 </div>
-                <div style={{position:"absolute",top:8,right:10,fontSize:9,color:"rgba(255,255,255,0.35)"}}>Schematic NC map — not to map-tile scale</div>
               </div>
             );
           })()}
