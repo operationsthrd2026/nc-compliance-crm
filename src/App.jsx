@@ -3671,44 +3671,72 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
 
   return(
-    <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W}}>
+    <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
       <GS/>
       {toast&&<Toast msg={toast.msg} type={toast.t}/>}
 
-      {/* HEADER */}
-      <header style={{background:NL,borderBottom:"1px solid rgba(201,150,58,0.2)",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 24px rgba(0,0,0,0.5)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"0 16px",height:54}}>
-          <div style={{background:`linear-gradient(135deg,${G},${GL})`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:`0 4px 16px rgba(201,150,58,0.4)`}}>
-            <span style={{fontSize:18}}>⚖️</span>
-          </div>
-          <div style={{minWidth:0,flex:1}}>
-            <p style={{fontSize:11,fontWeight:900,color:W,margin:0,letterSpacing:"0.05em"}}>NC COMPLIANCE-VERTICAL</p>
-            <p style={{fontSize:9.5,color:"rgba(201,150,58,0.7)",margin:0}}>{sysSettings.orgName||"HR On Demand"} · SMB & Nonprofit Outreach Tracker</p>
-          </div>
-          <nav style={{display:"flex",gap:3,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:3}}>
-            {NAVS.map(n=>(
-              <button key={n.id} onClick={()=>setView(n.id)} style={{position:"relative",background:view===n.id?"rgba(201,150,58,0.15)":"transparent",color:view===n.id?GL:WM,border:`1px solid ${view===n.id?"rgba(201,150,58,0.3)":"transparent"}`,borderRadius:7,padding:"6px 11px",fontSize:11.5,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s"}}>
-                {n.l} {n.full}
-                {n.alert&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,background:"#f472b6",borderRadius:"50%",border:"1.5px solid #0B1426"}}/>}
-              </button>
-            ))}
-          </nav>
-          <div style={{display:"flex",gap:7,alignItems:"center"}}>
-            {canEdit&&<button onClick={()=>setShowImport(true)} className="bh" style={{...B.purple,fontSize:10,padding:"6px 10px"}}>📁 Import</button>}
-            <button onClick={()=>{exportToExcel(crmData,"NC_CRM");t2("Exported!");}} className="bh" style={{...B.green,fontSize:10,padding:"6px 10px"}}>⬇️ Export</button>
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"3px 10px 3px 4px",background:"rgba(255,255,255,0.05)",border:`1px solid ${BR}`,borderRadius:24}}>
-              <div style={{width:27,height:27,background:ROLES[currentUser.role]?.bg,border:`1.5px solid ${ROLES[currentUser.role]?.color}55`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:ROLES[currentUser.role]?.color}}>{currentUser.avatar}</div>
-              <div><p style={{margin:0,fontSize:11,fontWeight:700,color:W,lineHeight:1.2}}>{currentUser.name.split(" ")[0]}</p><p style={{margin:0,fontSize:9,color:ROLES[currentUser.role]?.color,lineHeight:1}}>{ROLES[currentUser.role]?.label}</p></div>
+      {/* ═══ LEFT SIDEBAR (GHL-style vertical nav) ═══ */}
+      <aside style={{width:228,flexShrink:0,background:NL,borderRight:"1px solid rgba(201,150,58,0.18)",display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
+        {/* Brand / workspace header */}
+        <div style={{padding:"18px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{background:`linear-gradient(135deg,${G},${GL})`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:`0 4px 16px rgba(201,150,58,0.4)`}}>
+              <span style={{fontSize:18}}>⚖️</span>
             </div>
-            {role.canAdmin&&<button onClick={onOpenAdmin} className="bh" style={{...B.purple,fontSize:10,padding:"6px 11px"}}>🛡️ Admin</button>}
-            {canEdit&&<button onClick={()=>setPDlg("add")} className="bh" style={{...B.gold,fontSize:11,padding:"7px 13px"}}>+ Add</button>}
-            <button onClick={onLogout} className="bh" style={{...B.ghost,fontSize:10,padding:"6px 10px"}}>Sign Out</button>
+            <div style={{minWidth:0}}>
+              <p style={{fontSize:11,fontWeight:900,color:W,margin:0,letterSpacing:"0.04em",whiteSpace:"nowrap"}}>NC COMPLIANCE</p>
+              <p style={{fontSize:9,color:"rgba(201,150,58,0.7)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sysSettings.orgName||"HR On Demand"}</p>
+            </div>
           </div>
         </div>
-        <div style={{borderTop:"1px solid rgba(201,150,58,0.08)",padding:"3px 16px",overflowX:"auto"}}>
-          <p style={{margin:0,fontSize:10,color:WD,whiteSpace:"nowrap"}}>⚠️ T1 = Daily (NEW) · T2 +7d after T1 · T3 when T2 due or Melissa approves · Flag ALL replies immediately{!canEdit?" · 👁 View-only":""}</p>
+
+        {/* Nav items */}
+        <nav style={{flex:1,padding:"10px 10px",display:"flex",flexDirection:"column",gap:2}}>
+          {NAVS.map(n=>(
+            <button key={n.id} onClick={()=>setView(n.id)} style={{position:"relative",display:"flex",alignItems:"center",gap:11,background:view===n.id?"rgba(201,150,58,0.15)":"transparent",color:view===n.id?GL:WM,border:`1px solid ${view===n.id?"rgba(201,150,58,0.3)":"transparent"}`,borderRadius:8,padding:"10px 12px",fontSize:13,fontWeight:view===n.id?700:600,cursor:"pointer",textAlign:"left",width:"100%",transition:"all 0.15s"}}>
+              <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{n.l}</span>
+              <span style={{flex:1}}>{n.full}</span>
+              {n.alert&&<span style={{width:8,height:8,background:"#f472b6",borderRadius:"50%",flexShrink:0}}/>}
+            </button>
+          ))}
+        </nav>
+
+        {/* Quick actions */}
+        <div style={{padding:"10px",display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+          {canEdit&&<button onClick={()=>setShowImport(true)} className="bh" style={{...B.purple,fontSize:11,padding:"8px",width:"100%"}}>📁 Import</button>}
+          <button onClick={()=>{exportToExcel(crmData,"NC_CRM");t2("Exported!");}} className="bh" style={{...B.green,fontSize:11,padding:"8px",width:"100%"}}>⬇️ Export</button>
+          {canEdit&&<button onClick={()=>setPDlg("add")} className="bh" style={{...B.gold,fontSize:11,padding:"8px",width:"100%"}}>+ Add Prospect</button>}
         </div>
-      </header>
+
+        {/* User account footer */}
+        <div style={{padding:"12px 10px",borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:9,padding:"7px 8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${BR}`,borderRadius:10,marginBottom:7}}>
+            <div style={{width:30,height:30,background:ROLES[currentUser.role]?.bg,border:`1.5px solid ${ROLES[currentUser.role]?.color}55`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:ROLES[currentUser.role]?.color,flexShrink:0}}>{currentUser.avatar}</div>
+            <div style={{minWidth:0,flex:1}}>
+              <p style={{margin:0,fontSize:12,fontWeight:700,color:W,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name.split(" ")[0]}</p>
+              <p style={{margin:0,fontSize:9,color:ROLES[currentUser.role]?.color,lineHeight:1}}>{ROLES[currentUser.role]?.label}</p>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {role.canAdmin&&<button onClick={onOpenAdmin} className="bh" style={{...B.purple,fontSize:10,padding:"7px",flex:1}}>🛡️ Admin</button>}
+            <button onClick={onLogout} className="bh" style={{...B.ghost,fontSize:10,padding:"7px",flex:1}}>Sign Out</button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ═══ MAIN CONTENT COLUMN ═══ */}
+      <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+        {/* Top bar — sits beside the sidebar, not above it */}
+        <header style={{background:NL,borderBottom:"1px solid rgba(201,150,58,0.2)",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 24px rgba(0,0,0,0.5)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"0 20px",height:54}}>
+            <p style={{fontSize:13,fontWeight:800,color:W,margin:0,flex:1}}>{NAVS.find(n=>n.id===view)?.full||"Dashboard"}</p>
+            <p style={{fontSize:10.5,color:"rgba(201,150,58,0.7)",margin:0,whiteSpace:"nowrap"}}>SMB &amp; Nonprofit Outreach Tracker</p>
+          </div>
+          <div style={{borderTop:"1px solid rgba(201,150,58,0.08)",padding:"3px 20px",overflowX:"auto"}}>
+            <p style={{margin:0,fontSize:10,color:WD,whiteSpace:"nowrap"}}>⚠️ T1 = Daily (NEW) · T2 +7d after T1 · T3 when T2 due or Melissa approves · Flag ALL replies immediately{!canEdit?" · 👁 View-only":""}</p>
+          </div>
+        </header>
+
 
       {/* DASHBOARD */}
       {view==="dashboard"&&(
@@ -3963,7 +3991,8 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           t2={t2}
         />
       )}
-
+      </div>
+      {/* ═══ end main content column ═══ */}
 
       {/* MODALS */}
       {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
