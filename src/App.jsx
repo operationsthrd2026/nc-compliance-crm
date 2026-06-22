@@ -3669,64 +3669,145 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"#c084fc"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"#60a5fa"}];
 
   const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
+  const HR_LOGO="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMzAgMTA4IiB3aWR0aD0iMzkwIiBoZWlnaHQ9IjMyNCI+CiAgPCEtLSBOYXZ5IGJhY2tncm91bmQgd2l0aCByb3VuZGVkIGNvcm5lcnMgLS0+CiAgPHJlY3Qgd2lkdGg9IjEzMCIgaGVpZ2h0PSIxMDgiIHJ4PSI3IiBmaWxsPSIjMUIyQTRBIi8+CgogIDwhLS0g4pWQ4pWQ4pWQIEgg4pWQ4pWQ4pWQIChsZWZ0IHN0ZW0sIGNyb3NzYmFyLCByaWdodCBzdGVtLCB3aXRoIHNlcmlmcykgLS0+CiAgPCEtLSBMZWZ0IHN0ZW0gLS0+CiAgPHJlY3QgeD0iMTIiIHk9IjExIiB3aWR0aD0iMTAiIGhlaWdodD0iNTciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIFJpZ2h0IHN0ZW0gLS0+CiAgPHJlY3QgeD0iNDYiIHk9IjExIiB3aWR0aD0iMTAiIGhlaWdodD0iNTciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIENyb3NzYmFyIC0tPgogIDxyZWN0IHg9IjEyIiB5PSIzMyIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIFRvcCBzZXJpZnMgLS0+CiAgPHJlY3QgeD0iOCIgIHk9IjExIiB3aWR0aD0iMTgiIGhlaWdodD0iNCIgcng9IjEiIGZpbGw9IiNDMTdGMzIiLz4KICA8cmVjdCB4PSI0MiIgeT0iMTEiIHdpZHRoPSIxOCIgaGVpZ2h0PSI0IiByeD0iMSIgZmlsbD0iI0MxN0YzMiIvPgogIDwhLS0gQm90dG9tIHNlcmlmcyAtLT4KICA8cmVjdCB4PSI4IiAgeT0iNjQiIHdpZHRoPSIxOCIgaGVpZ2h0PSI0IiByeD0iMSIgZmlsbD0iI0MxN0YzMiIvPgogIDxyZWN0IHg9IjQyIiB5PSI2NCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjQzE3RjMyIi8+CgogIDwhLS0g4pWQ4pWQ4pWQIFIg4pWQ4pWQ4pWQIChzdGVtLCBib3dsLCBkaWFnb25hbCBsZWcsIHdpdGggc2VyaWZzKSAtLT4KICA8IS0tIExlZnQgc3RlbSAtLT4KICA8cmVjdCB4PSI3MCIgeT0iMTEiIHdpZHRoPSIxMCIgaGVpZ2h0PSI1NyIgZmlsbD0iI0MxN0YzMiIvPgogIDwhLS0gVG9wIHNlcmlmIC0tPgogIDxyZWN0IHg9IjY2IiB5PSIxMSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjQzE3RjMyIi8+CiAgPCEtLSBCb3R0b20gc2VyaWYgLS0+CiAgPHJlY3QgeD0iNjYiIHk9IjY0IiB3aWR0aD0iMTYiIGhlaWdodD0iNCIgcng9IjEiIGZpbGw9IiNDMTdGMzIiLz4KCiAgPCEtLSBCb3dsIG9mIFIg4oCUIGZpbGxlZCBzaGFwZSB0aGVuIGlubmVyIGN1dG91dCAtLT4KICA8cGF0aCBkPSJNODAgMTEgQzEwNiAxMSAxMTIgMTcgMTEyIDI2IEMxMTIgMzYgMTA2IDQyIDgwIDQzIEw4MCAxMVoiIGZpbGw9IiNDMTdGMzIiLz4KICA8cGF0aCBkPSJNODMgMTcgQzEwMiAxNyAxMDYgMjEgMTA2IDI2IEMxMDYgMzEgMTAyIDM2IDgzIDM3IEw4MyAxN1oiIGZpbGw9IiMxQjJBNEEiLz4KCiAgPCEtLSBMZWcgb2YgUiDigJQgZGlhZ29uYWwgZnJvbSBib3dsIGpvaW50IGRvd253YXJkIC0tPgogIDxwYXRoIGQ9Ik04MCA0MyBMMTE0IDY4IEwxMDYgNjggTDcyIDQzWiIgZmlsbD0iI0MxN0YzMiIvPgoKICA8IS0tIOKVkOKVkOKVkCBEaXZpZGVyIGxpbmUg4pWQ4pWQ4pWQIC0tPgogIDxsaW5lIHgxPSIxOCIgeTE9Ijc4IiB4Mj0iMTEyIiB5Mj0iNzgiIHN0cm9rZT0iI0MxN0YzMiIgc3Ryb2tlLXdpZHRoPSIwLjgiIG9wYWNpdHk9IjAuNCIvPgoKICA8IS0tIOKVkOKVkOKVkCAib24gRGVtYW5kIiBzdWJ0aXRsZSDilZDilZDilZAgLS0+CiAgPHRleHQgeD0iNjUiIHk9Ijk1IgogICAgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIKICAgIGZvbnQtc2l6ZT0iMTIiCiAgICBmaWxsPSIjQzhBOTZFIgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIKICAgIGxldHRlci1zcGFjaW5nPSIyIgogICAgZm9udC1zdHlsZT0iaXRhbGljIj5vbiBEZW1hbmQ8L3RleHQ+Cjwvc3ZnPgo=";
+  const [sidebarExpanded,setSidebarExpanded]=useState(false);
+  const SIDEBAR_W=sidebarExpanded?228:62;
+
 
   return(
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
       <GS/>
       {toast&&<Toast msg={toast.msg} type={toast.t}/>}
 
-      {/* ═══ LEFT SIDEBAR (GHL-style vertical nav) ═══ */}
-      <aside style={{width:228,flexShrink:0,background:NL,borderRight:"1px solid rgba(201,150,58,0.18)",display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
-        {/* Brand / workspace header */}
-        <div style={{padding:"18px 16px 14px",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{background:`linear-gradient(135deg,${G},${GL})`,borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:`0 4px 16px rgba(201,150,58,0.4)`}}>
-              <span style={{fontSize:18}}>⚖️</span>
+      {/* ═══ LEFT SIDEBAR — hover to expand, collapses to icon-only ═══ */}
+      <aside
+        onMouseEnter={()=>setSidebarExpanded(true)}
+        onMouseLeave={()=>setSidebarExpanded(false)}
+        style={{
+          width:SIDEBAR_W,flexShrink:0,background:NL,
+          borderRight:"1px solid rgba(201,150,58,0.18)",
+          display:"flex",flexDirection:"column",
+          position:"sticky",top:0,height:"100vh",overflowY:"auto",overflowX:"hidden",
+          transition:"width 0.22s cubic-bezier(0.4,0,0.2,1)",
+          zIndex:200,
+        }}>
+
+        {/* Logo */}
+        <div style={{
+          padding: sidebarExpanded?"14px 14px 12px":"10px 8px",
+          borderBottom:"1px solid rgba(255,255,255,0.06)",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          transition:"padding 0.22s",minHeight:88,
+        }}>
+          {sidebarExpanded?(
+            /* Full logo when expanded */
+            <img src={HR_LOGO} alt="HR on Demand" style={{
+              height:62,width:"auto",objectFit:"contain",
+              filter:"drop-shadow(0 2px 8px rgba(193,127,50,0.35))",
+              transition:"all 0.2s",
+            }}/>
+          ):(
+            /* Icon-only monogram when collapsed */
+            <div style={{
+              width:38,height:38,borderRadius:8,
+              background:"#1B2A4A",border:"1.5px solid rgba(193,127,50,0.5)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              flexShrink:0,transition:"all 0.2s",
+            }}>
+              <span style={{fontSize:15,fontWeight:900,color:"#C17F32",fontFamily:"Georgia,serif",lineHeight:1}}>HR</span>
             </div>
-            <div style={{minWidth:0}}>
-              <p style={{fontSize:11,fontWeight:900,color:W,margin:0,letterSpacing:"0.04em",whiteSpace:"nowrap"}}>NC COMPLIANCE</p>
-              <p style={{fontSize:9,color:"rgba(201,150,58,0.7)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sysSettings.orgName||"HR On Demand"}</p>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Nav items */}
-        <nav style={{flex:1,padding:"10px 10px",display:"flex",flexDirection:"column",gap:2}}>
-          {NAVS.map(n=>(
-            <button key={n.id} onClick={()=>setView(n.id)} style={{position:"relative",display:"flex",alignItems:"center",gap:11,background:view===n.id?"rgba(201,150,58,0.15)":"transparent",color:view===n.id?GL:WM,border:`1px solid ${view===n.id?"rgba(201,150,58,0.3)":"transparent"}`,borderRadius:8,padding:"10px 12px",fontSize:13,fontWeight:view===n.id?700:600,cursor:"pointer",textAlign:"left",width:"100%",transition:"all 0.15s"}}>
-              <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{n.l}</span>
-              <span style={{flex:1}}>{n.full}</span>
-              {n.alert&&<span style={{width:8,height:8,background:"#f472b6",borderRadius:"50%",flexShrink:0}}/>}
-            </button>
-          ))}
+        <nav style={{flex:1,padding:"10px 8px",display:"flex",flexDirection:"column",gap:2}}>
+          {NAVS.map(n=>{
+            const active=view===n.id;
+            return(
+              <button key={n.id} onClick={()=>setView(n.id)}
+                title={!sidebarExpanded?n.full:undefined}
+                style={{
+                  position:"relative",display:"flex",alignItems:"center",
+                  gap: sidebarExpanded?10:0,
+                  justifyContent: sidebarExpanded?"flex-start":"center",
+                  background:active?"rgba(201,150,58,0.15)":"transparent",
+                  color:active?GL:WM,
+                  border:`1px solid ${active?"rgba(201,150,58,0.3)":"transparent"}`,
+                  borderRadius:8,
+                  padding: sidebarExpanded?"10px 12px":"10px 0",
+                  fontSize:13,fontWeight:active?700:600,
+                  cursor:"pointer",textAlign:"left",width:"100%",
+                  transition:"all 0.15s",whiteSpace:"nowrap",overflow:"hidden",
+                }}>
+                <span style={{fontSize:17,width:22,textAlign:"center",flexShrink:0}}>{n.l}</span>
+                {sidebarExpanded&&<span style={{flex:1,fontSize:12,transition:"opacity 0.15s",opacity:sidebarExpanded?1:0}}>{n.full}</span>}
+                {n.alert&&sidebarExpanded&&<span style={{width:8,height:8,background:"#f472b6",borderRadius:"50%",flexShrink:0}}/>}
+                {n.alert&&!sidebarExpanded&&<span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"#f472b6",borderRadius:"50%",border:"1.5px solid #0B1426"}}/>}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* Quick actions */}
-        <div style={{padding:"10px",display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
-          {canEdit&&<button onClick={()=>setShowImport(true)} className="bh" style={{...B.purple,fontSize:11,padding:"8px",width:"100%"}}>📁 Import</button>}
-          <button onClick={()=>{exportToExcel(crmData,"NC_CRM");t2("Exported!");}} className="bh" style={{...B.green,fontSize:11,padding:"8px",width:"100%"}}>⬇️ Export</button>
-          {canEdit&&<button onClick={()=>setPDlg("add")} className="bh" style={{...B.gold,fontSize:11,padding:"8px",width:"100%"}}>+ Add Prospect</button>}
+        {/* Quick actions — show labels only when expanded */}
+        <div style={{padding:"8px",display:"flex",flexDirection:"column",gap:5,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+          {canEdit&&(
+            <button onClick={()=>setShowImport(true)} className="bh"
+              title={!sidebarExpanded?"Import":""}
+              style={{...B.purple,fontSize:11,padding:"8px",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+              <span>📁</span>{sidebarExpanded&&<span>Import</span>}
+            </button>
+          )}
+          <button onClick={()=>{exportToExcel(crmData,"NC_CRM");t2("Exported!");}} className="bh"
+            title={!sidebarExpanded?"Export":""}
+            style={{...B.green,fontSize:11,padding:"8px",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+            <span>⬇️</span>{sidebarExpanded&&<span>Export</span>}
+          </button>
+          {canEdit&&(
+            <button onClick={()=>setPDlg("add")} className="bh"
+              title={!sidebarExpanded?"Add Prospect":""}
+              style={{...B.gold,fontSize:11,padding:"8px",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+              <span>＋</span>{sidebarExpanded&&<span>Add Prospect</span>}
+            </button>
+          )}
         </div>
 
         {/* User account footer */}
-        <div style={{padding:"12px 10px",borderTop:"1px solid rgba(255,255,255,0.06)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:9,padding:"7px 8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${BR}`,borderRadius:10,marginBottom:7}}>
-            <div style={{width:30,height:30,background:ROLES[currentUser.role]?.bg,border:`1.5px solid ${ROLES[currentUser.role]?.color}55`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:ROLES[currentUser.role]?.color,flexShrink:0}}>{currentUser.avatar}</div>
-            <div style={{minWidth:0,flex:1}}>
-              <p style={{margin:0,fontSize:12,fontWeight:700,color:W,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name.split(" ")[0]}</p>
+        <div style={{padding:"10px 8px",borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{
+            display:"flex",alignItems:"center",
+            gap: sidebarExpanded?8:0,
+            justifyContent: sidebarExpanded?"flex-start":"center",
+            padding: sidebarExpanded?"7px 8px":"7px 4px",
+            background:"rgba(255,255,255,0.04)",
+            border:`1px solid ${BR}`,borderRadius:9,marginBottom:6,
+            overflow:"hidden",transition:"all 0.2s",
+          }}>
+            <div style={{width:28,height:28,background:ROLES[currentUser.role]?.bg,border:`1.5px solid ${ROLES[currentUser.role]?.color}55`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:ROLES[currentUser.role]?.color,flexShrink:0}}>{currentUser.avatar}</div>
+            {sidebarExpanded&&<div style={{minWidth:0,flex:1}}>
+              <p style={{margin:0,fontSize:11,fontWeight:700,color:W,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name.split(" ")[0]}</p>
               <p style={{margin:0,fontSize:9,color:ROLES[currentUser.role]?.color,lineHeight:1}}>{ROLES[currentUser.role]?.label}</p>
-            </div>
+            </div>}
           </div>
-          <div style={{display:"flex",gap:6}}>
-            {role.canAdmin&&<button onClick={onOpenAdmin} className="bh" style={{...B.purple,fontSize:10,padding:"7px",flex:1}}>🛡️ Admin</button>}
-            <button onClick={onLogout} className="bh" style={{...B.ghost,fontSize:10,padding:"7px",flex:1}}>Sign Out</button>
+          <div style={{display:"flex",gap:5,justifyContent: sidebarExpanded?"stretch":"center"}}>
+            {role.canAdmin&&(
+              <button onClick={onOpenAdmin} className="bh"
+                title={!sidebarExpanded?"Admin":""}
+                style={{...B.purple,fontSize:10,padding:"6px",flex:sidebarExpanded?1:0,width:sidebarExpanded?"auto":36,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                <span>🛡️</span>{sidebarExpanded&&<span>Admin</span>}
+              </button>
+            )}
+            <button onClick={onLogout} className="bh"
+              title={!sidebarExpanded?"Sign Out":""}
+              style={{...B.ghost,fontSize:10,padding:"6px",flex:sidebarExpanded?1:0,width:sidebarExpanded?"auto":36,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+              <span>↩</span>{sidebarExpanded&&<span>Sign Out</span>}
+            </button>
           </div>
         </div>
       </aside>
 
       {/* ═══ MAIN CONTENT COLUMN ═══ */}
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-        {/* Top bar — sits beside the sidebar, not above it */}
+        {/* Top bar */}
         <header style={{background:NL,borderBottom:"1px solid rgba(201,150,58,0.2)",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 24px rgba(0,0,0,0.5)"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,padding:"0 20px",height:54}}>
             <p style={{fontSize:13,fontWeight:800,color:W,margin:0,flex:1}}>{NAVS.find(n=>n.id===view)?.full||"Dashboard"}</p>
