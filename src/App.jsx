@@ -577,6 +577,10 @@ function GS(){return <style>{`
 /* ════════════════════════════════════════════════════════════════
    LOGIN  — Professional two-panel design
 ════════════════════════════════════════════════════════════════ */
+// HR On Demand logo — vector SVG rebuilt at full quality, embedded as
+// base64 data URI so no external file dependency is needed.
+const HR_LOGO="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMzAgMTA4IiB3aWR0aD0iMzkwIiBoZWlnaHQ9IjMyNCI+CiAgPCEtLSBOYXZ5IGJhY2tncm91bmQgd2l0aCByb3VuZGVkIGNvcm5lcnMgLS0+CiAgPHJlY3Qgd2lkdGg9IjEzMCIgaGVpZ2h0PSIxMDgiIHJ4PSI3IiBmaWxsPSIjMUIyQTRBIi8+CgogIDwhLS0g4pWQ4pWQ4pWQIEgg4pWQ4pWQ4pWQIChsZWZ0IHN0ZW0sIGNyb3NzYmFyLCByaWdodCBzdGVtLCB3aXRoIHNlcmlmcykgLS0+CiAgPCEtLSBMZWZ0IHN0ZW0gLS0+CiAgPHJlY3QgeD0iMTIiIHk9IjExIiB3aWR0aD0iMTAiIGhlaWdodD0iNTciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIFJpZ2h0IHN0ZW0gLS0+CiAgPHJlY3QgeD0iNDYiIHk9IjExIiB3aWR0aD0iMTAiIGhlaWdodD0iNTciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIENyb3NzYmFyIC0tPgogIDxyZWN0IHg9IjEyIiB5PSIzMyIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIFRvcCBzZXJpZnMgLS0+CiAgPHJlY3QgeD0iOCIgIHk9IjExIiB3aWR0aD0iMTgiIGhlaWdodD0iNCIgcng9IjEiIGZpbGw9IiNDMTdGMzIiLz4KICA8cmVjdCB4PSI0MiIgeT0iMTEiIHdpZHRoPSIxOCIgaGVpZ2h0PSI0IiByeD0iMSIgZmlsbD0iI0MxN0YzMiIvPgogIDwhLS0gQm90dG9tIHNlcmlmcyAtLT4KICA8cmVjdCB4PSI4IiAgeT0iNjQiIHdpZHRoPSIxOCIgaGVpZ2h0PSI0IiByeD0iMSIgZmlsbD0iI0MxN0YzMiIvPgogIDxyZWN0IHg9IjQyIiB5PSI2NCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjQzE3RjMyIi8+CgogIDwhLS0g4pWQ4pWQ4pWQIFIg4pWQ4pWQ4pWQIChzdGVtLCBib3dsLCBkaWFnb25hbCBsZWcsIHdpdGggc2VyaWZzKSAtLT4KICA8IS0tIExlZnQgc3RlbSAtLT4KICA8cmVjdCB4PSI3MCIgeT0iMTEiIHdpZHRoPSIxMCIgaGVpZ2h0PSI1NyIgZmlsbD0iI0MxN0YzMiIvPgogIDwhLS0gVG9wIHNlcmlmIC0tPgogIDxyZWN0IHg9IjY2IiB5PSIxMSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjQzE3RjMyIi8+CiAgPCEtLSBCb3R0b20gc2VyaWYgLS0+CiAgPHJlY3QgeD0iNjYiIHk9IjY0IiB3aWR0aD0iMTYiIGhlaWdodD0iNCIgcng9IjEiIGZpbGw9IiNDMTdGMzIiLz4KCiAgPCEtLSBCb3dsIG9mIFIg4oCUIGZpbGxlZCBzaGFwZSB0aGVuIGlubmVyIGN1dG91dCAtLT4KICA8cGF0aCBkPSJNODAgMTEgQzEwNiAxMSAxMTIgMTcgMTEyIDI2IEMxMTIgMzYgMTA2IDQyIDgwIDQzIEw4MCAxMVoiIGZpbGw9IiNDMTdGMzIiLz4KICA8cGF0aCBkPSJNODMgMTcgQzEwMiAxNyAxMDYgMjEgMTA2IDI2IEMxMDYgMzEgMTAyIDM2IDgzIDM3IEw4MyAxN1oiIGZpbGw9IiMxQjJBNEEiLz4KCiAgPCEtLSBMZWcgb2YgUiDigJQgZGlhZ29uYWwgZnJvbSBib3dsIGpvaW50IGRvd253YXJkIC0tPgogIDxwYXRoIGQ9Ik04MCA0MyBMMTE0IDY4IEwxMDYgNjggTDcyIDQzWiIgZmlsbD0iI0MxN0YzMiIvPgoKICA8IS0tIOKVkOKVkOKVkCBEaXZpZGVyIGxpbmUg4pWQ4pWQ4pWQIC0tPgogIDxsaW5lIHgxPSIxOCIgeTE9Ijc4IiB4Mj0iMTEyIiB5Mj0iNzgiIHN0cm9rZT0iI0MxN0YzMiIgc3Ryb2tlLXdpZHRoPSIwLjgiIG9wYWNpdHk9IjAuNCIvPgoKICA8IS0tIOKVkOKVkOKVkCAib24gRGVtYW5kIiBzdWJ0aXRsZSDilZDilZDilZAgLS0+CiAgPHRleHQgeD0iNjUiIHk9Ijk1IgogICAgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIKICAgIGZvbnQtc2l6ZT0iMTIiCiAgICBmaWxsPSIjQzhBOTZFIgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIKICAgIGxldHRlci1zcGFjaW5nPSIyIgogICAgZm9udC1zdHlsZT0iaXRhbGljIj5vbiBEZW1hbmQ8L3RleHQ+Cjwvc3ZnPgo=";
+
 function LoginScreen({users,onLogin}){
   const [un,setUn]=useState("");const [pw,setPw]=useState("");const [show,setShow]=useState(false);
   const [loading,setLoading]=useState(false);const [gload,setGload]=useState(false);const [err,setErr]=useState("");
@@ -634,8 +638,12 @@ function LoginScreen({users,onLogin}){
       <div style={{width:"100%",maxWidth:440,animation:"fadeUp 0.4s ease",position:"relative",zIndex:1}}>
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:72,height:72,background:`linear-gradient(145deg,${G},${GL})`,borderRadius:22,marginBottom:16,boxShadow:`0 12px 48px rgba(201,150,58,0.35),0 0 0 1px rgba(201,150,58,0.2)`}}>
-            <span style={{fontSize:34}}>⚖️</span>
+          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+            <img src={HR_LOGO} alt="HR on Demand" style={{
+              height:110,width:"auto",objectFit:"contain",
+              filter:"drop-shadow(0 8px 32px rgba(193,127,50,0.45))",
+              borderRadius:10,
+            }}/>
           </div>
           <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>NC Compliance CRM</h1>
           <p style={{margin:0,fontSize:13,color:WM}}>HR On Demand · SMB & Nonprofit Outreach</p>
@@ -3669,7 +3677,6 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"#c084fc"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"#60a5fa"}];
 
   const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
-  const HR_LOGO="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMzAgMTA4IiB3aWR0aD0iMzkwIiBoZWlnaHQ9IjMyNCI+CiAgPCEtLSBOYXZ5IGJhY2tncm91bmQgd2l0aCByb3VuZGVkIGNvcm5lcnMgLS0+CiAgPHJlY3Qgd2lkdGg9IjEzMCIgaGVpZ2h0PSIxMDgiIHJ4PSI3IiBmaWxsPSIjMUIyQTRBIi8+CgogIDwhLS0g4pWQ4pWQ4pWQIEgg4pWQ4pWQ4pWQIChsZWZ0IHN0ZW0sIGNyb3NzYmFyLCByaWdodCBzdGVtLCB3aXRoIHNlcmlmcykgLS0+CiAgPCEtLSBMZWZ0IHN0ZW0gLS0+CiAgPHJlY3QgeD0iMTIiIHk9IjExIiB3aWR0aD0iMTAiIGhlaWdodD0iNTciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIFJpZ2h0IHN0ZW0gLS0+CiAgPHJlY3QgeD0iNDYiIHk9IjExIiB3aWR0aD0iMTAiIGhlaWdodD0iNTciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIENyb3NzYmFyIC0tPgogIDxyZWN0IHg9IjEyIiB5PSIzMyIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjciIGZpbGw9IiNDMTdGMzIiLz4KICA8IS0tIFRvcCBzZXJpZnMgLS0+CiAgPHJlY3QgeD0iOCIgIHk9IjExIiB3aWR0aD0iMTgiIGhlaWdodD0iNCIgcng9IjEiIGZpbGw9IiNDMTdGMzIiLz4KICA8cmVjdCB4PSI0MiIgeT0iMTEiIHdpZHRoPSIxOCIgaGVpZ2h0PSI0IiByeD0iMSIgZmlsbD0iI0MxN0YzMiIvPgogIDwhLS0gQm90dG9tIHNlcmlmcyAtLT4KICA8cmVjdCB4PSI4IiAgeT0iNjQiIHdpZHRoPSIxOCIgaGVpZ2h0PSI0IiByeD0iMSIgZmlsbD0iI0MxN0YzMiIvPgogIDxyZWN0IHg9IjQyIiB5PSI2NCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjQzE3RjMyIi8+CgogIDwhLS0g4pWQ4pWQ4pWQIFIg4pWQ4pWQ4pWQIChzdGVtLCBib3dsLCBkaWFnb25hbCBsZWcsIHdpdGggc2VyaWZzKSAtLT4KICA8IS0tIExlZnQgc3RlbSAtLT4KICA8cmVjdCB4PSI3MCIgeT0iMTEiIHdpZHRoPSIxMCIgaGVpZ2h0PSI1NyIgZmlsbD0iI0MxN0YzMiIvPgogIDwhLS0gVG9wIHNlcmlmIC0tPgogIDxyZWN0IHg9IjY2IiB5PSIxMSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjQiIHJ4PSIxIiBmaWxsPSIjQzE3RjMyIi8+CiAgPCEtLSBCb3R0b20gc2VyaWYgLS0+CiAgPHJlY3QgeD0iNjYiIHk9IjY0IiB3aWR0aD0iMTYiIGhlaWdodD0iNCIgcng9IjEiIGZpbGw9IiNDMTdGMzIiLz4KCiAgPCEtLSBCb3dsIG9mIFIg4oCUIGZpbGxlZCBzaGFwZSB0aGVuIGlubmVyIGN1dG91dCAtLT4KICA8cGF0aCBkPSJNODAgMTEgQzEwNiAxMSAxMTIgMTcgMTEyIDI2IEMxMTIgMzYgMTA2IDQyIDgwIDQzIEw4MCAxMVoiIGZpbGw9IiNDMTdGMzIiLz4KICA8cGF0aCBkPSJNODMgMTcgQzEwMiAxNyAxMDYgMjEgMTA2IDI2IEMxMDYgMzEgMTAyIDM2IDgzIDM3IEw4MyAxN1oiIGZpbGw9IiMxQjJBNEEiLz4KCiAgPCEtLSBMZWcgb2YgUiDigJQgZGlhZ29uYWwgZnJvbSBib3dsIGpvaW50IGRvd253YXJkIC0tPgogIDxwYXRoIGQ9Ik04MCA0MyBMMTE0IDY4IEwxMDYgNjggTDcyIDQzWiIgZmlsbD0iI0MxN0YzMiIvPgoKICA8IS0tIOKVkOKVkOKVkCBEaXZpZGVyIGxpbmUg4pWQ4pWQ4pWQIC0tPgogIDxsaW5lIHgxPSIxOCIgeTE9Ijc4IiB4Mj0iMTEyIiB5Mj0iNzgiIHN0cm9rZT0iI0MxN0YzMiIgc3Ryb2tlLXdpZHRoPSIwLjgiIG9wYWNpdHk9IjAuNCIvPgoKICA8IS0tIOKVkOKVkOKVkCAib24gRGVtYW5kIiBzdWJ0aXRsZSDilZDilZDilZAgLS0+CiAgPHRleHQgeD0iNjUiIHk9Ijk1IgogICAgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIKICAgIGZvbnQtc2l6ZT0iMTIiCiAgICBmaWxsPSIjQzhBOTZFIgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIKICAgIGxldHRlci1zcGFjaW5nPSIyIgogICAgZm9udC1zdHlsZT0iaXRhbGljIj5vbiBEZW1hbmQ8L3RleHQ+Cjwvc3ZnPgo=";
   const [sidebarExpanded,setSidebarExpanded]=useState(false);
   const SIDEBAR_W=sidebarExpanded?228:62;
 
@@ -3707,14 +3714,17 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
               transition:"all 0.2s",
             }}/>
           ):(
-            /* Icon-only monogram when collapsed */
+            /* Collapsed: show a cropped/zoomed version of the real logo */
             <div style={{
-              width:38,height:38,borderRadius:8,
-              background:"#1B2A4A",border:"1.5px solid rgba(193,127,50,0.5)",
-              display:"flex",alignItems:"center",justifyContent:"center",
+              width:42,height:42,borderRadius:8,overflow:"hidden",
+              border:"1.5px solid rgba(193,127,50,0.4)",
               flexShrink:0,transition:"all 0.2s",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              background:"#1B2A4A",
             }}>
-              <span style={{fontSize:15,fontWeight:900,color:"#C17F32",fontFamily:"Georgia,serif",lineHeight:1}}>HR</span>
+              <img src={HR_LOGO} alt="HR" style={{
+                height:38,width:"auto",objectFit:"contain",
+              }}/>
             </div>
           )}
         </div>
