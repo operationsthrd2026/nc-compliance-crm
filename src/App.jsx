@@ -416,6 +416,67 @@ const STATUSES=["NEW","T1 SENT","T2 SENT","REVIEW","TOUCH 3 GATE","NURTURE/T3 SE
 const VERTICALS=["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Nonprofits & Associations","Faith-Based Organizations","Education & Schools","Human Services Nonprofits","Community Development Orgs","Religious & Faith-Based Nonprofits","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Advocacy Organizations","Foundations & Grantmakers"];
 const MARKETS=["Raleigh","Durham","Chapel Hill","Greenville","Cary","Wilmington","Charlotte","Asheville","Fayetteville","Greensboro","Winston-Salem","High Point","Rocky Mount","Goldsboro","Other"];
 const ORG_SIZES=["1-9","10-49","50-99","100-249","250-499","500+"];
+
+/* ════════════════════════════════════════════════════════════════
+   ICP UPGRADE — from HR On Demand ICP & Playbook docs
+════════════════════════════════════════════════════════════════ */
+const BUYER_TYPES=["CEO / Founder","COO","Operations Director","Executive Director","Office Manager","Finance Director","HR Manager (Solo/Overwhelmed)","President","Other"];
+const BUSINESS_TRIGGERS=["Hiring Growth","New Location","Rapid Expansion","Employee Relations Issue","Termination Concern","Performance Issue","Manager Conflict","Workplace Investigation","Compliance Event","Employee Complaint","Multi-State Expansion","Policy Review","Audit Concern","Leadership Growth","New Manager Promotions","Org Restructuring","Succession Planning","Team Development","Technology Change","HRIS Implementation","AI Adoption","Recruiting Modernization"];
+const ICP_BEST_VERTICALS=["Light Manufacturing & Logistics","Nonprofits & Associations","Human Services Nonprofits","Healthcare Practices","Home Health / Homecare"];
+const ICP_BEST_SIZES=["50-99","100-249"];
+const ICP_BEST_BUYERS=["CEO / Founder","COO","Executive Director","President","Operations Director"];
+
+// Score a prospect 1–5 against ICP criteria from the playbook
+function calcICPScore(p){
+  let score=0;
+  // Org size — best fit 50-249
+  if(ICP_BEST_SIZES.includes(p.orgSize)) score+=2;
+  else if(["10-49","250-499"].includes(p.orgSize)) score+=1;
+  // Vertical — best fit
+  if(ICP_BEST_VERTICALS.includes(p.vertical)) score+=1;
+  else if(p.vertical) score+=0.5;
+  // Buyer type
+  if(ICP_BEST_BUYERS.includes(p.buyerType)) score+=1;
+  else if(p.buyerType) score+=0.5;
+  // Has business trigger
+  if(p.businessTrigger&&p.businessTrigger!=="") score+=1;
+  // Has a pain point documented
+  if(p.leadPainPoint) score+=0.5;
+  // Priority score override
+  const ps=parseInt(p.priorityScore)||0;
+  if(ps>=8) score=Math.max(score,4.5);
+  if(ps>=9) score=Math.max(score,5);
+  return Math.min(5,Math.round(score*2)/2); // 0.5 increments, max 5
+}
+
+function ICPBadge({score,sm}){
+  const full=Math.floor(score);
+  const half=score%1>=0.5;
+  const color=score>=4?"#34d399":score>=3?"#DBA843":score>=2?"#a78bfa":"#94a3b8";
+  const label=score>=4?"Strong Fit":score>=3?"Good Fit":score>=2?"Possible":score>=1?"Low":"No Score";
+  if(sm) return <span style={{fontSize:9,fontWeight:800,color,background:`${color}18`,border:`1px solid ${color}44`,borderRadius:20,padding:"1px 7px",whiteSpace:"nowrap"}}>ICP {score}</span>;
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color,background:`${color}14`,border:`1px solid ${color}33`,borderRadius:20,padding:"3px 10px",whiteSpace:"nowrap"}}>
+      <span style={{fontSize:12}}>{"★".repeat(full)}{half?"½":""}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+// Referral partner seed data
+const SEED_PARTNERS=[
+  {id:"rp1",name:"Capital City CPA Group",contactName:"David Chen",title:"Managing Partner",email:"dchen@capitalcitycpa.com",phone:"919-555-0101",city:"Raleigh",partnerType:"CPA",status:"Contacted",notes:"Serves ~40 SMB clients 25-150 employees",lastContact:"2026-06-01",nextFollowUp:"2026-06-15",referralsReceived:0},
+  {id:"rp2",name:"Triangle Business Law",contactName:"Sarah Mitchell",title:"Principal",email:"smitchell@trianglelaw.com",phone:"919-555-0202",city:"Durham",partnerType:"Attorney",status:"Meeting Scheduled",notes:"Employment law firm, natural fit",lastContact:"2026-06-10",nextFollowUp:"2026-06-20",referralsReceived:1},
+  {id:"rp3",name:"Paycom NC Region",contactName:"James Okafor",title:"Sales Manager",email:"jokafor@paycom.com",phone:"919-555-0303",city:"Raleigh",partnerType:"Payroll Provider",status:"Responded",notes:"Referred 1 prospect so far",lastContact:"2026-05-28",nextFollowUp:"2026-06-25",referralsReceived:1},
+];
+const PARTNER_TYPES=["CPA","Attorney","Benefits Broker","Payroll Provider","Banker","Fractional CFO","Business Consultant","Other"];
+const PARTNER_STATUSES=["Not Contacted","Contacted","Responded","Meeting Scheduled","Active Partner","Inactive"];
+
+// Win categories per playbook
+const WIN_TYPES=["Diagnostic Completed","Email Response","LinkedIn Connection","Meeting Scheduled","Referral Partner Interested","Speaking Opportunity","Correct Contact Found","Future Follow-Up Requested","Proposal Opportunity"];
+
+// 30-day targets from playbook
+const THIRTY_DAY_TARGETS={contacts:100,emails:60,linkedIn:40,responses:10,meetings:5,referralConvos:3,discoveryCalls:2,proposalOpp:1};
 const SRC_TYPES=["Apollo.io","Hunter.io","LinkedIn","Nonprofit Directory","Charity Navigator","GuideStar / Candid","Google Maps","IRS 990 Database","State Registry","Referral","Website","Claude AI","ChatGPT","Gemini","Other AI","Manual Research"];
 
 const SC={
@@ -430,7 +491,7 @@ const SC={
   "Converted":      {bg:"rgba(168,85,247,0.12)",c:"#c084fc",b:"rgba(168,85,247,0.35)"},
 };
 
-const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"No",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:""};
+const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"No",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:"",buyerType:"",businessTrigger:""};
 
 const SEED=[
   {id:1,companyName:"Comfort Keepers – Raleigh",contactName:"Bob Marshall",title:"Franchise Owner",emailPhone:"bobmarshall@comfortkeepers.com",cityMarket:"Raleigh",market:"Raleigh",sourceUrl:"",sourceType:"Franchise Directory",verificationNotes:"Verified.",whyFit:"Wage/hour compliance risk.",vertical:"Home Health / Homecare",hrPersonListed:"No",hrPeopleContact:"",orgSize:"10-49",t1SendDate:"2026-05-05",t1DueDate:"2026-05-12",t2SendDate:"2026-05-12",t2DueDate:"2026-05-19",t3SendDate:"2026-05-19",t3DueDate:"2026-05-26",leadPainPoint:"Caregiver misclassification.",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:true,currentStatus:"NURTURE/T3 SENT",outreachNotes:"",priorityScore:"5",remarks:""},
@@ -2097,7 +2158,10 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
           <FG label="Vertical"><select value={fv("vertical")} onChange={e=>sf("vertical",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select></FG>
           <FG label="Org Size"><select value={fv("orgSize")} onChange={e=>sf("orgSize",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{ORG_SIZES.map(s=><option key={s}>{s}</option>)}</select></FG>
           <FG label="Source Type"><select value={fv("sourceType")} onChange={e=>sf("sourceType",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{SRC_TYPES.map(s=><option key={s}>{s}</option>)}</select></FG>
+          <FG label="Buyer Type (ICP)"><select value={fv("buyerType")} onChange={e=>sf("buyerType",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select buyer type…</option>{BUYER_TYPES.map(b=><option key={b}>{b}</option>)}</select></FG>
+          <FG label="Business Trigger"><select value={fv("businessTrigger")} onChange={e=>sf("businessTrigger",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select trigger…</option>{BUSINESS_TRIGGERS.map(t=><option key={t}>{t}</option>)}</select></FG>
           <FG label="Priority Score (1–10)"><input type="number" min="1" max="10" value={fv("priorityScore")} onChange={e=>sf("priorityScore",e.target.value)} style={inp()}/></FG>
+          <FG label="ICP Fit Score"><div style={{display:"flex",alignItems:"center",gap:8,paddingTop:4}}><ICPBadge score={calcICPScore(form)}/><span style={{fontSize:10,color:WD}}>auto-calculated</span></div></FG>
           <FG label="Status" span><select value={fv("currentStatus")} onChange={e=>sf("currentStatus",e.target.value)} style={{...inp(),cursor:"pointer"}}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></FG>
           <FG label="Source URL" span><input value={fv("sourceUrl")} onChange={e=>sf("sourceUrl",e.target.value)} placeholder="https://…" style={inp()}/></FG>
           <FG label="Why a Fit" span><textarea value={fv("whyFit")} onChange={e=>sf("whyFit",e.target.value)} rows={2} style={{...inp(),resize:"vertical"}}/></FG>
@@ -3622,6 +3686,15 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const [showFinder,setShowFinder]=useState(false);
   const [sortCol,setSortCol]=useState("companyName");
   const [sortDir,setSortDir]=useState("asc");
+  // Referral partner state
+  const [partners,setPartners]=useState(SEED_PARTNERS);
+  const [partnerDlg,setPartnerDlg]=useState(null);
+  const [partnerSearch,setPartnerSearch]=useState("");
+  // Win tracker state
+  const [wins,setWins]=useState([]);
+  const [winForm,setWinForm]=useState({type:"",notes:"",date:today()});
+  // 30-day tracker
+  const [targets30,setTargets30]=useState({contacts:0,emails:0,linkedIn:0,responses:0,meetings:0,referralConvos:0,discoveryCalls:0,proposalOpp:0});
 
   const role=ROLES[currentUser.role];
   const canEdit=role.canEdit;
@@ -3676,7 +3749,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const mktBreak=MARKETS.map(m=>({m,c:crmData.filter(p=>p.market===m).length})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
   const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"#c084fc"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"#60a5fa"}];
 
-  const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
+  const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0},{id:"partners",l:"🤝",full:"Referral Partners"},{id:"playbook",l:"📖",full:"Playbook & Targets"}];
   const [sidebarExpanded,setSidebarExpanded]=useState(false);
   const SIDEBAR_W=sidebarExpanded?228:62;
 
@@ -4043,13 +4116,17 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
                       <div key={p.id} onClick={()=>setPDlg(p)} className="rh" style={{background:NL,border:`1px solid rgba(255,255,255,0.07)`,borderRadius:9,padding:"9px 10px",cursor:"pointer"}}>
                         <p style={{margin:0,fontSize:11,fontWeight:700,color:W,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p>
                         <p style={{margin:"2px 0 0",fontSize:10,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.contactName||"—"}</p>
-                        <div style={{display:"flex",gap:4,marginTop:4}}>
+                        <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
                           {p.flagToMelissa&&<span style={{fontSize:9,color:"#f472b6"}}>🚩</span>}
                           {p.replyReceived&&<span style={{fontSize:9,color:"#34d399"}}>📩</span>}
                           {p.doNotRespond&&<span style={{fontSize:9,color:"#f87171"}}>🚫</span>}
+                          {p.businessTrigger&&<span style={{fontSize:8,color:"#60a5fa",background:"rgba(96,165,250,0.12)",borderRadius:4,padding:"1px 4px"}}>{p.businessTrigger.split(" ").slice(0,2).join(" ")}</span>}
                           {p.priorityScore&&<span style={{fontSize:9,marginLeft:"auto",color:parseInt(p.priorityScore)>=7?"#f472b6":GL}}>⭐{p.priorityScore}</span>}
                         </div>
-                        {p.priorityScore&&<div style={{marginTop:4,height:2,background:"rgba(255,255,255,0.06)",borderRadius:1}}><div style={{height:"100%",background:parseInt(p.priorityScore)>=7?"#f472b6":G,borderRadius:1,width:Math.min(parseInt(p.priorityScore)*10,100)+"%"}}/></div>}
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                          <ICPBadge score={calcICPScore(p)} sm/>
+                          {p.priorityScore&&<div style={{flex:1,marginLeft:6,height:2,background:"rgba(255,255,255,0.06)",borderRadius:1}}><div style={{height:"100%",background:parseInt(p.priorityScore)>=7?"#f472b6":G,borderRadius:1,width:Math.min(parseInt(p.priorityScore)*10,100)+"%"}}/></div>}
+                        </div>
                       </div>
                     ))}
                     {cards.length===0&&<p style={{fontSize:10,color:WD,textAlign:"center",padding:"10px 0",margin:0}}>Empty</p>}
@@ -4082,6 +4159,201 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           t2={t2}
         />
       )}
+
+      {/* REFERRAL PARTNERS */}
+      {view==="partners"&&(
+        <div style={{padding:"18px 16px",maxWidth:1200,margin:"0 auto",animation:"fadeUp 0.3s ease",flex:1,overflowY:"auto"}}>
+          <div style={{display:"flex",gap:12,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{flex:1}}>
+              <h2 style={{margin:"0 0 4px",fontSize:18,fontWeight:900,color:W}}>🤝 Referral Partners</h2>
+              <p style={{margin:0,fontSize:12,color:WM}}>CPAs · Attorneys · Brokers · Payroll Providers · Bankers · Fractional CFOs · Consultants</p>
+            </div>
+            {canEdit&&<button onClick={()=>setPartnerDlg({id:"new"+Date.now(),name:"",contactName:"",title:"",email:"",phone:"",city:"",partnerType:"",status:"Not Contacted",notes:"",lastContact:"",nextFollowUp:"",referralsReceived:0})} style={{...B.gold,fontSize:12,padding:"9px 16px"}}>+ Add Partner</button>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:9,marginBottom:16}}>
+            {[{l:"Total Partners",v:partners.length,c:GL,i:"🤝"},{l:"Active Partners",v:partners.filter(p=>p.status==="Active Partner").length,c:"#34d399",i:"✅"},{l:"Referrals Received",v:partners.reduce((s,p)=>s+(p.referralsReceived||0),0),c:"#60a5fa",i:"📩"},{l:"Meetings Set",v:partners.filter(p=>p.status==="Meeting Scheduled").length,c:"#f472b6",i:"📅"}].map(s=>(
+              <div key={s.l} style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,padding:"12px 12px 10px",position:"relative",overflow:"hidden"}}>
+                <p style={{margin:0,fontSize:9.5,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.l}</p>
+                <p style={{margin:"5px 0 0",fontSize:26,fontWeight:900,color:s.v>0?s.c:"rgba(255,255,255,0.12)",lineHeight:1}}>{s.v}</p>
+                <span style={{position:"absolute",top:10,right:10,fontSize:15,opacity:0.15}}>{s.i}</span>
+                <div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.c},transparent)`,opacity:0.4}}/>
+              </div>
+            ))}
+          </div>
+          <div style={{position:"relative",marginBottom:12,maxWidth:340}}>
+            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:12,color:WD}}>🔍</span>
+            <input value={partnerSearch} onChange={e=>setPartnerSearch(e.target.value)} placeholder="Search partners…" style={{...inp(),paddingLeft:28}}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:11}}>
+            {partners.filter(p=>{const q=partnerSearch.toLowerCase();return !q||[p.name,p.contactName,p.partnerType,p.city].some(v=>(v||"").toLowerCase().includes(q));}).map(p=>{
+              const stColor=p.status==="Active Partner"?"#34d399":p.status==="Meeting Scheduled"?"#f472b6":p.status==="Responded"?"#60a5fa":p.status==="Contacted"?"#DBA843":"#94a3b8";
+              return(
+                <div key={p.id} onClick={()=>setPartnerDlg(p)} className="rh" style={{background:NL,border:`1px solid ${BR}`,borderRadius:12,padding:"14px 15px",cursor:"pointer"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{margin:0,fontSize:13,fontWeight:800,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Unnamed Partner"}</p>
+                      <p style={{margin:"2px 0 0",fontSize:11,color:WM}}>{p.contactName}{p.title?` · ${p.title}`:""}</p>
+                    </div>
+                    <span style={{fontSize:9,fontWeight:800,color:stColor,background:`${stColor}18`,border:`1px solid ${stColor}33`,borderRadius:20,padding:"2px 8px",whiteSpace:"nowrap",marginLeft:8,flexShrink:0}}>{p.status}</span>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                    {p.partnerType&&<span style={{fontSize:10,color:GL,background:"rgba(201,150,58,0.12)",borderRadius:6,padding:"2px 7px"}}>{p.partnerType}</span>}
+                    {p.city&&<span style={{fontSize:10,color:WM}}>📍 {p.city}</span>}
+                  </div>
+                  <div style={{display:"flex",gap:12,fontSize:10,color:WD}}>
+                    {p.lastContact&&<span>Last: {p.lastContact}</span>}
+                    {p.nextFollowUp&&<span>Next: <span style={{color:GL}}>{p.nextFollowUp}</span></span>}
+                    {p.referralsReceived>0&&<span style={{color:"#34d399",marginLeft:"auto"}}>📩 {p.referralsReceived} referral{p.referralsReceived!==1?"s":""}</span>}
+                  </div>
+                  {p.notes&&<p style={{margin:"8px 0 0",fontSize:10,color:WM,lineHeight:1.4,borderTop:`1px solid ${BR}`,paddingTop:7}}>{p.notes}</p>}
+                </div>
+              );
+            })}
+            {partners.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:WD,fontSize:13}}>No referral partners yet. Add your first one above.</div>}
+          </div>
+        </div>
+      )}
+
+      {/* PLAYBOOK & TARGETS */}
+      {view==="playbook"&&(
+        <div style={{padding:"18px 16px",maxWidth:1200,margin:"0 auto",animation:"fadeUp 0.3s ease",flex:1,overflowY:"auto"}}>
+          <div style={{marginBottom:16}}>
+            <h2 style={{margin:"0 0 4px",fontSize:18,fontWeight:900,color:W}}>📖 Playbook & 30-Day Targets</h2>
+            <p style={{margin:0,fontSize:12,color:WM}}>Outreach templates, ICP quick-reference, and progress toward 30-day goals</p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr",gap:16}}>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {/* 30-Day Tracker */}
+              <div style={{background:NL,border:"1px solid rgba(201,150,58,0.2)",borderRadius:12,overflow:"hidden"}}>
+                <div style={{background:"rgba(201,150,58,0.08)",padding:"9px 14px",borderBottom:"1px solid rgba(201,150,58,0.12)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.07em"}}>🎯 30-Day Target Tracker</p>
+                  <span style={{fontSize:9,color:WD}}>Edit your current count →</span>
+                </div>
+                <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                  {Object.entries(THIRTY_DAY_TARGETS).map(([key,target])=>{
+                    const labels={contacts:"Contacts Added",emails:"Emails Sent",linkedIn:"LinkedIn Connections",responses:"Responses Received",meetings:"Meetings Scheduled",referralConvos:"Referral Partner Convos",discoveryCalls:"Discovery Calls",proposalOpp:"Proposal Opportunities"};
+                    const current=targets30[key]||0;
+                    const pct2=Math.min(100,Math.round((current/target)*100));
+                    const barColor=pct2>=100?"#34d399":pct2>=60?"#DBA843":"#60a5fa";
+                    return(
+                      <div key={key}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                          <span style={{fontSize:11,color:WM}}>{labels[key]}</span>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <input type="number" min="0" value={current} onChange={e=>setTargets30(t=>({...t,[key]:parseInt(e.target.value)||0}))} style={{...inp(),width:52,padding:"2px 6px",fontSize:11,textAlign:"center"}}/>
+                            <span style={{fontSize:10,color:WD}}>/ {target}</span>
+                            <span style={{fontSize:10,fontWeight:700,color:barColor,minWidth:32,textAlign:"right"}}>{pct2}%</span>
+                          </div>
+                        </div>
+                        <div style={{height:4,background:"rgba(255,255,255,0.06)",borderRadius:2}}>
+                          <div style={{height:"100%",background:barColor,borderRadius:2,width:pct2+"%",transition:"width 0.4s ease"}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Win Tracker */}
+              <div style={{background:NL,border:"1px solid rgba(52,211,153,0.2)",borderRadius:12,overflow:"hidden"}}>
+                <div style={{background:"rgba(52,211,153,0.06)",padding:"9px 14px",borderBottom:"1px solid rgba(52,211,153,0.12)"}}>
+                  <p style={{margin:0,fontSize:10,fontWeight:800,color:"#34d399",textTransform:"uppercase",letterSpacing:"0.07em"}}>🏆 Win Tracker</p>
+                  <p style={{margin:"2px 0 0",fontSize:10,color:WD}}>A win is not only a sale — track all progress</p>
+                </div>
+                <div style={{padding:"11px 14px",display:"grid",gridTemplateColumns:"1fr auto",gap:8,borderBottom:`1px solid ${BR}`,alignItems:"end"}}>
+                  <div>
+                    <label style={LBL}>Win Type</label>
+                    <select value={winForm.type} onChange={e=>setWinForm(f=>({...f,type:e.target.value}))} style={{...inp(),cursor:"pointer"}}><option value="">Select win type…</option>{WIN_TYPES.map(w=><option key={w}>{w}</option>)}</select>
+                  </div>
+                  <div>
+                    <label style={LBL}>Date</label>
+                    <input type="date" value={winForm.date} onChange={e=>setWinForm(f=>({...f,date:e.target.value}))} style={{...inp(),width:120}}/>
+                  </div>
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={LBL}>Notes (optional)</label>
+                    <input value={winForm.notes} onChange={e=>setWinForm(f=>({...f,notes:e.target.value}))} placeholder="Company name, context…" style={inp()}/>
+                  </div>
+                  <div style={{gridColumn:"1/-1",display:"flex",justifyContent:"flex-end"}}>
+                    <button onClick={()=>{if(!winForm.type)return;setWins(w=>[{id:Date.now(),type:winForm.type,notes:winForm.notes,date:winForm.date},...w]);setWinForm({type:"",notes:"",date:today()});t2("Win logged! 🏆");}} style={{...B.green,fontSize:11,padding:"7px 14px"}}>Log Win</button>
+                  </div>
+                </div>
+                <div style={{maxHeight:200,overflowY:"auto"}}>
+                  {wins.length===0&&<p style={{fontSize:11,color:WD,textAlign:"center",padding:"16px 0",margin:0}}>No wins logged yet — every response counts!</p>}
+                  {wins.map(w=>(
+                    <div key={w.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"8px 14px",borderBottom:`1px solid ${BR}`}}>
+                      <span style={{fontSize:14}}>🏆</span>
+                      <div style={{flex:1}}>
+                        <p style={{margin:0,fontSize:11,fontWeight:700,color:"#34d399"}}>{w.type}</p>
+                        {w.notes&&<p style={{margin:"2px 0 0",fontSize:10,color:WM}}>{w.notes}</p>}
+                      </div>
+                      <span style={{fontSize:9,color:WD,flexShrink:0}}>{w.date}</span>
+                      <button onClick={()=>setWins(ws=>ws.filter(x=>x.id!==w.id))} style={{background:"none",border:"none",color:"rgba(248,113,113,0.5)",cursor:"pointer",fontSize:11,padding:"0 2px"}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                {wins.length>0&&(
+                  <div style={{padding:"8px 14px",background:"rgba(52,211,153,0.04)",borderTop:`1px solid ${BR}`,display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {WIN_TYPES.map(w=>{const c=wins.filter(x=>x.type===w).length;return c>0?<span key={w} style={{fontSize:9,color:"#34d399",background:"rgba(52,211,153,0.1)",borderRadius:20,padding:"2px 8px"}}>{w}: {c}</span>:null;})}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Right column */}
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {/* ICP Quick Reference */}
+              <div style={{background:NL,border:"1px solid rgba(201,150,58,0.2)",borderRadius:12,overflow:"hidden"}}>
+                <div style={{background:"rgba(201,150,58,0.08)",padding:"9px 14px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}>
+                  <p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.07em"}}>👥 ICP Quick Reference</p>
+                </div>
+                <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    {label:"Best Fit Employee Count",value:"50–150 employees",icon:"👥"},
+                    {label:"Revenue Range",value:"$250k – $100M+",icon:"💰"},
+                    {label:"Primary Buyer",value:"CEO / Founder, COO, Executive Director",icon:"🎯"},
+                    {label:"Best Industries",value:"Manufacturing · Professional Services · Nonprofits",icon:"🏭"},
+                    {label:"Geography",value:"Raleigh-Durham / RTP · Greenville · Eastern NC · Charlotte (secondary)",icon:"📍"},
+                    {label:"Annual Contract Potential",value:"$12,000 – $50,000+",icon:"📊"},
+                  ].map(item=>(
+                    <div key={item.label} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"6px 8px",background:"rgba(255,255,255,0.02)",borderRadius:8}}>
+                      <span style={{fontSize:14,flexShrink:0}}>{item.icon}</span>
+                      <div><p style={{margin:0,fontSize:9,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>{item.label}</p><p style={{margin:"2px 0 0",fontSize:11,fontWeight:600,color:W}}>{item.value}</p></div>
+                    </div>
+                  ))}
+                  <div style={{borderTop:`1px solid ${BR}`,paddingTop:8}}>
+                    <p style={{margin:"0 0 6px",fontSize:9,fontWeight:800,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Top Buying Signals</p>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                      {["Hiring multiple roles","No visible HR leader","Has 25–250 employees","Recently funded","Multiple locations","Multi-state employees","High turnover roles","New location opened"].map(s=>(
+                        <span key={s} style={{fontSize:9,color:GL,background:"rgba(201,150,58,0.1)",borderRadius:6,padding:"2px 7px"}}>{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* Email Templates */}
+              <div style={{background:NL,border:"1px solid rgba(96,165,250,0.2)",borderRadius:12,overflow:"hidden"}}>
+                <div style={{background:"rgba(96,165,250,0.06)",padding:"9px 14px",borderBottom:"1px solid rgba(96,165,250,0.12)"}}>
+                  <p style={{margin:0,fontSize:10,fontWeight:800,color:"#60a5fa",textTransform:"uppercase",letterSpacing:"0.07em"}}>📧 Email Templates</p>
+                </div>
+                {[
+                  {label:"Touch 1 — Prospect",color:"#60a5fa",subject:"Resource for growing organizations",body:`Hi [Name],\n\nI came across [Company Name] and noticed your organization appears to be growing.\n\nOne thing many growing companies run into is that people processes do not always scale at the same pace as the business.\n\nHR On Demand created a complimentary Growth Readiness Diagnostic to help leaders quickly assess hiring, compliance, leadership, retention, workforce planning, and HR systems.\n\nIt takes about three minutes, provides immediate results, and does not require a login.\n\nYou can access it here: [Insert Link]\n\nI thought it may be a useful resource as your team continues to grow.\n\nBest,\nMelissa Pennington\nFounder & CEO, HR On Demand`},
+                  {label:"Touch 2 — Follow-Up",color:"#a78bfa",subject:"Following up",body:`Hi [Name],\n\nI wanted to follow up and share the Growth Readiness Diagnostic again in case it is helpful.\n\nIt is designed for organizations that are growing and want a quick way to identify potential gaps in hiring, compliance, leadership, retention, and HR systems.\n\nHere is the link: [Insert Link]\n\nNo pressure at all. I simply thought it may be useful.\n\nBest,\nMelissa`},
+                  {label:"Touch 3 — Quick Question",color:"#f472b6",subject:"Quick question",body:`Hi [Name],\n\nQuick question — who on your team typically oversees HR, hiring, compliance, or people operations?\n\nI want to make sure I send this to the right person.\n\nBest,\nMelissa`},
+                  {label:"Referral Partner — T1",color:"#34d399",subject:"Resource for your business clients",body:`Hi [Name],\n\nI'm reaching out because HR On Demand works with growing organizations that are navigating hiring, compliance, leadership, retention, and people operations challenges.\n\nWe recently created a complimentary Growth Readiness Diagnostic that may be useful for business owners and leaders you support.\n\nIt takes about three minutes, provides immediate results, and helps organizations identify where people-related gaps may be creating risk or slowing growth. There is no login required.\n\nHere is the link: [Insert Link]\n\nI would also welcome the opportunity to learn more about your work and explore ways we may be able to support each other's networks.\n\nBest,\nMelissa Pennington\nFounder & CEO, HR On Demand`},
+                ].map(tmpl=>(
+                  <div key={tmpl.label} style={{padding:"11px 14px",borderBottom:`1px solid ${BR}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{fontSize:10,fontWeight:800,color:tmpl.color}}>{tmpl.label}</span>
+                      <button onClick={()=>{navigator.clipboard.writeText(`Subject: ${tmpl.subject}\n\n${tmpl.body}`).catch(()=>{});t2("Template copied!");}} style={{...B.ghost,fontSize:9,padding:"3px 8px"}}>Copy</button>
+                    </div>
+                    <p style={{margin:"0 0 4px",fontSize:9,fontWeight:700,color:WD}}>Subject: {tmpl.subject}</p>
+                    <pre style={{margin:0,fontSize:9,color:WM,whiteSpace:"pre-wrap",lineHeight:1.6,fontFamily:"'Segoe UI',system-ui,sans-serif",maxHeight:80,overflow:"hidden"}}>{tmpl.body.slice(0,220)}…</pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
       {/* ═══ end main content column ═══ */}
 
@@ -4089,6 +4361,38 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
       {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
       {showFinder&&<ProspectFinderModal onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
       {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
+
+      {/* PARTNER MODAL — outside main column so it overlays correctly */}
+      {partnerDlg&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setPartnerDlg(null)}>
+          <div style={{background:NL,border:`1px solid rgba(201,150,58,0.25)`,borderRadius:18,width:"100%",maxWidth:520,maxHeight:"90vh",overflow:"auto",animation:"fadeUp 0.22s ease",boxShadow:"0 40px 100px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:"16px 20px",borderBottom:`1px solid ${BR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <p style={{margin:0,fontSize:15,fontWeight:800,color:W}}>{partners.find(x=>x.id===partnerDlg?.id)?"Edit Partner":"Add Partner"}</p>
+              <button onClick={()=>setPartnerDlg(null)} style={{...B.ghost,padding:"4px 10px",fontSize:12}}>✕</button>
+            </div>
+            <div style={{padding:"16px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
+              {[["name","Organization Name"],["contactName","Contact Name"],["title","Title"],["email","Email"],["phone","Phone"],["city","City"]].map(([f,l])=>(
+                <div key={f} style={f==="name"?{gridColumn:"1/-1"}:{}}>
+                  <label style={LBL}>{l}</label>
+                  <input value={partnerDlg[f]||""} onChange={e=>setPartnerDlg(d=>({...d,[f]:e.target.value}))} style={inp()}/>
+                </div>
+              ))}
+              <div><label style={LBL}>Partner Type</label><select value={partnerDlg.partnerType||""} onChange={e=>setPartnerDlg(d=>({...d,partnerType:e.target.value}))} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{PARTNER_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
+              <div><label style={LBL}>Status</label><select value={partnerDlg.status||"Not Contacted"} onChange={e=>setPartnerDlg(d=>({...d,status:e.target.value}))} style={{...inp(),cursor:"pointer"}}>{PARTNER_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>
+              <div><label style={LBL}>Last Contact</label><input type="date" value={partnerDlg.lastContact||""} onChange={e=>setPartnerDlg(d=>({...d,lastContact:e.target.value}))} style={inp()}/></div>
+              <div><label style={LBL}>Next Follow-Up</label><input type="date" value={partnerDlg.nextFollowUp||""} onChange={e=>setPartnerDlg(d=>({...d,nextFollowUp:e.target.value}))} style={inp()}/></div>
+              <div><label style={LBL}>Referrals Received</label><input type="number" min="0" value={partnerDlg.referralsReceived||0} onChange={e=>setPartnerDlg(d=>({...d,referralsReceived:parseInt(e.target.value)||0}))} style={inp()}/></div>
+              <div style={{gridColumn:"1/-1"}}><label style={LBL}>Notes</label><textarea value={partnerDlg.notes||""} onChange={e=>setPartnerDlg(d=>({...d,notes:e.target.value}))} rows={3} style={{...inp(),resize:"vertical"}}/></div>
+            </div>
+            <div style={{padding:"12px 20px",borderTop:`1px solid ${BR}`,display:"flex",gap:8,justifyContent:"flex-end"}}>
+              {partners.find(x=>x.id===partnerDlg?.id)&&<button onClick={()=>{setPartners(ps=>ps.filter(x=>x.id!==partnerDlg.id));setPartnerDlg(null);t2("Partner removed.");}} style={{...B.ghost,color:"#f87171",borderColor:"rgba(248,113,113,0.3)",fontSize:11}}>Delete</button>}
+              <button onClick={()=>setPartnerDlg(null)} style={{...B.ghost,fontSize:12}}>Cancel</button>
+              <button onClick={()=>{setPartners(ps=>{const idx=ps.findIndex(x=>x.id===partnerDlg.id);if(idx>=0){const n=[...ps];n[idx]=partnerDlg;return n;}return [...ps,{...partnerDlg,id:"rp"+Date.now()}];});setPartnerDlg(null);t2("Partner saved!");}} style={{...B.gold,fontSize:12}}>Save Partner</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
