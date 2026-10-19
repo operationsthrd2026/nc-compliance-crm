@@ -1,0 +1,4 @@
+Delete these from your GitHub repo (they are tracked but must not be):
+  .env.local
+  index.ts                      (stale, insecure copy of the old apollo-search function)
+  supabase/.temp/               (all 9 files in this folder)

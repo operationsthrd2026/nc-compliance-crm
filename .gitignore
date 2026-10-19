@@ -36,3 +36,10 @@ Thumbs.db
 
 # ── Vite cache ────────────────────────────────────────────────
 .vite/
+
+# Supabase CLI local state (contains project refs / pooler URLs)
+supabase/.temp/
+supabase/.branches/
+# Never commit any env file except the template
+.env*
+!.env.example

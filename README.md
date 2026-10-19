@@ -16,7 +16,7 @@ nc-compliance-crm/
 ├── index.html           ← HTML shell
 ├── vite.config.js       ← Vite build configuration
 ├── package.json         ← dependencies & scripts
-├── .env.local           ← your secrets (DO NOT commit — git-ignored)
+├── .env.local           ← your local config (git-ignored — never commit it)
 ├── .env.example         ← template showing what goes in .env.local
 ├── .gitignore
 └── README.md
@@ -65,7 +65,9 @@ Creates a `dist/` folder ready to deploy.
 
 ---
 
-## Demo login accounts
+## Demo-mode accounts (only when Supabase is NOT configured)
+
+> These exist **only** in Demo Mode (no `VITE_SUPABASE_*` set) and never touch a real database. With Supabase configured, users sign in with their **email + password** (or Google) through Supabase Auth, and these accounts do not exist.
 
 | Username     | Password    | Role         |
 |-------------|-------------|--------------|
@@ -80,7 +82,7 @@ Creates a `dist/` folder ready to deploy.
 ## Database setup (Supabase)
 
 1. Create a free project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** → paste the contents of `supabase_schema.sql` → **Run**
+2. Go to **SQL Editor** → run your table schema, then run `supabase/migrations/20261019000000_security_hardening.sql` (**required** — see `SECURITY_HARDENING.md`)
 3. Copy **Project URL** + **anon key** from Settings → API
 4. Paste them into `.env.local`
 
@@ -129,7 +131,7 @@ See **`SETUP_GUIDE.md`** → VPS tab for the full Caddy config.
 
 | Feature | Details |
 |---------|---------|
-| 🔐 Authentication | 5 role levels · Google Sign-In · session persistence |
+| 🔐 Authentication | Supabase Auth (email + password, Google) · 5 role levels enforced by Row Level Security |
 | 🔍 AI Prospect Finder | Claude · ChatGPT · Gemini · Apollo.io · Hunter.io |
 | 📊 Dashboard | Pipeline, vertical & market breakdowns, VA checklist |
 | 🗄️ Prospects | Full CRUD · sortable table · kanban pipeline |
@@ -157,9 +159,8 @@ See **`SETUP_GUIDE.md`** → VPS tab for the full Caddy config.
 |----------|----------|-------------|
 | `VITE_SUPABASE_URL` | For live DB | Your Supabase project URL |
 | `VITE_SUPABASE_KEY` | For live DB | Supabase anon/public key |
-| `VITE_APOLLO_KEY` | Optional | Apollo.io API key (Prospect Finder) |
-| `VITE_HUNTER_KEY` | Optional | Hunter.io API key (Prospect Finder) |
-| `VITE_ANTHROPIC_KEY` | Optional | Anthropic API key (Claude AI search) |
+
+> Third-party keys (Apollo, Hunter, Google Search) are **not** `VITE_` variables — anything with that prefix is compiled into the public JavaScript. They are stored server-side; see `SECURITY_HARDENING.md`.
 
 ---
 

@@ -4,7 +4,7 @@
 - **PostgreSQL database** hosted on Supabase (free)
 - All prospects, users, emails, audit logs, and settings **persist forever**
 - Real-time sync — changes by one user appear instantly for all others
-- Same login credentials as before (superadmin/superadmin, admin/admin, etc.)
+- Secure sign-in via Supabase Auth (email + password, or Google). **Run the security migration** — see `SECURITY_HARDENING.md`
 
 ---
 
@@ -98,10 +98,7 @@ In the Supabase dashboard:
 
 **"Failed to connect"** → Double-check your URL and key. The URL must not have a trailing slash.
 
-**"Permission denied"** → The Row Level Security policies are set to allow all access. If this happens, go to SQL Editor and run:
-```sql
-ALTER TABLE prospects DISABLE ROW LEVEL SECURITY;
-```
+**"Permission denied" / empty data after signing in** -> This almost always means the signed-in email has no *active* row in `crm_users`, or its Supabase Auth account is unconfirmed. **Never "fix" this by disabling Row Level Security** — that exposes every prospect, user and API key to anyone on the internet. Instead, check that the user exists under Authentication -> Users (confirmed) and has a matching active row in `crm_users`. See `SECURITY_HARDENING.md`.
 
 **Data not showing** → Make sure you ran the full `supabase_schema.sql` including the seed data at the bottom.
 
@@ -113,7 +110,7 @@ ALTER TABLE prospects DISABLE ROW LEVEL SECURITY;
 
 - **Custom domain:** Supabase lets you add a custom domain (Pro plan)
 - **Backups:** Daily backups are automatic on all plans
-- **More security:** For production, update the Row Level Security policies to restrict access by user role
+- **Security:** Row Level Security is role-based via `supabase/migrations/20261019000000_security_hardening.sql` — see `SECURITY_HARDENING.md`
 - **Email integration:** Supabase supports sending transactional emails via Resend or SendGrid
 
 ---
