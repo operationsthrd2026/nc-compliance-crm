@@ -5,6 +5,20 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+import { cleanTag } from "./lib/filters.js";
+import { mapPool } from "./lib/emailCheck.js";
+import ProspectsView from "./features/prospects/ProspectsView.jsx";
+import { localSavedApi } from "./features/useSavedSearches.js";
+import { scoreProspect, priorityFromScore, explainFit } from "./lib/scoring.js";
+import { buildIndex, findMatches, collapseResults } from "./lib/dedupe.js";
+import { extractEmails } from "./lib/text.js";
+import { emailKind } from "./lib/scoring.js";
+import { verifyEmail } from "./lib/emailCheck.js";
+import { allTags } from "./lib/filters.js";
+import { useSavedSearches } from "./features/useSavedSearches.js";
+import { TagInput, ScoreBadge, EmailBadge } from "./ui/kit.jsx";
+import { N, NL, NC, NB, G, GL, W, WM, WD, BR, ROLES, STATUSES, VERTICALS, MARKETS, ORG_SIZES, SRC_TYPES, SC, EMPTY_P, uid, today, isPast, hasEM, initials, addDays, inp, LBL, B, NC_CITY_COORDS, DEFAULT_NC_COORDS } from "./constants.js";
+
 /* ════════════════════════════════════════════════════════════════
    SUPABASE CONFIG
    ─ Option A (recommended): set VITE_SUPABASE_URL and VITE_SUPABASE_KEY
@@ -60,6 +74,10 @@ const supabaseAuth = isConfigured
     })
   : null;
 
+// Which optional database features exist? Filled by DB.detectSchema() after sign-in so the
+// app keeps working if the code is deployed before the SQL migration has been run.
+const SCHEMA = { tags: false, savedSearches: false };
+
 // Placeholder shown in the UI for an API key that is saved server-side.
 // The real key is never sent to the browser.
 const KEY_MASK = "__configured__";
@@ -96,7 +114,7 @@ async function adminUsersCall(payload) {
    All DB calls go through these helpers. When not configured,
    they fall back to local state (demo mode).
 ════════════════════════════════════════════════════════════════ */
-async function sbFetch(path, method = "GET", body = null, prefer = "return=representation") {
+async function sbFetch(path, method = "GET", body = null, prefer = "return=representation", quiet = false) {
   // Clean, conflict-free header builder
   const headers = {
     ...(await authHeaders()),
@@ -117,7 +135,7 @@ async function sbFetch(path, method = "GET", body = null, prefer = "return=repre
   const text = await res.text();
 
   if (!res.ok) {
-    console.error(`[NC CRM DB] ❌ ${method} ${path} → ${res.status}:`, text);
+    if (!quiet) console.error(`[NC CRM DB] ❌ ${method} ${path} → ${res.status}:`, text);
     throw new Error(`Supabase ${res.status} on ${method} ${path}: ${text}`);
   }
 
@@ -145,6 +163,7 @@ function dbToProspect(r) {
     flagToMelissa: !!r.flag_to_melissa, doNotRespond: !!r.do_not_respond,
     currentStatus: r.current_status || "NEW", outreachNotes: r.outreach_notes || "",
     priorityScore: r.priority_score ? String(r.priority_score) : "", remarks: r.remarks || "",
+    tags: Array.isArray(r.tags) ? r.tags : [], emailStatus: r.email_status || "", emailCheckedAt: r.email_checked_at || "",
   };
 }
 
@@ -166,7 +185,14 @@ function prospectToDb(p) {
     current_status: p.currentStatus, outreach_notes: p.outreachNotes,
     priority_score: p.priorityScore ? parseInt(p.priorityScore) : null,
     remarks: p.remarks,
+    // v2 columns — only sent once the migration exists (see DB.detectSchema)
+    ...(SCHEMA.tags ? { tags: p.tags || [], email_status: p.emailStatus || null, email_checked_at: p.emailCheckedAt || null } : {}),
   };
+}
+
+function dbToSaved(r) {
+  return { id: r.id, scope: r.scope, name: r.name, params: r.params || {}, shared: !!r.shared,
+    createdBy: r.created_by, createdByName: r.created_by_name || "", createdAt: r.created_at || "" };
 }
 
 function dbToUser(r) {
@@ -200,7 +226,8 @@ const DB = {
     }
   },
   async deleteProspect(id) {
-    await sbFetch(`prospects?id=eq.${encodeURIComponent(id)}`, "DELETE");
+    const rows = await sbFetch(`prospects?id=eq.${encodeURIComponent(id)}`, "DELETE");
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error("Not permitted, or the prospect no longer exists.");
   },
   async upsertProspects(list) {
     // Bulk INSERT — strip local numeric IDs so Supabase generates fresh UUIDs
@@ -293,6 +320,32 @@ const DB = {
   // Write-only, admin-only (enforced in Postgres). Empty string removes the key.
   async saveApiCredential(service, apiKey) {
     await sbFetch("rpc/crm_set_api_credential", "POST", { p_service: service, p_key: apiKey }, "return=minimal");
+  },
+
+  // Which optional features does this database support?
+  async detectSchema() {
+    const probe = async (path) => { try { await sbFetch(path, "GET", null, "return=minimal", true); return true; } catch { return false; } }; // quiet: "missing" is an expected answer
+    SCHEMA.tags = await probe("prospects?select=tags,email_status,email_checked_at&limit=1");
+    SCHEMA.savedSearches = await probe("saved_searches?select=id&limit=1");
+    return { ...SCHEMA };
+  },
+
+  // Shared saved searches / views
+  async getSavedSearches(scope) {
+    const rows = await sbFetch(`saved_searches?scope=eq.${encodeURIComponent(scope)}&order=created_at.desc&select=*`);
+    return (rows || []).map(dbToSaved);
+  },
+  async saveSearch(s) {
+    const rows = await sbFetch("saved_searches", "POST",
+      { scope: s.scope, name: s.name, params: s.params, shared: s.shared !== false, created_by_name: s.createdByName || null },
+      "return=representation");
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    if (!row) throw new Error("Not permitted to save searches");
+    return dbToSaved(row);
+  },
+  async deleteSavedSearch(id) {
+    const rows = await sbFetch(`saved_searches?id=eq.${encodeURIComponent(id)}`, "DELETE");
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error("Not permitted, or already deleted");
   },
 
   // Emails
@@ -421,19 +474,9 @@ async function fetchGmailInbox(maxResults = 15) {
 /* ════════════════════════════════════════════════════════════════
    THEME
 ════════════════════════════════════════════════════════════════ */
-const N="#0B1426";const NL="#111E38";const NC="#162040";const NB="#1C2B50";
-const G="#C9963A";const GL="#DBA843";const W="#F0F4FF";const WM="rgba(240,244,255,0.55)";const WD="rgba(240,244,255,0.28)";const BR="rgba(240,244,255,0.08)";
-
 /* ════════════════════════════════════════════════════════════════
    ROLES
 ════════════════════════════════════════════════════════════════ */
-const ROLES={
-  superadmin:{label:"Super Admin",color:"#e879f9",bg:"rgba(232,121,249,0.13)",icon:"🔱",canAdmin:true,canManageUsers:true,canDelete:true,canEditSystem:true,canEdit:true},
-  admin:     {label:"Admin",      color:"#DBA843",bg:"rgba(219,168,67,0.13)", icon:"⚡",canAdmin:true,canManageUsers:true,canDelete:true,canEditSystem:true,canEdit:true},
-  manager:   {label:"Manager",   color:"#34d399",bg:"rgba(52,211,153,0.13)", icon:"📋",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:true},
-  user:      {label:"User",      color:"#60a5fa",bg:"rgba(96,165,250,0.13)", icon:"👤",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:true},
-  viewer:    {label:"Viewer",    color:"#94a3b8",bg:"rgba(148,163,184,0.1)", icon:"👁",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:false},
-};
 
 /* ════════════════════════════════════════════════════════════════
    INITIAL DATA
@@ -446,25 +489,8 @@ const INIT_USERS=[
   {id:5,username:"viewer1",   password:"view123",   name:"Alex Torres",         email:"alex@hrondemand.com",    role:"viewer",    active:true,createdAt:"2024-02-10",lastLogin:null,avatar:"AT"},
 ];
 
-const STATUSES=["NEW","T1 SENT","T2 SENT","REVIEW","TOUCH 3 GATE","NURTURE/T3 SENT","Replied","Do Not Respond","Converted"];
-const VERTICALS=["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Nonprofits & Associations","Faith-Based Organizations","Education & Schools","Human Services Nonprofits","Community Development Orgs","Religious & Faith-Based Nonprofits","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Advocacy Organizations","Foundations & Grantmakers"];
-const MARKETS=["Raleigh","Durham","Chapel Hill","Greenville","Cary","Wilmington","Charlotte","Asheville","Fayetteville","Greensboro","Winston-Salem","High Point","Rocky Mount","Goldsboro","Other"];
-const ORG_SIZES=["1-9","10-49","50-99","100-249","250-499","500+"];
-const SRC_TYPES=["Apollo.io","Hunter.io","LinkedIn","Nonprofit Directory","Charity Navigator","GuideStar / Candid","Google Maps","IRS 990 Database","State Registry","Referral","Website","Claude AI","ChatGPT","Gemini","Other AI","Manual Research"];
 
-const SC={
-  "NEW":            {bg:"rgba(201,150,58,0.15)",c:"#DBA843",b:"rgba(201,150,58,0.4)"},
-  "T1 SENT":        {bg:"rgba(96,165,250,0.12)",c:"#60a5fa",b:"rgba(96,165,250,0.35)"},
-  "T2 SENT":        {bg:"rgba(139,92,246,0.12)",c:"#a78bfa",b:"rgba(139,92,246,0.35)"},
-  "REVIEW":         {bg:"rgba(251,191,36,0.12)",c:"#fde047",b:"rgba(251,191,36,0.35)"},
-  "TOUCH 3 GATE":   {bg:"rgba(236,72,153,0.12)",c:"#f472b6",b:"rgba(236,72,153,0.35)"},
-  "NURTURE/T3 SENT":{bg:"rgba(20,184,166,0.12)",c:"#2dd4bf",b:"rgba(20,184,166,0.35)"},
-  "Replied":        {bg:"rgba(52,211,153,0.12)",c:"#34d399",b:"rgba(52,211,153,0.35)"},
-  "Do Not Respond": {bg:"rgba(239,68,68,0.12)", c:"#f87171",b:"rgba(239,68,68,0.35)"},
-  "Converted":      {bg:"rgba(168,85,247,0.12)",c:"#c084fc",b:"rgba(168,85,247,0.35)"},
-};
 
-const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"No",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:""};
 
 const SEED=[
   {id:1,companyName:"Comfort Keepers – Raleigh",contactName:"Bob Marshall",title:"Franchise Owner",emailPhone:"bobmarshall@comfortkeepers.com",cityMarket:"Raleigh",market:"Raleigh",sourceUrl:"",sourceType:"Franchise Directory",verificationNotes:"Verified.",whyFit:"Wage/hour compliance risk.",vertical:"Home Health / Homecare",hrPersonListed:"No",hrPeopleContact:"",orgSize:"10-49",t1SendDate:"2026-05-05",t1DueDate:"2026-05-12",t2SendDate:"2026-05-12",t2DueDate:"2026-05-19",t3SendDate:"2026-05-19",t3DueDate:"2026-05-26",leadPainPoint:"Caregiver misclassification.",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:true,currentStatus:"NURTURE/T3 SENT",outreachNotes:"",priorityScore:"5",remarks:""},
@@ -480,20 +506,14 @@ const DEFAULT_SYS={siteName:"NC Compliance CRM",orgName:"HR On Demand",senderNam
 /* ════════════════════════════════════════════════════════════════
    EXCEL COLUMN MAP
 ════════════════════════════════════════════════════════════════ */
-const COL_MAP={"company name":"companyName","company":"companyName","contact name":"contactName","contact":"contactName","name":"contactName","title":"title","job title":"title","position":"title","email":"emailPhone","phone":"emailPhone","email/phone":"emailPhone","email / phone":"emailPhone","city":"cityMarket","city/market":"cityMarket","market":"market","source url":"sourceUrl","url":"sourceUrl","source type":"sourceType","source":"sourceType","notes":"verificationNotes","verification notes":"verificationNotes","why fit":"whyFit","vertical":"vertical","industry":"vertical","hr person listed":"hrPersonListed","org size":"orgSize","company size":"orgSize","t1 send date":"t1SendDate","t1 due date":"t1DueDate","t2 send date":"t2SendDate","t2 due date":"t2DueDate","t3 send date":"t3SendDate","t3 due date":"t3DueDate","lead pain point":"leadPainPoint","pain point":"leadPainPoint","status":"currentStatus","current status":"currentStatus","priority score":"priorityScore","priority":"priorityScore","outreach notes":"outreachNotes","remarks":"remarks"};
+const COL_MAP={"tags":"tags","tag":"tags","email status":"emailStatus","company name":"companyName","company":"companyName","contact name":"contactName","contact":"contactName","name":"contactName","title":"title","job title":"title","position":"title","email":"emailPhone","phone":"emailPhone","email/phone":"emailPhone","email / phone":"emailPhone","city":"cityMarket","city/market":"cityMarket","market":"market","source url":"sourceUrl","url":"sourceUrl","source type":"sourceType","source":"sourceType","notes":"verificationNotes","verification notes":"verificationNotes","why fit":"whyFit","vertical":"vertical","industry":"vertical","hr person listed":"hrPersonListed","org size":"orgSize","company size":"orgSize","t1 send date":"t1SendDate","t1 due date":"t1DueDate","t2 send date":"t2SendDate","t2 due date":"t2DueDate","t3 send date":"t3SendDate","t3 due date":"t3DueDate","lead pain point":"leadPainPoint","pain point":"leadPainPoint","status":"currentStatus","current status":"currentStatus","priority score":"priorityScore","priority":"priorityScore","outreach notes":"outreachNotes","remarks":"remarks"};
 
 /* ════════════════════════════════════════════════════════════════
    HELPERS
 ════════════════════════════════════════════════════════════════ */
-const uid=()=>Date.now()+Math.random();
-const today=()=>new Date().toISOString().split("T")[0];
 const pct=(n,t)=>t?((n/t)*100).toFixed(1)+"%":"0%";
-const isPast=d=>d&&new Date(d+"T23:59:59")<new Date();
-const hasEM=p=>!!(p.emailPhone&&p.emailPhone.includes("@"));
 const tsNow=()=>new Date().toLocaleString("sv-SE",{hour12:false}).replace("T"," ").slice(0,16);
-const initials=n=>n.split(" ").map(x=>x[0]||"").join("").slice(0,2).toUpperCase();
 // Add N days to a YYYY-MM-DD date string (or today if none given), return YYYY-MM-DD
-const addDays=(dateStr,n)=>{const d=dateStr?new Date(dateStr+"T00:00:00"):new Date();d.setDate(d.getDate()+n);return d.toISOString().split("T")[0];};
 
 /* ── Password hashing (SHA-256 via Web Crypto API) ─────────────
    Stored passwords are SHA-256 hex digests, prefixed "sha256:" so
@@ -554,22 +574,12 @@ const applyTouchDates=(prospect,newStatus)=>{
 const mapHdr=h=>COL_MAP[(h||"").toLowerCase().trim().replace(/[_\-]+/g," ")]||null;
 const parseBool=v=>{if(typeof v==="boolean")return v;const s=String(v||"").toLowerCase().trim();return s==="yes"||s==="true"||s==="1"||s==="y";};
 const parseDate=v=>{if(!v)return"";if(typeof v==="number"){try{const d=XLSX.SSF.parse_date_code(v);return`${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;}catch{return"";}}const s=String(v).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;try{const d=new Date(s);if(!isNaN(d))return d.toISOString().split("T")[0];}catch{}return s;};
-const rowToProspect=row=>{const p={...EMPTY_P,id:uid()};Object.entries(row).forEach(([col,val])=>{const f=mapHdr(col);if(!f)return;const df=["t1SendDate","t1DueDate","t2SendDate","t2DueDate","t3SendDate","t3DueDate"];const bf=["t3Approved","replyReceived","flagToMelissa","doNotRespond"];if(df.includes(f))p[f]=parseDate(val);else if(bf.includes(f))p[f]=parseBool(val);else p[f]=val!=null?String(val).trim():"";});return p;};
-const exportToExcel=(crmData,fn="NC_CRM_Export")=>{const rows=crmData.map(p=({"Company Name":p.companyName,"Contact Name":p.contactName,"Title":p.title,"Email/Phone":p.emailPhone,"City/Market":p.cityMarket,"Market":p.market,"Vertical":p.vertical,"Org Size":p.orgSize,"Source Type":p.sourceType,"Source URL":p.sourceUrl,"Why Fit":p.whyFit,"Lead Pain Point":p.leadPainPoint,"Current Status":p.currentStatus,"Priority Score":p.priorityScore,"T1 Send Date":p.t1SendDate,"T1 Due Date":p.t1DueDate,"T2 Send Date":p.t2SendDate,"T2 Due Date":p.t2DueDate,"T3 Send Date":p.t3SendDate,"T3 Due Date":p.t3DueDate,"HR Person Listed":p.hrPersonListed,"HR Contact":p.hrPeopleContact,"Flag to Melissa":p.flagToMelissa?"Yes":"No","Reply Received":p.replyReceived?"Yes":"No","T3 Approved":p.t3Approved?"Yes":"No","Do Not Respond":p.doNotRespond?"Yes":"No","Outreach Notes":p.outreachNotes,"Remarks":p.remarks}));const wb=XLSX.utils.book_new();const ws=XLSX.utils.json_to_sheet(rows);ws["!cols"]=Object.keys(rows[0]||{}).map(()=>({wch:18}));XLSX.utils.book_append_sheet(wb,ws,"Prospects");XLSX.writeFile(wb,`${fn}_${today()}.xlsx`);};
+const rowToProspect=row=>{const p={...EMPTY_P,id:uid()};Object.entries(row).forEach(([col,val])=>{const f=mapHdr(col);if(!f)return;const df=["t1SendDate","t1DueDate","t2SendDate","t2DueDate","t3SendDate","t3DueDate"];const bf=["t3Approved","replyReceived","flagToMelissa","doNotRespond"];if(df.includes(f))p[f]=parseDate(val);else if(bf.includes(f))p[f]=parseBool(val);else if(f==="tags")p[f]=[...new Set(String(val||"").split(/[;,]/).map(cleanTag).filter(Boolean))].slice(0,30);else if(f==="emailStatus"){const v=String(val||"").trim().toLowerCase();p[f]=["valid","risky","invalid","unknown"].includes(v)?v:"";}else p[f]=val!=null?String(val).trim():"";});return p;};
+const exportToExcel=(crmData,fn="NC_CRM_Export")=>{const rows=crmData.map(p=({"Company Name":p.companyName,"Contact Name":p.contactName,"Title":p.title,"Email/Phone":p.emailPhone,"City/Market":p.cityMarket,"Market":p.market,"Vertical":p.vertical,"Org Size":p.orgSize,"Source Type":p.sourceType,"Source URL":p.sourceUrl,"Why Fit":p.whyFit,"Lead Pain Point":p.leadPainPoint,"Current Status":p.currentStatus,"Priority Score":p.priorityScore,"T1 Send Date":p.t1SendDate,"T1 Due Date":p.t1DueDate,"T2 Send Date":p.t2SendDate,"T2 Due Date":p.t2DueDate,"T3 Send Date":p.t3SendDate,"T3 Due Date":p.t3DueDate,"HR Person Listed":p.hrPersonListed,"HR Contact":p.hrPeopleContact,"Flag to Melissa":p.flagToMelissa?"Yes":"No","Reply Received":p.replyReceived?"Yes":"No","T3 Approved":p.t3Approved?"Yes":"No","Do Not Respond":p.doNotRespond?"Yes":"No","Tags":(p.tags||[]).join("; "),"Email Status":p.emailStatus||"","Fit Score":scoreProspect(p).score,"Outreach Notes":p.outreachNotes,"Remarks":p.remarks}));const wb=XLSX.utils.book_new();const ws=XLSX.utils.json_to_sheet(rows);ws["!cols"]=Object.keys(rows[0]||{}).map(()=>({wch:18}));XLSX.utils.book_append_sheet(wb,ws,"Prospects");XLSX.writeFile(wb,`${fn}_${today()}.xlsx`);};
 
 /* ════════════════════════════════════════════════════════════════
    STYLES
 ════════════════════════════════════════════════════════════════ */
-const inp=()=>({background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:8,padding:"9px 12px",color:W,fontSize:13,outline:"none",width:"100%",boxSizing:"border-box",fontFamily:"inherit",transition:"border-color 0.2s"});
-const LBL={display:"block",fontSize:10,color:WD,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:700};
-const B={
-  gold:   {background:`linear-gradient(135deg,${G},${GL})`,color:"#0B1426",border:"none",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:800,cursor:"pointer"},
-  ghost:  {background:"rgba(255,255,255,0.06)",color:WM,border:"1px solid rgba(255,255,255,0.12)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:600,cursor:"pointer"},
-  danger: {background:"rgba(239,68,68,0.1)",color:"#f87171",border:"1px solid rgba(239,68,68,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-  green:  {background:"rgba(52,211,153,0.12)",color:"#34d399",border:"1px solid rgba(52,211,153,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-  purple: {background:"rgba(168,85,247,0.12)",color:"#c084fc",border:"1px solid rgba(168,85,247,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-  blue:   {background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-};
 
 /* ════════════════════════════════════════════════════════════════
    ATOMS
@@ -775,14 +785,7 @@ const AI_SOURCES=[
 // that don't return precise coordinates (Hunter, Apollo, GuideStar,
 // NPI Registry all return a street address or city, not lat/lon).
 // These are approximate downtown coordinates for each CRM market.
-const NC_CITY_COORDS = {
-  "Raleigh":[35.7796,-78.6382], "Durham":[35.9940,-78.8986], "Chapel Hill":[35.9132,-79.0558],
-  "Greenville":[35.6127,-77.3664], "Cary":[35.7915,-78.7811], "Wilmington":[34.2257,-77.9447],
-  "Charlotte":[35.2271,-80.8431], "Asheville":[35.5951,-82.5515], "Fayetteville":[35.0527,-78.8784],
-  "Greensboro":[36.0726,-79.7920], "Winston-Salem":[36.0999,-80.2442], "High Point":[35.9557,-80.0053],
-  "Rocky Mount":[35.9382,-77.7905], "Goldsboro":[35.3849,-77.9928],
-};
-const DEFAULT_NC_COORDS = [35.7596,-79.0193]; // geographic center of NC, used when no market is selected
+ // geographic center of NC, used when no market is selected
 
 // Leaflet's default marker images reference relative file paths that
 // break under Vite's bundler — this is the standard fix, pointing
@@ -848,26 +851,7 @@ function cityFallbackCoord(market, seed){
   return jitterCoord(base, seed||market||"x");
 }
 
-/* ── Fit Score — transparent, NOT a conversion rate ──────────────
-   This is intentionally NOT presented as "conversion rate" or any
-   implied probability of closing a deal — we have no historical
-   outcome data to base that on. It's a simple, fully-explainable
-   heuristic from signals actually present on each result: having a
-   website, a phone number, a named contact, and an exact vertical
-   match each add points. The breakdown is shown to the user on
-   request so nothing here is a black box.                         */
-function computeFitScore(prospect){
-  let score = 30; // baseline
-  const reasons = [];
-  if(prospect.sourceUrl){ score+=20; reasons.push("Has a website (+20)"); }
-  if(prospect.emailPhone){ score+=20; reasons.push("Has contact info (+20)"); }
-  if(prospect.contactName){ score+=15; reasons.push("Named contact available (+15)"); }
-  if(prospect._verified){ score+=10; reasons.push("Verified result (+10)"); }
-  if(prospect._geoPrecise){ score+=5; reasons.push("Precise location data (+5)"); }
-  score = Math.max(0, Math.min(100, score));
-  const label = score>=70?"Strong fit":score>=45?"Possible fit":"Limited info";
-  return { score, label, reasons };
-}
+/* Fit scoring now lives in src/lib/scoring.js (explainable rubric; replaces the old data-completeness heuristic). */
 
 // Convert a Hunter.io domain-search "email" entry into a CRM prospect shape
 function hunterEmailToProspect(domainData, emailEntry, vertical, market){
@@ -1395,7 +1379,7 @@ const NC_STATEWIDE_DIRECTORIES = [
   {name:"US Chamber of Commerce — NC Chamber Finder",               url:"https://www.uschamber.com/co/chambers/north-carolina", note:"Searchable by city if you need a chamber not listed above"},
 ];
 
-function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
+function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crmData,savedApi,hunterVerify,currentUser,features}){
   const [step,setStep]=useState("search"); // search | results | confirm
   const [showChambers,setShowChambers]=useState(false);
   const [query,setQuery]=useState("");
@@ -1420,6 +1404,37 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   const toggleSel=id=>setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
   const selectAll=()=>setSelected(new Set(results.map(r=>r._id)));
   const clearSel=()=>setSelected(new Set());
+
+  /* ── Finder upgrades ──────────────────────────────────────────
+     • duplicate check against the CRM is now fuzzy (name variants, email, phone, website domain)
+     • fit score is an explainable rubric (see src/lib/scoring.js) instead of "has a website/phone"
+     • emails can be verified before adding • searches can be saved/shared • results can be tagged on add */
+  const crmIndex=useMemo(()=>buildIndex(crmData||[]),[crmData]);
+  const matchOf=useMemo(()=>{const m=new Map();for(const r of results){const x=findMatches(r,crmIndex,{limit:1})[0];if(x)m.set(r._id,x);}return m;},[results,crmIndex]);
+  const isIn=r=>matchOf.get(r._id)?.level==="high";
+  const [verifyProg,setVerifyProg]=useState(null);
+  const [addTags,setAddTags]=useState([]);
+  const [saveName,setSaveName]=useState("");
+  const [showSave,setShowSave]=useState(false);
+  const saved=useSavedSearches("finder",savedApi,{enabled:!!savedApi,currentUser});
+  const bestEmail=r=>{const e=extractEmails(r.emailPhone);return e.find(x=>emailKind(x)==="personal")||e.find(x=>emailKind(x)==="hr")||e[0];};
+  const verifyResults=async()=>{
+    const targets=displayedResults.filter(r=>bestEmail(r));
+    if(!targets.length){log("No email addresses to verify in these results.");return;}
+    setVerifyProg({done:0,total:targets.length});
+    const out=await mapPool(targets,4,async r=>({id:r._id,v:await verifyEmail(bestEmail(r),{hunterVerify})}),(done,total)=>setVerifyProg({done,total}));
+    const byId=new Map(out.map(x=>[x.id,x.v]));
+    setResults(prev=>prev.map(r=>{const v=byId.get(r._id);return v?{...r,emailStatus:v.status,emailCheckedAt:v.checkedAt,_emailConfirmed:!!v.confirmed}:r;}));
+    const n=st=>out.filter(x=>x.v.status===st).length;
+    log(`Email check: ${n("valid")} valid, ${n("risky")} risky, ${n("invalid")} invalid${n("unknown")?`, ${n("unknown")} could not be checked`:""}.`);
+    setVerifyProg(null);
+  };
+  const applySaved=sv=>{const q=sv.params||{};setQuery(q.query||"");setVertical(q.vertical||"");setMarket(q.market||"");setOrgSize(q.orgSize||"");setOrgType(q.orgType||"all");if(Array.isArray(q.sources)&&q.sources.length)setSelectedSources(q.sources);};
+  const saveCurrentSearch=async()=>{
+    if(!saveName.trim())return;
+    try{await saved.save(saveName,{query:query.trim(),vertical,market,orgSize,orgType,sources:selectedSources},true);setSaveName("");setShowSave(false);}
+    catch(e){log(`Couldn't save search: ${e.message}`);}
+  };
 
   const log=msg=>setSearchLog(p=>[...p,{t:tsNow().slice(11),msg}]);
 
@@ -1515,8 +1530,12 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
 
   const doAdd=()=>{
     const toAdd=results.filter(r=>selected.has(r._id)).map(r=>{
-      const {_id,_source,_verified,...rest}=r;
-      return{...EMPTY_P,...rest,id:uid(),sourceType:AI_SOURCES.find(s=>s.id===r._source)?.label||r._source,currentStatus:"NEW"};
+      const {_id,_source,_verified,_fit,_alsoIn,_emailConfirmed,...rest}=r;
+      const fit=scoreProspect(r);
+      return{...EMPTY_P,...rest,id:uid(),sourceType:AI_SOURCES.find(s=>s.id===r._source)?.label||r._source,currentStatus:"NEW",
+        tags:[...new Set([...(rest.tags||[]),...addTags])].slice(0,30),
+        priorityScore:rest.priorityScore||String(priorityFromScore(fit.score)),
+        whyFit:[rest.whyFit,explainFit(fit)].filter(Boolean).join(" · ")};
     });
     onAddProspects(toAdd);
     onClose();
@@ -1527,18 +1546,20 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
   // Apply in-results filter + sort to the raw results list, without
   // mutating `results` itself (so toggling filters doesn't lose data).
   const displayedResults=useMemo(()=>{
-    let list=[...results];
+    // score every result, best first, then fold the same organisation found by several sources into one row
+    let list=collapseResults(results.map(r=>({...r,_fit:scoreProspect(r)})).sort((x,y)=>y._fit.score-x._fit.score));
     if(resultFilter==="verified")list=list.filter(r=>r._verified);
     else if(resultFilter==="unverified")list=list.filter(r=>!r._verified);
-    else if(resultFilter==="new")list=list.filter(r=>!existingIds.has(r.companyName?.toLowerCase())&&!existingIds.has(r.emailPhone?.toLowerCase()));
+    else if(resultFilter==="new")list=list.filter(r=>!isIn(r));
+    else if(resultFilter==="validemail")list=list.filter(r=>r.emailStatus==="valid");
 
-    if(sortBy==="priority")list.sort((a,b)=>(parseInt(b.priorityScore)||0)-(parseInt(a.priorityScore)||0));
+    if(sortBy==="priority")list.sort((a,b)=>b._fit.score-a._fit.score);
     else if(sortBy==="name")list.sort((a,b)=>(a.companyName||"").localeCompare(b.companyName||""));
     else if(sortBy==="verified")list.sort((a,b)=>(b._verified?1:0)-(a._verified?1:0));
     return list;
-  },[results,resultFilter,sortBy,existingIds]);
+  },[results,resultFilter,sortBy,matchOf]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const newCount=results.filter(r=>!existingIds.has(r.companyName?.toLowerCase())&&!existingIds.has(r.emailPhone?.toLowerCase())).length;
+  const newCount=results.filter(r=>!isIn(r)).length;
   const verifiedCount=results.filter(r=>r._verified).length;
 
   return(
@@ -1646,6 +1667,33 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
         </div>
       )}
 
+      {/* Saved searches — shared with the team (or this browser in demo mode) */}
+      {step==="search"&&savedApi&&(
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7,gap:8,flexWrap:"wrap"}}>
+            <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Saved Searches <span style={{color:WD,fontWeight:500,textTransform:"none",letterSpacing:0}}>{saved.isLocal?"· this browser only":"· shared with your team"}</span></p>
+            {!showSave&&<button onClick={()=>setShowSave(true)} disabled={!query.trim()&&!vertical&&!market} className="nc-btn gold-ghost sm" title="Save the current criteria">★ Save this search</button>}
+          </div>
+          {showSave&&(
+            <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+              <input className="nc-input" style={{maxWidth:320}} autoFocus value={saveName} maxLength={80} placeholder="Name, e.g. Raleigh home health" onChange={e=>setSaveName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveCurrentSearch();if(e.key==="Escape")setShowSave(false);}}/>
+              <button className="nc-btn primary sm" onClick={saveCurrentSearch} disabled={!saveName.trim()}>Save</button>
+              <button className="nc-btn subtle sm" onClick={()=>setShowSave(false)}>Cancel</button>
+            </div>
+          )}
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {saved.items.length===0&&!showSave&&<span style={{fontSize:11,color:WD}}>Nothing saved yet — set up a search you run often, then save it.</span>}
+            {saved.items.map(sv=>(
+              <span key={sv.id} className="nc-chip" style={{paddingRight:6}}>
+                <button onClick={()=>applySaved(sv)} style={{opacity:1,font:"inherit",color:"inherit",fontWeight:600}} title={sv.createdByName?`Saved by ${sv.createdByName}`:undefined}>★ {sv.name}</button>
+                <button aria-label={`Delete saved search ${sv.name}`} onClick={()=>saved.remove(sv.id).catch(e=>log(`Couldn't delete: ${e.message}`))}>×</button>
+              </span>
+            ))}
+            {saved.error&&<span style={{fontSize:11,color:"#fbbf24"}}>Saved searches unavailable: {saved.error}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Search form */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:16,marginBottom:16}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11,marginBottom:11}}>
@@ -1739,6 +1787,9 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                 <span style={{fontSize:11,color:WD}}>·</span>
                 <span style={{fontSize:11,color:WM}}>{selected.size} selected</span>
                 <div style={{marginLeft:"auto",display:"flex",gap:7}}>
+                  <button onClick={verifyResults} disabled={!!verifyProg} className="nc-btn gold-ghost sm" title={hunterVerify?"Checks syntax, the domain's mail server, and the mailbox (Hunter)":"Checks syntax and that the domain can receive email"}>
+                    {verifyProg?`Verifying ${verifyProg.done}/${verifyProg.total}…`:"✓ Verify emails"}
+                  </button>
                   <button onClick={selectAll} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Select All</button>
                   <button onClick={clearSel} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Clear</button>
                   {selected.size>0&&<button onClick={doAdd} className="bh" style={{...B.gold,fontSize:11,padding:"7px 16px",display:"flex",gap:6,alignItems:"center"}}>
@@ -1746,14 +1797,23 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                   </button>}
                 </div>
               </div>
+              {selected.size>0&&(
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,color:WM,whiteSpace:"nowrap"}}>Tag these {selected.size} as</span>
+                  <div style={{minWidth:240,flex:"0 1 380px"}}>
+                    <TagInput value={addTags} onChange={setAddTags} suggestions={allTags(crmData||[])} disabled={features?.tags===false}
+                      placeholder={features?.tags===false?"Tags need the database update":"e.g. q4-home-health (optional)"}/>
+                  </div>
+                </div>
+              )}
               {/* Sort + in-results filter controls */}
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Show:</span>
-                {[["all","All"],["new","New only"],["verified","Verified"],["unverified","Unverified"]].map(([k,l])=>(
+                {[["all","All"],["new","New only"],["validemail","Valid email"],["verified","Verified"],["unverified","Unverified"]].map(([k,l])=>(
                   <button key={k} onClick={()=>setResultFilter(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${resultFilter===k?"rgba(201,150,58,0.4)":BR}`,background:resultFilter===k?"rgba(201,150,58,0.12)":"rgba(255,255,255,0.03)",color:resultFilter===k?GL:WD,cursor:"pointer",fontWeight:resultFilter===k?700:500}}>{l}</button>
                 ))}
                 <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:10}}>Sort:</span>
-                {[["priority","Priority"],["verified","Verified first"],["name","Company name"]].map(([k,l])=>(
+                {[["priority","Best fit"],["verified","Verified first"],["name","Company name"]].map(([k,l])=>(
                   <button key={k} onClick={()=>setSortBy(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${sortBy===k?"rgba(96,165,250,0.4)":BR}`,background:sortBy===k?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.03)",color:sortBy===k?"#60a5fa":WD,cursor:"pointer",fontWeight:sortBy===k?700:500}}>{l}</button>
                 ))}
               </div>
@@ -1778,7 +1838,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                   {pinned.map(r=>{
                     const sel=selected.has(r._id);
                     const si=AI_SOURCES.find(s=>s.id===r._source);
-                    const alreadyIn=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
+                    const alreadyIn=isIn(r);
                     return(
                       <Marker key={r._id} position={[r._lat,r._lon]} icon={makeColoredPin(sel?"#C9963A":(si?.color||"#84cc16"), sel)}
                         eventHandlers={{click:()=>!alreadyIn&&toggleSel(r._id)}}>
@@ -1822,12 +1882,12 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                 <thead>
                   <tr style={{background:"rgba(255,255,255,0.03)",borderBottom:`1px solid ${BR}`}}>
                     <th style={{width:36,padding:"9px 8px"}}>
-                      <input type="checkbox" checked={displayedResults.every(r=>selected.has(r._id)||existingIds.has(r.companyName?.toLowerCase()))} onChange={()=>{
+                      <input type="checkbox" checked={displayedResults.every(r=>selected.has(r._id)||isIn(r))} onChange={()=>{
                         const allSel = displayedResults.every(r=>selected.has(r._id));
                         setSelected(prev=>{
                           const next=new Set(prev);
                           displayedResults.forEach(r=>{
-                            const already=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
+                            const already=isIn(r);
                             if(already)return;
                             if(allSel)next.delete(r._id);else next.add(r._id);
                           });
@@ -1847,9 +1907,9 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                   {displayedResults.map(r=>{
                     const sel=selected.has(r._id);
                     const si=AI_SOURCES.find(s=>s.id===r._source);
-                    const alreadyIn=existingIds.has(r.companyName?.toLowerCase())||existingIds.has(r.emailPhone?.toLowerCase());
-                    const fit=computeFitScore(r);
-                    const fitColor=fit.score>=70?"#34d399":fit.score>=45?"#fbbf24":WD;
+                    const alreadyIn=isIn(r);
+                    const fit=r._fit||scoreProspect(r);
+                    const poss=!alreadyIn&&matchOf.get(r._id)?.level==="medium"?matchOf.get(r._id):null;
                     return(
                       <tr key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{borderBottom:`1px solid rgba(255,255,255,0.04)`,background:sel?"rgba(201,150,58,0.06)":"transparent",cursor:alreadyIn?"default":"pointer",opacity:alreadyIn?0.5:1}} className={alreadyIn?"":"rh"}>
                         <td style={{padding:"10px 8px"}} onClick={e=>e.stopPropagation()}>
@@ -1858,14 +1918,12 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings}){
                         <td style={{padding:"10px 8px",maxWidth:240}}>
                           <p style={{margin:0,fontSize:12,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.companyName}</p>
                           <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.contactName?`${r.contactName} · `:""}{r.cityMarket||r.market||"NC"}</p>
-                          {alreadyIn&&<span style={{fontSize:8,color:"#34d399",fontWeight:700}}>Already in CRM</span>}
+                          {alreadyIn&&<span style={{fontSize:9,color:"#34d399",fontWeight:700}} title={(matchOf.get(r._id)?.reasons||[]).join(" · ")}>Already in CRM · {matchOf.get(r._id)?.prospect.companyName}</span>}
+                          {poss&&<span style={{fontSize:9,color:"#fbbf24",fontWeight:700,display:"block"}} title={poss.reasons.join(" · ")}>⚠ Possible match: {poss.prospect.companyName}</span>}
+                          {r._alsoIn?.length>0&&<span style={{fontSize:9,color:WD,display:"block"}}>Also found via {r._alsoIn.map(id=>AI_SOURCES.find(x=>x.id===id)?.label||id).join(", ")}</span>}
+                          {r.emailStatus&&<span style={{display:"block",marginTop:2}}><EmailBadge status={r.emailStatus} confirmed={r._emailConfirmed}/></span>}
                         </td>
-                        <td style={{padding:"10px 8px"}} title={fit.reasons.join(" · ")||"No bonus signals present"}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{fontSize:11,fontWeight:800,padding:"2px 9px",borderRadius:20,background:`${fitColor}22`,color:fitColor}}>{fit.score}%</span>
-                            <span style={{fontSize:9,color:WD}}>{fit.label}</span>
-                          </div>
-                        </td>
+                        <td style={{padding:"10px 8px"}}><ScoreBadge result={fit} size={32} showLabel/></td>
                         <td style={{padding:"10px 8px"}}>
                           <div style={{display:"flex",gap:5}}>
                             <span title={r.sourceUrl?"Has a website":"No website found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.sourceUrl?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.04)",fontSize:10}}>{r.sourceUrl?"🌐":"—"}</span>
@@ -3649,7 +3707,7 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
 ════════════════════════════════════════════════════════════════ */
 const CHECKLIST=["Pull 10 new prospects using approved sources (AI Finder, Apollo, etc.)","Send Touch 1 emails every Monday","Send Touch 2 emails 7 days after T1 if no reply","ANY reply → Flag to Melissa IMMEDIATELY","Flag to Melissa before Touch 3 — wait for approval","After Touch 3 → update status to NURTURE/T3 SENT","Log Call Booked after Melissa handles reply"];
 
-function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,dbStatus}){
+function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,dbStatus,features,addAudit}){
   const [view,setView]=useState("dashboard");
   const [search,setSearch]=useState("");
   const [sfilt,setSfilt]=useState("All");
@@ -3661,6 +3719,11 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const [showImport,setShowImport]=useState(false);
   const [showFinder,setShowFinder]=useState(false);
   const [sortCol,setSortCol]=useState("companyName");
+  // Pipeline (kanban) state. These MUST be top-level hooks: they used to be declared inside the
+  // conditional pipeline view, which crashed the app (React error #310) the first time it opened.
+  const [pipeSearch,setPipeSearch]=useState("");
+  const [dragOver,setDragOver]=useState(null);
+  const [dragging,setDragging]=useState(null);
   const [sortDir,setSortDir]=useState("asc");
 
   const role=ROLES[currentUser.role];
@@ -3695,7 +3758,11 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const saveP=async form=>{
     if(!canEdit){t2("View-only access.","err");return;}
     const isNew=!crmData.find(p=>p.id===form.id);
-    await onSaveProspect(form);
+    // an edited email address invalidates any earlier verification result
+    const before=crmData.find(p=>p.id===form.id);
+    const f=(before&&before.emailPhone!==form.emailPhone)?{...form,emailStatus:"",emailCheckedAt:""}:form;
+    const res=await onSaveProspect(f);
+    if(res&&res.__saveFailed){t2(`Couldn't save: ${res.__saveFailed}`,"err");return;}
     setPDlg(null);t2(isNew?"Prospect added!":"Changes saved!");
   };
   const deleteP=async id=>{
@@ -3719,6 +3786,45 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
   const [sidebarExpanded,setSidebarExpanded]=useState(false);
   const SIDEBAR_W=sidebarExpanded?228:62;
+
+  /* ── Prospects screen plumbing ───────────────────────────────── */
+  // Shared (database) saved searches when the migration exists, else this browser only.
+  const savedApi=useMemo(()=>(isConfigured&&features?.savedSearches)
+    ?{list:sc=>DB.getSavedSearches(sc),save:x=>DB.saveSearch(x),remove:id=>DB.deleteSavedSearch(id)}
+    :localSavedApi,[features?.savedSearches]);
+  // Mailbox-level email verification (only when a Hunter key is configured server-side).
+  const hunterVerify=useMemo(()=>(isConfigured&&sysSettings.hunterKey)?async email=>{
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/hunter-verify`,{method:"POST",headers:await authHeaders(),body:JSON.stringify({email})});
+    return res.ok?res.json():null;
+  }:undefined,[sysSettings.hunterKey]);
+  // Apply many changes with limited parallelism. `patch` is an object to merge or fn(prospect)=>prospect.
+  const bulkSave=useCallback(async updates=>{
+    const byId=new Map(crmData.map(x=>[x.id,x]));
+    let ok=0,failed=0;
+    await mapPool(updates,5,async({id,patch})=>{
+      const cur=byId.get(id);if(!cur){failed++;return;}
+      const next=typeof patch==="function"?patch(cur):{...cur,...patch};
+      const res=await onSaveProspect(next);
+      if(res&&res.__saveFailed)failed++;else ok++;
+    });
+    return{ok,failed};
+  },[crmData,onSaveProspect]);
+  const deleteMany=useCallback(async ids=>{
+    let ok=0,failed=0;
+    await mapPool(ids,5,async id=>{(await onDeleteProspect(id))?ok++:failed++;});
+    if(ok&&addAudit)addAudit(currentUser.username,`Deleted ${ok} prospect${ok===1?"":"s"} (bulk)`);
+    return{ok,failed};
+  },[onDeleteProspect,addAudit,currentUser]);
+  // Merge duplicates: save the combined record FIRST; only delete the others if that succeeded.
+  const mergeRecords=useCallback(async(merged,deleteIds)=>{
+    const res=await onSaveProspect(merged);
+    if(res&&res.__saveFailed){t2(`Couldn't save the merged record — nothing was deleted (${res.__saveFailed})`,"err");return false;}
+    const r=await deleteMany(deleteIds);
+    if(addAudit)addAudit(currentUser.username,`Merged ${deleteIds.length+1} records into ${merged.companyName}`);
+    t2(r.failed?`Merged, but ${r.failed} duplicate${r.failed===1?"":"s"} couldn't be removed`:`Merged — ${r.ok} duplicate${r.ok===1?"":"s"} removed`,r.failed?"err":"ok");
+    return r.failed===0;
+  },[onSaveProspect,deleteMany,addAudit,currentUser]);
+  const exportRows=useCallback((rows,name)=>{exportToExcel(rows,name);t2(`Exported ${rows.length} prospect${rows.length===1?"":"s"}`);},[]);
 
 
   return(
@@ -4007,7 +4113,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
       )}
 
       {/* FILTER BAR */}
-      {(view==="table"||view==="pipeline")&&(
+      {view==="pipeline"&&(
         <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"9px 16px",position:"sticky",top:82,zIndex:50,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <div style={{position:"relative",flex:1,minWidth:170}}>
             <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:12,color:WD}}>🔍</span>
@@ -4021,49 +4127,12 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         </div>
       )}
 
-      {/* TABLE */}
+      {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
       {view==="table"&&(
-        <div style={{padding:"13px 16px 60px",animation:"fadeUp 0.3s ease",overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
-            <thead>
-              <tr style={{background:NL,borderBottom:`1px solid rgba(255,255,255,0.07)`}}>
-                {[["companyName","Company"],["contactName","Contact"],["vertical","Vertical"],["market","Market"],["currentStatus","Status"],["priorityScore","Pri."]].map(([col,h])=>(
-                  <th key={col} onClick={()=>doSort(col)} style={{textAlign:"left",padding:"9px 13px",fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",transition:"color 0.15s"}}>
-                    {h}<SI col={col}/>
-                  </th>
-                ))}
-                <th style={{textAlign:"left",padding:"9px 13px",fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length===0&&<tr><td colSpan={7} style={{padding:"44px 0",textAlign:"center",color:WD,fontSize:13}}>No prospects found.{canEdit&&<><br/><button onClick={()=>setShowFinder(true)} style={{...B.gold,marginTop:12,fontSize:12}}>🔍 Search for Prospects</button> <button onClick={()=>setPDlg("add")} style={{...B.ghost,marginTop:12,fontSize:12}}>+ Add Manually</button></>}</td></tr>}
-              {filtered.map((p,i)=>(
-                <tr key={p.id} className="rh" style={{borderBottom:`1px solid rgba(255,255,255,0.04)`,background:i%2?"rgba(255,255,255,0.018)":"transparent"}}>
-                  <td style={{padding:"10px 13px"}}>
-                    <p style={{margin:0,fontSize:12,fontWeight:700,color:W,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p>
-                    <div style={{display:"flex",gap:4,marginTop:2}}>
-                      {p.flagToMelissa&&<span style={{fontSize:9,color:"#f472b6"}}>🚩</span>}
-                      {p.doNotRespond&&<span style={{fontSize:9,color:"#f87171"}}>🚫</span>}
-                      {p.replyReceived&&<span style={{fontSize:9,color:"#34d399"}}>📩</span>}
-                      {p.sourceType&&["Claude AI","ChatGPT","Gemini"].some(x=>p.sourceType.includes(x))&&<span style={{fontSize:9,color:"#c084fc"}}>🤖</span>}
-                    </div>
-                  </td>
-                  <td style={{padding:"10px 13px"}}><p style={{margin:0,fontSize:12,color:WM}}>{p.contactName||"—"}</p><p style={{margin:0,fontSize:10,color:WD}}>{p.title}</p></td>
-                  <td style={{padding:"10px 13px",fontSize:11,color:WD,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.vertical||"—"}</td>
-                  <td style={{padding:"10px 13px",fontSize:11,color:WD}}>{p.market||"—"}</td>
-                  <td style={{padding:"10px 13px"}}><SBadge status={p.currentStatus} sm/></td>
-                  <td style={{padding:"10px 13px",fontSize:14,fontWeight:800,color:parseInt(p.priorityScore)>=7?"#f472b6":parseInt(p.priorityScore)>=4?GL:"rgba(255,255,255,0.2)"}}>{p.priorityScore||"—"}</td>
-                  <td style={{padding:"10px 13px"}}>
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>setPDlg(p)} className="bh" style={{...B.ghost,fontSize:10,padding:"4px 9px",color:GL,borderColor:"rgba(201,150,58,0.3)"}}>{canEdit?"✏️ Edit":"👁 View"}</button>
-                      {canEdit&&<select value={p.currentStatus} onChange={e=>qStatus(p.id,e.target.value)} style={{...inp(),width:"auto",fontSize:9,padding:"3px 6px",cursor:"pointer"}}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ProspectsView crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
+          sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
+          onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
+          onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
       )}
 
       {/* PIPELINE — Bitrix24-style kanban */}
@@ -4080,9 +4149,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           {s:"Replied",       label:"Replied ✦",         accent:"#34d399", bg:"rgba(52,211,153,0.18)"},
           {s:"Converted",     label:"Converted 🎉",      accent:"#c084fc", bg:"rgba(168,85,247,0.18)"},
         ];
-        const [pipeSearch,setPipeSearch]=useState("");
-        const [dragOver,setDragOver]=useState(null);
-        const [dragging,setDragging]=useState(null);
+        // (pipeSearch / dragOver / dragging are declared at the top of CRMApp — hooks can't live inside this conditional block)
 
         const pipeFiltered=filtered.filter(p=>!pipeSearch||(p.companyName+p.contactName+p.vertical+p.cityMarket).toLowerCase().includes(pipeSearch.toLowerCase()));
 
@@ -4278,7 +4345,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 
       {/* MODALS */}
       {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
-      {showFinder&&<ProspectFinderModal onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
+      {showFinder&&<ProspectFinderModal crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
       {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
     </div>
   );
@@ -4294,6 +4361,8 @@ export default function App(){
   // INIT_USERS / SEED are used ONLY in demo mode (Supabase not configured).
   const [users,setUsers]     = useState([]);
   const [crmData,setCrmData] = useState([]);
+  const [features,setFeatures] = useState({tags:!isConfigured,savedSearches:!isConfigured}); // optional DB features (see DB.detectSchema)
+  const crmRef = useRef([]); crmRef.current = crmData; // latest list, for rolling back failed saves
   const [sysSettings,setSysSettings] = useState(DEFAULT_SYS);
   const [auditLog,setAuditLog] = useState([]);
   const [dbStatus,setDbStatus] = useState(isConfigured ? "connecting" : "local");
@@ -4363,13 +4432,15 @@ export default function App(){
           sessionStorage.setItem("google_email", (session.user.email || "").toLowerCase());
         }
 
-        const [settings, dbUsers, dbProspects, dbAudit, keyStatus] = await Promise.all([
+        const [settings, dbUsers, dbProspects, dbAudit, keyStatus, feat] = await Promise.all([
           DB.getSettings().catch(e => { dwarn("[NC CRM] getSettings failed:", e.message); return {}; }),
           DB.getUsers().catch(e => { dwarn("[NC CRM] getUsers failed:", e.message); return []; }),
           DB.getProspects(),                       // surface real errors (RLS / network)
           DB.getAuditLog().catch(() => []),        // admins only — empty for everyone else
           DB.getApiCredentials().catch(() => ({})),
+          DB.detectSchema().catch(() => ({ tags: false, savedSearches: false })),
         ]);
+        setFeatures(feat);
         if (cancelled) return;
 
         setUsers(dbUsers && dbUsers.length ? dbUsers : [profile]);
@@ -4455,41 +4526,52 @@ export default function App(){
   };
 
   /* ── DB-aware save / delete wrappers passed down ─────────── */
+  // Returns the saved prospect. If the database refused the change, the on-screen edit is
+  // rolled back and the returned object carries __saveFailed (callers/bulk actions check it).
   const handleSaveProspect = useCallback(async (form) => {
-    // Step 1: Optimistic UI update immediately (instant feedback)
+    const before = crmRef.current.find(p => p.id === form.id);
+    // Step 1: optimistic UI update (instant feedback)
     setCrmData(prev => {
       const exists = prev.find(p => p.id === form.id);
       return exists ? prev.map(p => p.id === form.id ? form : p) : [...prev, form];
     });
 
-    // Step 2: Persist to Supabase (always try if configured)
+    // Step 2: persist to Supabase
     if (isConfigured) {
+      let reason = "The database did not accept this change.";
       try {
         dlog("[NC CRM] Saving prospect to DB:", form.companyName, "| id:", form.id);
         const saved = await DB.upsertProspect(form);
         if (saved && saved.id) {
-          // Swap temp local ID for real DB UUID
-          setCrmData(prev => prev.map(p => p.id === form.id ? saved : p));
-          dlog("[NC CRM] ✅ Prospect saved:", saved.companyName, "| DB id:", saved.id);
+          setCrmData(prev => prev.map(p => p.id === form.id ? saved : p)); // swap temp id for the real UUID
           return saved;
         }
+        reason = "Not permitted, or the record no longer exists.";
       } catch(e) {
         console.error("[NC CRM] ❌ Prospect save failed:", e.message);
+        reason = e.message || reason;
       }
+      // roll the screen back so it never shows data that was not stored
+      setCrmData(prev => before ? prev.map(p => p.id === form.id ? before : p) : prev.filter(p => p.id !== form.id));
+      return { ...form, __saveFailed: reason };
     }
     return form;
-  },[]); // no deps — uses isConfigured which is module-level constant
+  },[]); // no deps — uses module-level isConfigured and crmRef
 
+  // Returns true when deleted; false (and restores the row) when the database refused.
   const handleDeleteProspect = useCallback(async (id) => {
+    const before = crmRef.current.find(p => p.id === id);
     setCrmData(prev => prev.filter(p => p.id !== id)); // optimistic
     if (isConfigured) {
       try {
         await DB.deleteProspect(id);
-        dlog("[NC CRM] ✅ Prospect deleted from DB:", id);
       } catch(e) {
         console.error("[NC CRM] ❌ Delete failed:", e.message);
+        if (before) setCrmData(prev => prev.some(p => p.id === id) ? prev : [...prev, before]);
+        return false;
       }
     }
+    return true;
   },[]);
 
   const handleImportProspects = useCallback(async (rows, mode) => {
@@ -4641,6 +4723,8 @@ export default function App(){
         onImportProspects={handleImportProspects}
         sysSettings={sysSettings}
         dbStatus={dbStatus}
+        features={features}
+        addAudit={addAudit}
       />
       <DbBanner/>
     </>

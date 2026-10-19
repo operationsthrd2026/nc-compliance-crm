@@ -1,0 +1,149 @@
+/* ════════════════════════════════════════════════════════════════
+   NC Compliance CRM — modern layer (dark + gold brand preserved)
+   Tokens mirror the colours in src/constants.js.
+════════════════════════════════════════════════════════════════ */
+:root{
+  --nc-bg:#0B1426; --nc-surface:#111E38; --nc-surface-2:#162040; --nc-surface-3:#1C2B50;
+  --nc-gold:#C9963A; --nc-gold-l:#DBA843; --nc-gold-a:rgba(201,150,58,.14); --nc-gold-b:rgba(201,150,58,.38);
+  --nc-text:#F0F4FF; --nc-text-2:rgba(240,244,255,.64); --nc-text-3:rgba(240,244,255,.40);
+  --nc-border:rgba(240,244,255,.08); --nc-border-2:rgba(240,244,255,.15);
+  --nc-green:#34d399; --nc-amber:#fbbf24; --nc-red:#f87171; --nc-pink:#f472b6; --nc-blue:#60a5fa; --nc-purple:#c084fc;
+  --nc-r:10px; --nc-r-sm:7px; --nc-r-lg:14px;
+  --nc-shadow:0 12px 40px rgba(0,0,0,.45); --nc-shadow-sm:0 2px 10px rgba(0,0,0,.3);
+  --nc-font:'Inter','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --nc-ease:cubic-bezier(.4,0,.2,1);
+  --nc-header-h:82px;
+}
+html,body{font-family:var(--nc-font);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+body{font-feature-settings:"cv11","ss01"}
+::selection{background:rgba(201,150,58,.35)}
+*{scrollbar-width:thin;scrollbar-color:rgba(240,244,255,.18) transparent}
+*::-webkit-scrollbar{width:9px;height:9px}
+*::-webkit-scrollbar-thumb{background:rgba(240,244,255,.16);border-radius:9px;border:2px solid transparent;background-clip:content-box}
+*::-webkit-scrollbar-thumb:hover{background:rgba(240,244,255,.28);background-clip:content-box;border:2px solid transparent}
+*::-webkit-scrollbar-track{background:transparent}
+
+/* keyboard focus — visible, on-brand, never on mouse clicks */
+.nc :focus{outline:none}
+.nc :focus-visible{outline:2px solid var(--nc-gold-l);outline-offset:2px;border-radius:6px}
+
+.nc{color:var(--nc-text);font-family:var(--nc-font)}
+.nc *{box-sizing:border-box}
+.nc-fade{animation:nc-fade .22s var(--nc-ease)}
+@keyframes nc-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes nc-slide{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes nc-spin{to{transform:rotate(360deg)}}
+@keyframes nc-shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+@keyframes nc-pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.nc *,.nc-fade{animation:none!important;transition:none!important}}
+
+/* ── buttons ─────────────────────────────────────────────── */
+.nc-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;font:600 12.5px/1 var(--nc-font);padding:9px 14px;border-radius:var(--nc-r-sm);border:1px solid transparent;cursor:pointer;white-space:nowrap;transition:background .15s var(--nc-ease),border-color .15s,transform .08s,box-shadow .15s,opacity .15s;user-select:none}
+.nc-btn:active:not(:disabled){transform:translateY(1px)}
+.nc-btn:disabled{opacity:.45;cursor:not-allowed}
+.nc-btn.primary{background:linear-gradient(180deg,var(--nc-gold-l),var(--nc-gold));color:#0B1426;box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 4px 14px rgba(201,150,58,.25)}
+.nc-btn.primary:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 6px 20px rgba(201,150,58,.35)}
+.nc-btn.ghost{background:rgba(240,244,255,.04);border-color:var(--nc-border-2);color:var(--nc-text)}
+.nc-btn.ghost:hover:not(:disabled){background:rgba(240,244,255,.09);border-color:rgba(240,244,255,.25)}
+.nc-btn.subtle{background:transparent;color:var(--nc-text-2)}
+.nc-btn.subtle:hover:not(:disabled){background:rgba(240,244,255,.07);color:var(--nc-text)}
+.nc-btn.danger{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.35);color:var(--nc-red)}
+.nc-btn.danger:hover:not(:disabled){background:rgba(248,113,113,.2)}
+.nc-btn.gold-ghost{background:var(--nc-gold-a);border-color:var(--nc-gold-b);color:var(--nc-gold-l)}
+.nc-btn.gold-ghost:hover:not(:disabled){background:rgba(201,150,58,.24)}
+.nc-btn.sm{padding:6px 10px;font-size:11.5px;border-radius:6px}
+.nc-btn.icon{padding:7px;width:30px;height:30px}
+
+/* ── inputs ──────────────────────────────────────────────── */
+.nc-input,.nc-select,.nc-textarea{width:100%;background:rgba(240,244,255,.05);border:1px solid var(--nc-border-2);color:var(--nc-text);border-radius:var(--nc-r-sm);padding:8px 11px;font:500 13px var(--nc-font);transition:border-color .15s,background .15s,box-shadow .15s}
+.nc-input::placeholder,.nc-textarea::placeholder{color:var(--nc-text-3)}
+.nc-input:hover,.nc-select:hover,.nc-textarea:hover{border-color:rgba(240,244,255,.26)}
+.nc-input:focus,.nc-select:focus,.nc-textarea:focus{border-color:var(--nc-gold);background:rgba(240,244,255,.07);box-shadow:0 0 0 3px rgba(201,150,58,.16);outline:none}
+.nc-select{cursor:pointer;appearance:none;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.nc-select option{background:#111E38;color:#F0F4FF}
+.nc-textarea{resize:vertical;min-height:84px;line-height:1.5}
+
+/* custom checkbox */
+.nc-check{appearance:none;width:16px;height:16px;border-radius:5px;border:1.5px solid rgba(240,244,255,.3);background:transparent;cursor:pointer;display:inline-grid;place-content:center;transition:all .12s;flex-shrink:0;margin:0}
+.nc-check:hover{border-color:var(--nc-gold-l)}
+.nc-check:checked,.nc-check:indeterminate{background:var(--nc-gold);border-color:var(--nc-gold)}
+.nc-check:checked::after{content:"";width:8px;height:4.5px;border-left:2px solid #0B1426;border-bottom:2px solid #0B1426;transform:rotate(-45deg) translate(1px,-1px)}
+.nc-check:indeterminate::after{content:"";width:8px;height:2px;background:#0B1426;border-radius:1px}
+.nc-check:disabled{opacity:.35;cursor:not-allowed}
+
+/* ── chips / pills ───────────────────────────────────────── */
+.nc-chip{display:inline-flex;align-items:center;gap:5px;font:600 11px/1 var(--nc-font);padding:5px 9px;border-radius:999px;background:rgba(240,244,255,.06);border:1px solid var(--nc-border);color:var(--nc-text-2);white-space:nowrap}
+.nc-chip.active{background:var(--nc-gold-a);border-color:var(--nc-gold-b);color:var(--nc-gold-l)}
+.nc-chip button{all:unset;cursor:pointer;opacity:.6;font-size:13px;line-height:1;padding:0 1px}
+.nc-chip button:hover{opacity:1}
+.nc-chip.btn{cursor:pointer;transition:all .13s}
+.nc-chip.btn:hover{background:rgba(240,244,255,.11);color:var(--nc-text)}
+.nc-pill{display:inline-flex;align-items:center;gap:5px;font:700 10.5px/1 var(--nc-font);padding:4px 9px;border-radius:999px;border:1px solid;white-space:nowrap;letter-spacing:.01em}
+.nc-tag{display:inline-block;font:600 10.5px/1 var(--nc-font);padding:3px 7px;border-radius:5px;background:rgba(96,165,250,.12);color:#93c5fd;border:1px solid rgba(96,165,250,.22);white-space:nowrap}
+.nc-kbd{font:600 10px var(--nc-font);padding:2px 5px;border-radius:4px;border:1px solid var(--nc-border-2);color:var(--nc-text-3);background:rgba(240,244,255,.04)}
+
+/* ── cards / layout ──────────────────────────────────────── */
+.nc-card{background:var(--nc-surface);border:1px solid var(--nc-border);border-radius:var(--nc-r-lg)}
+.nc-toolbar{position:sticky;top:var(--nc-header-h);z-index:60;background:rgba(11,20,38,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--nc-border)}
+.nc-divider{height:1px;background:var(--nc-border);margin:0;border:0}
+.nc-skel{border-radius:6px;background:linear-gradient(90deg,rgba(240,244,255,.05) 25%,rgba(240,244,255,.1) 37%,rgba(240,244,255,.05) 63%);background-size:800px 100%;animation:nc-shimmer 1.3s infinite linear}
+
+/* ── popover / menu ──────────────────────────────────────── */
+.nc-pop{position:absolute;z-index:500;min-width:220px;background:#141f3b;border:1px solid var(--nc-border-2);border-radius:var(--nc-r);box-shadow:var(--nc-shadow);padding:6px;animation:nc-pop .14s var(--nc-ease)}
+.nc-menu-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:0;color:var(--nc-text);font:500 12.5px var(--nc-font);padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .1s}
+.nc-menu-item:hover:not(:disabled){background:rgba(240,244,255,.08)}
+.nc-menu-item:disabled{opacity:.4;cursor:not-allowed}
+.nc-menu-item.on{background:var(--nc-gold-a);color:var(--nc-gold-l)}
+.nc-menu-sep{height:1px;background:var(--nc-border);margin:5px 0}
+.nc-menu-label{font:700 10px var(--nc-font);text-transform:uppercase;letter-spacing:.08em;color:var(--nc-text-3);padding:7px 10px 4px}
+
+/* ── table ───────────────────────────────────────────────── */
+.nc-tablewrap{overflow:auto;border:1px solid var(--nc-border);border-radius:var(--nc-r-lg);background:var(--nc-surface)}
+.nc-table{width:100%;border-collapse:separate;border-spacing:0;min-width:980px}
+.nc-table thead th{position:sticky;top:0;z-index:5;background:#0f1a33;text-align:left;font:700 10.5px var(--nc-font);text-transform:uppercase;letter-spacing:.07em;color:var(--nc-text-3);padding:10px 12px;border-bottom:1px solid var(--nc-border-2);white-space:nowrap;user-select:none}
+.nc-table thead th.sortable{cursor:pointer;transition:color .12s}
+.nc-table thead th.sortable:hover{color:var(--nc-text)}
+.nc-table tbody td{padding:var(--nc-pad-y,11px) 12px;border-bottom:1px solid var(--nc-border);vertical-align:middle;font-size:12.5px}
+.nc-table tbody tr{transition:background .1s;cursor:pointer}
+.nc-table tbody tr:hover{background:rgba(240,244,255,.04)}
+.nc-table tbody tr.sel{background:rgba(201,150,58,.09)}
+.nc-table tbody tr.open{background:rgba(201,150,58,.13);box-shadow:inset 3px 0 0 var(--nc-gold)}
+.nc-table tbody tr:last-child td{border-bottom:0}
+.nc-table.compact{--nc-pad-y:6px}
+.nc-trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── drawer ──────────────────────────────────────────────── */
+.nc-scrim{position:fixed;inset:0;background:rgba(5,10,22,.55);backdrop-filter:blur(2px);z-index:900;animation:nc-fade .15s}
+.nc-drawer{position:fixed;top:0;right:0;bottom:0;width:min(500px,100vw);background:var(--nc-surface);border-left:1px solid var(--nc-border-2);box-shadow:-20px 0 60px rgba(0,0,0,.5);z-index:901;display:flex;flex-direction:column;animation:nc-slide .22s var(--nc-ease)}
+
+/* ── bulk bar ────────────────────────────────────────────── */
+.nc-bulk{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:6px;background:#17233f;border:1px solid var(--nc-gold-b);border-radius:14px;padding:8px 10px;box-shadow:0 18px 50px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.4);animation:nc-fade .2s var(--nc-ease);max-width:calc(100vw - 24px);flex-wrap:wrap;justify-content:center}
+
+.nc-empty{text-align:center;padding:64px 20px;color:var(--nc-text-2)}
+.nc-empty .ico{font-size:38px;margin-bottom:10px;opacity:.9}
+.nc-empty h3{margin:0 0 6px;font:700 16px var(--nc-font);color:var(--nc-text)}
+.nc-empty p{margin:0 auto 16px;max-width:380px;font-size:13px;line-height:1.5}
+
+.nc-seg{display:inline-flex;background:rgba(240,244,255,.05);border:1px solid var(--nc-border);border-radius:9px;padding:3px;gap:2px}
+.nc-seg button{all:unset;cursor:pointer;font:600 12px var(--nc-font);padding:6px 12px;border-radius:6px;color:var(--nc-text-2);display:inline-flex;gap:6px;align-items:center;transition:all .13s}
+.nc-seg button:hover{color:var(--nc-text)}
+.nc-seg button.on{background:var(--nc-gold-a);color:var(--nc-gold-l);box-shadow:inset 0 0 0 1px var(--nc-gold-b)}
+.nc-seg button:focus-visible{outline:2px solid var(--nc-gold-l);outline-offset:1px}
+
+.nc-bar{height:6px;border-radius:99px;background:rgba(240,244,255,.08);overflow:hidden}
+.nc-bar>i{display:block;height:100%;border-radius:99px;transition:width .4s var(--nc-ease)}
+
+/* leaflet on dark */
+.nc .leaflet-container{background:#0b1426;font-family:var(--nc-font)}
+.nc .leaflet-popup-content-wrapper,.nc .leaflet-popup-tip{background:#141f3b;color:var(--nc-text);border:1px solid var(--nc-border-2);box-shadow:var(--nc-shadow)}
+.nc .leaflet-popup-content{margin:12px 14px;font-size:12px}
+.nc .leaflet-container a.leaflet-popup-close-button{color:var(--nc-text-3)}
+.nc .leaflet-control-attribution{background:rgba(11,20,38,.75)!important;color:var(--nc-text-3)!important}
+.nc .leaflet-control-attribution a{color:var(--nc-text-2)!important}
+.nc .leaflet-bar a{background:#141f3b;color:var(--nc-text);border-bottom-color:var(--nc-border)}
+.nc .leaflet-bar a:hover{background:#1c2b50}
+
+@media (max-width:760px){
+  .nc-bulk{bottom:10px;border-radius:12px}
+  .nc-hide-sm{display:none!important}
+}

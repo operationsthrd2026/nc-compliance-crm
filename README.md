@@ -11,7 +11,11 @@ A full-featured compliance-vertical CRM for North Carolina prospect management, 
 ```
 nc-compliance-crm/
 ├── src/
-│   ├── App.jsx          ← entire CRM application (single-file)
+│   ├── App.jsx          ← CRM shell, dashboard, pipeline, finder modal
+│   ├── constants.js     ← brand colours, statuses, shared helpers
+│   ├── lib/             ← tested logic: scoring, duplicates, email checks, filters, geo (npm test)
+│   ├── features/prospects/ ← Prospects screen (table, filters, drawer, map, duplicates)
+│   ├── ui/ + styles/    ← component kit and the dark + gold theme
 │   └── main.jsx         ← React entry point
 ├── index.html           ← HTML shell
 ├── vite.config.js       ← Vite build configuration
@@ -62,6 +66,12 @@ npm run build
 ```
 
 Creates a `dist/` folder ready to deploy.
+
+### 5 — Run the tests
+
+```bash
+npm test
+```
 
 ---
 
@@ -132,9 +142,9 @@ See **`SETUP_GUIDE.md`** → VPS tab for the full Caddy config.
 | Feature | Details |
 |---------|---------|
 | 🔐 Authentication | Supabase Auth (email + password, Google) · 5 role levels enforced by Row Level Security |
-| 🔍 AI Prospect Finder | Claude · ChatGPT · Gemini · Apollo.io · Hunter.io |
+| 🔍 Prospect Finder | Apollo · Hunter · GuideStar · NPI Registry · local directory — fuzzy duplicate check, explainable fit score, email verification, shared saved searches |
 | 📊 Dashboard | Pipeline, vertical & market breakdowns, VA checklist |
-| 🗄️ Prospects | Full CRUD · sortable table · kanban pipeline |
+| 🗄️ Prospects | Filters, saved views, bulk actions, detail drawer, NC territory map, duplicate finder & merge · kanban pipeline — see `PROSPECTS_UPGRADE.md` |
 | 📧 Email Hub | Outreach queue · compose + templates · inbox · sent tracking |
 | 📁 Excel Import | Smart column mapping · append or replace · template download |
 | ⬇️ Excel Export | Full 28-field export with one click |

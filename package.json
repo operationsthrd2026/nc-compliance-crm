@@ -1,32 +1,33 @@
 {
   "name": "nc-compliance-crm",
   "version": "4.0.0",
-  "description": "NC Compliance CRM — HR On Demand SMB & Nonprofit Outreach Tracker",
+  "description": "NC Compliance CRM \u2014 HR On Demand SMB & Nonprofit Outreach Tracker",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev":     "vite",
-    "build":   "vite build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
-    "lint":    "eslint src --ext .js,.jsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint src --ext .js,.jsx --report-unused-disable-directives --max-warnings 0",
+    "test": "node --test src/lib/*.test.js"
   },
   "dependencies": {
-    "react":     "^18.3.1",
+    "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "xlsx":      "^0.18.5",
+    "xlsx": "^0.18.5",
     "@supabase/supabase-js": "^2.45.0",
     "leaflet": "^1.9.4",
     "react-leaflet": "^4.2.1"
   },
   "devDependencies": {
-    "@types/react":        "^18.3.3",
-    "@types/react-dom":    "^18.3.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "eslint":              "^8.57.0",
+    "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.2",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
-    "vite":                "5.4.11"
+    "vite": "5.4.11"
   },
   "engines": {
     "node": ">=20.0.0"
