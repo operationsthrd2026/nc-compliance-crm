@@ -1,0 +1,2127 @@
+From 2da63166a151156c70bfa897826ac4fb9aa7a2fe Mon Sep 17 00:00:00 2001
+From: Security fix <fix@local>
+Date: Mon, 19 Oct 2026 14:04:01 +0000
+Subject: [PATCH] Security hardening: Supabase Auth, RLS, server-side API keys,
+ locked-down edge functions
+
+- Stop tracking .env.local and supabase/.temp; remove hardcoded Google key and stale insecure root index.ts
+- Migration: role-based RLS on all tables, anon denied, api_credentials locked, legacy password column dropped
+- Client: sign in via Supabase Auth; every request uses the user's JWT; profile/role from crm_me(); no data read before sign-in
+- Edge functions: require signed-in CRM user, CORS allow-list, keys read server-side; add hunter-search and admin-users
+- Fix dlog/dwarn infinite recursion when debug is enabled
+- Docs: SECURITY_HARDENING.md runbook; remove 'disable RLS' advice
+---
+ .env.example                                  |  39 +-
+ .env.local                                    |  22 -
+ .gitignore                                    |   7 +
+ README.md                                     |  15 +-
+ SECURITY_HARDENING.md                         | 108 ++++
+ SETUP_GUIDE.md                                |   9 +-
+ index.ts                                      |  94 ---
+ src/App.jsx                                   | 542 ++++++++----------
+ supabase/.temp/cli-latest                     |   1 -
+ supabase/.temp/gotrue-version                 |   1 -
+ supabase/.temp/linked-project.json            |   1 -
+ supabase/.temp/pooler-url                     |   1 -
+ supabase/.temp/postgres-version               |   1 -
+ supabase/.temp/project-ref                    |   1 -
+ supabase/.temp/rest-version                   |   1 -
+ supabase/.temp/storage-migration              |   1 -
+ supabase/.temp/storage-version                |   1 -
+ supabase/functions/_shared/auth.ts            |  89 +++
+ supabase/functions/admin-users/index.ts       |  86 +++
+ supabase/functions/apollo-search/index.ts     |  99 +---
+ supabase/functions/google-search/index.ts     |  17 +-
+ supabase/functions/guidestar-search/index.ts  |  15 +-
+ supabase/functions/hunter-search/index.ts     |  39 ++
+ supabase/functions/nppes-search/index.ts      |  15 +-
+ supabase/functions/osm-search/index.ts        |  17 +-
+ .../20261019000000_security_hardening.sql     | 272 +++++++++
+ 26 files changed, 931 insertions(+), 563 deletions(-)
+ delete mode 100644 .env.local
+ create mode 100644 SECURITY_HARDENING.md
+ delete mode 100644 index.ts
+ delete mode 100644 supabase/.temp/cli-latest
+ delete mode 100644 supabase/.temp/gotrue-version
+ delete mode 100644 supabase/.temp/linked-project.json
+ delete mode 100644 supabase/.temp/pooler-url
+ delete mode 100644 supabase/.temp/postgres-version
+ delete mode 100644 supabase/.temp/project-ref
+ delete mode 100644 supabase/.temp/rest-version
+ delete mode 100644 supabase/.temp/storage-migration
+ delete mode 100644 supabase/.temp/storage-version
+ create mode 100644 supabase/functions/_shared/auth.ts
+ create mode 100644 supabase/functions/admin-users/index.ts
+ create mode 100644 supabase/functions/hunter-search/index.ts
+ create mode 100644 supabase/migrations/20261019000000_security_hardening.sql
+
+diff --git a/.env.example b/.env.example
+index ada95eb..f2c5517 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,20 +1,19 @@
+-# ══════════════════════════════════════════════════════════════
+-#  NC Compliance CRM — Environment Variables
+-#  1. Copy this file to .env.local  (never commit .env.local)
+-#  2. Fill in your values below
+-#  3. Restart the dev server after editing
+-# ══════════════════════════════════════════════════════════════
+-
+-# ── Supabase ──────────────────────────────────────────────────
+-# Dashboard → Settings → API → Project URL
+-VITE_SUPABASE_URL=
+-
+-# Dashboard → Settings → API → Project API Keys → anon / public
+-VITE_SUPABASE_KEY=
+-
+-# ── Optional plugin API keys (configure in CRM Admin → Plugins)
+-# These are ONLY used if you connect the AI Prospect Finder sources.
+-# Leave blank to use demo mode for those sources.
+-VITE_APOLLO_KEY=
+-VITE_HUNTER_KEY=
+-VITE_ANTHROPIC_KEY=
++# ══════════════════════════════════════════════════════════════
++#  NC Compliance CRM — client environment (browser-visible)
++#  Copy to .env.local (git-ignored). Everything prefixed VITE_ is
++#  compiled into the public JavaScript bundle, so ONLY put values
++#  here that are safe for anyone to see.
++# ══════════════════════════════════════════════════════════════
++
++# Supabase → Settings → API → Project URL
++VITE_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
++
++# Supabase → Settings → API → anon / public key
++# (Safe to expose ONLY because Row Level Security protects every table.
++#  NEVER put the service_role key here.)
++VITE_SUPABASE_KEY=YOUR-ANON-KEY
++
++# Third-party keys (Apollo, Hunter, Google Search) are NOT configured here.
++# They live server-side: set them in Supabase with
++#   supabase secrets set APOLLO_API_KEY=... HUNTER_API_KEY=... GOOGLE_API_KEY=... GOOGLE_CSE_ID=...
++# or save them in the CRM under Admin → Plugins (stored in a locked-down table).
+diff --git a/.env.local b/.env.local
+deleted file mode 100644
+index b48920a..0000000
+--- a/.env.local
++++ /dev/null
+@@ -1,22 +0,0 @@
+-# ══════════════════════════════════════════════════════════════
+-#  NC Compliance CRM — Environment Variables
+-#  1. Copy this file to .env.local  (never commit .env.local)
+-#  2. Fill in your values below
+-#  3. Restart the dev server after editing
+-# ══════════════════════════════════════════════════════════════
+-
+-# ── Supabase ──────────────────────────────────────────────────
+-# Dashboard → Settings → API → Project URL
+-VITE_SUPABASE_URL=https://ifpzpepurqlvaixxshzk.supabase.co
+-
+-# Dashboard → Settings → API → Project API Keys → anon / public
+-VITE_SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlmcHpwZXB1cnFsdmFpeHhzaHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NzY3ODYsImV4cCI6MjA5NjU1Mjc4Nn0.9fwTcUFJ4PJfAnh1guaaRmRgmWtpKfzVsv6rNPA3uDs
+-VITE_GOOGLE_CLIENT_ID=367714207685-jqh5c4ssn4qd9m5t2m89r82th29kidts.apps.googleusercontent.com
+-VITE_GOOGLE_API_KEY=3AIzaSyDPkG2u7heg4bqdhifZ16MtJnnlp-NcAjs
+-VITE_GOOGLE_CSE_ID=b37b5c147a97f4cbd
+-# ── Optional plugin API keys (configure in CRM Admin → Plugins)
+-# These are ONLY used if you connect the AI Prospect Finder sources.
+-# Leave blank to use demo mode for those sources.
+-VITE_APOLLO_KEY=82T8Mwk1z1Qt4r36jcENLw
+-VITE_HUNTER_KEY=
+-VITE_ANTHROPIC_KEY=
+diff --git a/.gitignore b/.gitignore
+index b737906..e12f0a2 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -36,3 +36,10 @@ Thumbs.db
+ 
+ # ── Vite cache ────────────────────────────────────────────────
+ .vite/
++
++# Supabase CLI local state (contains project refs / pooler URLs)
++supabase/.temp/
++supabase/.branches/
++# Never commit any env file except the template
++.env*
++!.env.example
+diff --git a/README.md b/README.md
+index a5e246b..bb40658 100644
+--- a/README.md
++++ b/README.md
+@@ -16,7 +16,7 @@ nc-compliance-crm/
+ ├── index.html           ← HTML shell
+ ├── vite.config.js       ← Vite build configuration
+ ├── package.json         ← dependencies & scripts
+-├── .env.local           ← your secrets (DO NOT commit — git-ignored)
++├── .env.local           ← your local config (git-ignored — never commit it)
+ ├── .env.example         ← template showing what goes in .env.local
+ ├── .gitignore
+ └── README.md
+@@ -65,7 +65,9 @@ Creates a `dist/` folder ready to deploy.
+ 
+ ---
+ 
+-## Demo login accounts
++## Demo-mode accounts (only when Supabase is NOT configured)
++
++> These exist **only** in Demo Mode (no `VITE_SUPABASE_*` set) and never touch a real database. With Supabase configured, users sign in with their **email + password** (or Google) through Supabase Auth, and these accounts do not exist.
+ 
+ | Username     | Password    | Role         |
+ |-------------|-------------|--------------|
+@@ -80,7 +82,7 @@ Creates a `dist/` folder ready to deploy.
+ ## Database setup (Supabase)
+ 
+ 1. Create a free project at [supabase.com](https://supabase.com)
+-2. Go to **SQL Editor** → paste the contents of `supabase_schema.sql` → **Run**
++2. Go to **SQL Editor** → run your table schema, then run `supabase/migrations/20261019000000_security_hardening.sql` (**required** — see `SECURITY_HARDENING.md`)
+ 3. Copy **Project URL** + **anon key** from Settings → API
+ 4. Paste them into `.env.local`
+ 
+@@ -129,7 +131,7 @@ See **`SETUP_GUIDE.md`** → VPS tab for the full Caddy config.
+ 
+ | Feature | Details |
+ |---------|---------|
+-| 🔐 Authentication | 5 role levels · Google Sign-In · session persistence |
++| 🔐 Authentication | Supabase Auth (email + password, Google) · 5 role levels enforced by Row Level Security |
+ | 🔍 AI Prospect Finder | Claude · ChatGPT · Gemini · Apollo.io · Hunter.io |
+ | 📊 Dashboard | Pipeline, vertical & market breakdowns, VA checklist |
+ | 🗄️ Prospects | Full CRUD · sortable table · kanban pipeline |
+@@ -157,9 +159,8 @@ See **`SETUP_GUIDE.md`** → VPS tab for the full Caddy config.
+ |----------|----------|-------------|
+ | `VITE_SUPABASE_URL` | For live DB | Your Supabase project URL |
+ | `VITE_SUPABASE_KEY` | For live DB | Supabase anon/public key |
+-| `VITE_APOLLO_KEY` | Optional | Apollo.io API key (Prospect Finder) |
+-| `VITE_HUNTER_KEY` | Optional | Hunter.io API key (Prospect Finder) |
+-| `VITE_ANTHROPIC_KEY` | Optional | Anthropic API key (Claude AI search) |
++
++> Third-party keys (Apollo, Hunter, Google Search) are **not** `VITE_` variables — anything with that prefix is compiled into the public JavaScript. They are stored server-side; see `SECURITY_HARDENING.md`.
+ 
+ ---
+ 
+diff --git a/SECURITY_HARDENING.md b/SECURITY_HARDENING.md
+new file mode 100644
+index 0000000..860a7f7
+--- /dev/null
++++ b/SECURITY_HARDENING.md
+@@ -0,0 +1,108 @@
++# Security hardening — deployment runbook
++
++This upgrade fixes four problems in v4.0:
++
++| # | Problem | Fix |
++|---|---------|-----|
++| 1 | `.env.local` (real keys) was committed to a public repo | Untracked, ignored; **keys must be rotated** |
++| 2 | Database open to anyone holding the public anon key (RLS off/allow-all) | Role-based Row Level Security; anon gets zero access |
++| 3 | Custom login in the browser (unsalted SHA-256, plaintext legacy, demo logins) | Supabase Auth; role derived server-side |
++| 4 | Third-party API keys readable from / sent by the browser; edge functions open to anyone, CORS `*` | Keys server-side only; functions require a signed-in CRM user; CORS locked |
++
++**Do the steps in order.** Step 3 before Step 5 matters: if you apply the migration before your own login exists in Supabase Auth, the app will refuse to sign you in. (The migration itself checks for this and aborts safely.)
++
++---
++
++## Step 1 — Rotate the exposed keys (do this first, today)
++
++Removing a file from git does **not** remove it from history, and the repo has been public. Treat these as compromised:
++
++- **Apollo.io API key** — Apollo → Settings → API → revoke and create a new one.
++- **Google API key** (Custom Search) — Google Cloud Console → Credentials → delete it and create a new one, then restrict it to the *Custom Search API* only. A key was also hard-coded in `supabase/functions/google-search/index.ts`; that's removed in this version but is still in history.
++- **Supabase anon key** — safe to be public *by design*, but only because Step 4 turns on RLS. No rotation needed once Step 4 is done. (If you want a clean slate: Settings → API → JWT secret → rotate; this signs everyone out and requires updating `VITE_SUPABASE_KEY`.)
++- Google OAuth **client ID** is public by nature. If you ever committed a Google client *secret*, rotate that too.
++
++Then make the repo **private** (Settings → Danger Zone → Change visibility). Optionally scrub history with [`git filter-repo`](https://github.com/newren/git-filter-repo) (`git filter-repo --path .env.local --invert-paths`) and force-push — but rotation is what actually protects you, since forks and caches may already hold the old history.
++
++## Step 2 — Prepare Supabase Auth (before touching the database)
++
++1. **Authentication → Users → Add user → Create new user.** Use the **same email** as your admin row in `crm_users`, choose a strong password (12+ chars), and tick **Auto Confirm User**.
++2. **Authentication → Sign In / Providers → Email:** keep **Confirm email = ON**. Turn **Allow new users to sign up = OFF** (admins create users from now on).
++3. **Authentication → URL Configuration:** set Site URL and add your production + `http://localhost:3000` redirect URLs (needed for Google sign-in).
++
++## Step 3 — Deploy the edge functions
++
++```bash
++supabase link --project-ref <your-project-ref>
++
++# Only these origins may call the functions from a browser:
++supabase secrets set ALLOWED_ORIGINS=https://your-crm-domain.com,http://localhost:3000
++
++# Third-party keys (new values from Step 1). Either set them here…
++supabase secrets set APOLLO_API_KEY=... HUNTER_API_KEY=... GOOGLE_API_KEY=... GOOGLE_CSE_ID=...
++# …or leave Apollo/Hunter unset and enter them later in the app (Admin → Plugins).
++
++supabase functions deploy apollo-search hunter-search google-search \
++  guidestar-search nppes-search osm-search admin-users
++```
++
++> If you previously deployed the old `apollo-search`, redeploy it — the old version accepted any key from anyone.
++
++## Step 4 — Run the migration
++
++1. **Back up first** (Database → Backups, or `pg_dump`). The migration drops `crm_users.password` irreversibly.
++2. SQL Editor → paste `supabase/migrations/20261019000000_security_hardening.sql` → Run.
++3. If it stops with **ABORTED: no active admin … confirmed Supabase Auth account**, go back to Step 2.1. Nothing was changed.
++
++It is safe to re-run.
++
++## Step 5 — Deploy the frontend
++
++- Vercel → Settings → Environment Variables: keep only `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY`. **Delete** `VITE_GOOGLE_API_KEY`, `VITE_APOLLO_KEY`, `VITE_HUNTER_KEY`, `VITE_ANTHROPIC_KEY` and `VITE_GOOGLE_CSE_ID` — anything `VITE_`-prefixed is compiled into public JavaScript. Redeploy.
++- Sign in with the email + password from Step 2.
++
++## Step 6 — Onboard everyone else
++
++Existing users have no login yet. For each one: **Admin → Users → Edit → type a new password (10+ chars) → Save.** That creates their Supabase login (email is the username). New users: **Add User** does both the login and the role. Google sign-in works for the same email once the login exists (Supabase links them automatically — test with one user first).
++
++Re-enter Apollo / Hunter keys under **Admin → Plugins** if you didn't set them as secrets. Keys are write-only: the page shows "saved securely" and can never display them again.
++
++## Step 7 — Verify the hole is closed
++
++From any terminal (use your real URL + anon key). **All of these must fail:**
++
++```bash
++URL=https://YOUR-REF.supabase.co ; ANON=YOUR-ANON-KEY
++
++# Must return "permission denied" (HTTP 401/403), NOT rows:
++curl -s "$URL/rest/v1/prospects?select=*"        -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
++curl -s "$URL/rest/v1/crm_users?select=*"        -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
++curl -s "$URL/rest/v1/api_credentials?select=*"  -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
++
++# Must return 401 "Invalid or expired session":
++curl -s -X POST "$URL/functions/v1/apollo-search" -H "apikey: $ANON" \
++  -H "Authorization: Bearer $ANON" -H "Content-Type: application/json" -d '{"query":"test"}'
++```
++
++If any of the first three returns data, the migration did not apply — re-run Step 4 and check for errors.
++
++---
++
++## What each role can do (enforced in Postgres, not just the UI)
++
++| | Viewer | User / Manager | Admin | Super Admin |
++|---|---|---|---|---|
++| Read prospects, settings, emails | ✅ | ✅ | ✅ | ✅ |
++| Create / edit prospects, log emails | ❌ | ✅ | ✅ | ✅ |
++| Delete prospects | ❌ | ❌ | ✅ | ✅ |
++| Manage users / settings / API keys, read audit log | ❌ | ❌ | ✅ | ✅ |
++| Create or modify a Super Admin | ❌ | ❌ | ❌ | ✅ |
++
++Other guarantees: deactivating a user cuts their data access immediately (even with a live session); the audit log is append-only and can't be spoofed; Super Admin accounts can't be deleted from the app (remove them in the Supabase dashboard if ever needed).
++
++## Known limitations / follow-ups
++
++- No self-service "forgot password" yet — an admin resets it (Edit user → new password). A recovery-email flow is a good next feature.
++- The Google/Gmail OAuth token for the Email Hub is still held in `sessionStorage` (as before). Moving Gmail sending to an edge function would remove that.
++- `Delete` of a Super Admin is intentionally blocked by policy.
++- Demo Mode (no Supabase configured) still ships demo accounts; it never touches a real database.
+diff --git a/SETUP_GUIDE.md b/SETUP_GUIDE.md
+index c6d9b0e..e6e896d 100644
+--- a/SETUP_GUIDE.md
++++ b/SETUP_GUIDE.md
+@@ -4,7 +4,7 @@
+ - **PostgreSQL database** hosted on Supabase (free)
+ - All prospects, users, emails, audit logs, and settings **persist forever**
+ - Real-time sync — changes by one user appear instantly for all others
+-- Same login credentials as before (superadmin/superadmin, admin/admin, etc.)
++- Secure sign-in via Supabase Auth (email + password, or Google). **Run the security migration** — see `SECURITY_HARDENING.md`
+ 
+ ---
+ 
+@@ -98,10 +98,7 @@ In the Supabase dashboard:
+ 
+ **"Failed to connect"** → Double-check your URL and key. The URL must not have a trailing slash.
+ 
+-**"Permission denied"** → The Row Level Security policies are set to allow all access. If this happens, go to SQL Editor and run:
+-```sql
+-ALTER TABLE prospects DISABLE ROW LEVEL SECURITY;
+-```
++**"Permission denied" / empty data after signing in** -> This almost always means the signed-in email has no *active* row in `crm_users`, or its Supabase Auth account is unconfirmed. **Never "fix" this by disabling Row Level Security** — that exposes every prospect, user and API key to anyone on the internet. Instead, check that the user exists under Authentication -> Users (confirmed) and has a matching active row in `crm_users`. See `SECURITY_HARDENING.md`.
+ 
+ **Data not showing** → Make sure you ran the full `supabase_schema.sql` including the seed data at the bottom.
+ 
+@@ -113,7 +110,7 @@ ALTER TABLE prospects DISABLE ROW LEVEL SECURITY;
+ 
+ - **Custom domain:** Supabase lets you add a custom domain (Pro plan)
+ - **Backups:** Daily backups are automatic on all plans
+-- **More security:** For production, update the Row Level Security policies to restrict access by user role
++- **Security:** Row Level Security is role-based via `supabase/migrations/20261019000000_security_hardening.sql` — see `SECURITY_HARDENING.md`
+ - **Email integration:** Supabase supports sending transactional emails via Resend or SendGrid
+ 
+ ---
+diff --git a/index.ts b/index.ts
+deleted file mode 100644
+index 10a9b1b..0000000
+--- a/index.ts
++++ /dev/null
+@@ -1,94 +0,0 @@
+-// ═══════════════════════════════════════════════════════════════════
+-//  Supabase Edge Function: apollo-search
+-//  ─────────────────────────────────────────────────────────────────
+-//  Proxies People Search requests to Apollo.io. Apollo's API does not
+-//  send CORS headers, so browsers block direct requests from the CRM.
+-//  This function runs server-side (Deno), calls Apollo, and returns
+-//  the result with CORS headers so the browser can read it.
+-//
+-//  The Apollo API key is read from sysSettings.apolloKey, which the
+-//  CRM sends in the request body — NOT stored as a Supabase secret —
+-//  so each organization's own key is used (matches how the CRM already
+-//  manages per-org plugin keys in Admin → Plugins).
+-// ═══════════════════════════════════════════════════════════════════
+-
+-const CORS_HEADERS = {
+-  "Access-Control-Allow-Origin": "*",
+-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+-};
+-
+-Deno.serve(async (req: Request) => {
+-  // Handle CORS preflight
+-  if (req.method === "OPTIONS") {
+-    return new Response("ok", { headers: CORS_HEADERS });
+-  }
+-
+-  if (req.method !== "POST") {
+-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+-      status: 405,
+-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-    });
+-  }
+-
+-  try {
+-    const body = await req.json();
+-    const { apiKey, query, page = 1, perPage = 10 } = body;
+-
+-    if (!apiKey) {
+-      return new Response(JSON.stringify({ error: "Missing apiKey" }), {
+-        status: 400,
+-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-      });
+-    }
+-    if (!query || !query.trim()) {
+-      return new Response(JSON.stringify({ error: "Missing query" }), {
+-        status: 400,
+-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-      });
+-    }
+-
+-    // Forward the request to Apollo.io's People Search API.
+-    // This call happens server-side, so Apollo's lack of CORS support
+-    // doesn't matter — only the browser-to-edge-function hop needs CORS,
+-    // which we provide via CORS_HEADERS above.
+-    const apolloRes = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+-      method: "POST",
+-      headers: {
+-        "Content-Type": "application/json",
+-        "Cache-Control": "no-cache",
+-      },
+-      body: JSON.stringify({
+-        api_key: apiKey,
+-        q_organization_name: query,
+-        page,
+-        per_page: perPage,
+-      }),
+-    });
+-
+-    const data = await apolloRes.json();
+-
+-    if (!apolloRes.ok) {
+-      return new Response(JSON.stringify({
+-        error: data?.error || `Apollo API error (HTTP ${apolloRes.status})`,
+-        status: apolloRes.status,
+-      }), {
+-        status: apolloRes.status,
+-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-      });
+-    }
+-
+-    // Pass through Apollo's response as-is — the CRM\'s apolloSearch()
+-    // function already knows how to map data.people into prospects.
+-    return new Response(JSON.stringify(data), {
+-      status: 200,
+-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-    });
+-
+-  } catch (e) {
+-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
+-      status: 500,
+-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-    });
+-  }
+-});
+diff --git a/src/App.jsx b/src/App.jsx
+index 3197892..58ea701 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -41,8 +41,8 @@ const isConfigured =
+    then refresh the page. Disable with:
+      localStorage.removeItem("nc_crm_debug")              */
+ const DEBUG = typeof window !== "undefined" && window.localStorage?.getItem("nc_crm_debug") === "1";
+-const dlog = (...args) => { if (DEBUG) dlog(...args); };
+-const dwarn = (...args) => { if (DEBUG) dwarn(...args); };
++const dlog = (...args) => { if (DEBUG) console.log(...args); };
++const dwarn = (...args) => { if (DEBUG) console.warn(...args); };
+ 
+ if (DEBUG) {
+   console.log("[NC CRM] Debug logging enabled. Supabase configured:", isConfigured,
+@@ -50,15 +50,47 @@ if (DEBUG) {
+ }
+ 
+ // ── Supabase Auth client (separate from the sbFetch REST helper) ──
+-// Used ONLY for Google OAuth sign-in. All other DB reads/writes still
+-// go through sbFetch with the anon key — this client just manages the
+-// browser auth session and OAuth redirect flow.
++// Owns the browser session (email+password and Google sign-in). Every
++// DB / Edge Function request is sent with the signed-in user's access
++// token (see authHeaders), so Postgres Row Level Security can tell who
++// is calling and enforce their role. The anon key alone grants nothing.
+ const supabaseAuth = isConfigured
+   ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+     })
+   : null;
+ 
++// Placeholder shown in the UI for an API key that is saved server-side.
++// The real key is never sent to the browser.
++const KEY_MASK = "__configured__";
++
++// Headers carrying the signed-in user's JWT (falls back to the anon key,
++// which RLS treats as "not signed in" and denies).
++async function authHeaders() {
++  let token = SUPABASE_KEY;
++  if (supabaseAuth) {
++    const { data } = await supabaseAuth.auth.getSession();
++    if (data?.session?.access_token) token = data.session.access_token;
++  }
++  return {
++    "apikey":        SUPABASE_KEY,
++    "Authorization": `Bearer ${token}`,
++    "Content-Type":  "application/json",
++  };
++}
++
++// Admin-only login management (create / set_password / delete) via the
++// admin-users Edge Function — the browser can't hold the service key.
++async function adminUsersCall(payload) {
++  if (!isConfigured) return { ok: true, local: true };
++  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
++    method: "POST", headers: await authHeaders(), body: JSON.stringify(payload),
++  });
++  const data = await res.json().catch(() => ({}));
++  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
++  return data;
++}
++
+ /* ════════════════════════════════════════════════════════════════
+    SUPABASE DATABASE LAYER
+    All DB calls go through these helpers. When not configured,
+@@ -67,9 +99,7 @@ const supabaseAuth = isConfigured
+ async function sbFetch(path, method = "GET", body = null, prefer = "return=representation") {
+   // Clean, conflict-free header builder
+   const headers = {
+-    "apikey":        SUPABASE_KEY,
+-    "Authorization": `Bearer ${SUPABASE_KEY}`,
+-    "Content-Type":  "application/json",
++    ...(await authHeaders()),
+     "Prefer":        prefer,
+   };
+ 
+@@ -142,7 +172,7 @@ function prospectToDb(p) {
+ function dbToUser(r) {
+   if (!r) return null;
+   return {
+-    id: r.id, username: r.username, password: r.password, name: r.name,
++    id: r.id, username: r.username, password: "", name: r.name,
+     email: r.email, role: r.role, active: r.active,
+     avatar: r.avatar || r.name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase(),
+     createdAt: r.created_at ? r.created_at.slice(0,10) : "",
+@@ -187,6 +217,13 @@ const DB = {
+     await sbFetch("prospects?id=neq.00000000-0000-0000-0000-000000000000", "DELETE");
+   },
+ 
++  // The signed-in caller's own ACTIVE profile (null = no CRM access)
++  async getMyProfile() {
++    const rows = await sbFetch("rpc/crm_me", "POST", {});
++    const row = Array.isArray(rows) ? rows[0] : rows;
++    return row ? dbToUser(row) : null;
++  },
++
+   // Users
+   async getUsers() {
+     const rows = await sbFetch("crm_users?order=created_at.asc&select=*");
+@@ -194,7 +231,8 @@ const DB = {
+   },
+   async upsertUser(u) {
+     const isDbId = typeof u.id === "string" && /^[0-9a-f-]{36}$/.test(u.id);
+-    const body = { username:u.username, password:u.password, name:u.name, email:u.email, role:u.role, active:u.active, avatar:u.avatar };
++    // No password here: credentials live in Supabase Auth (see admin-users function).
++    const body = { username:u.username, name:u.name, email:u.email, role:u.role, active:u.active, avatar:u.avatar };
+     if (isDbId) {
+       const rows = await sbFetch(`crm_users?id=eq.${encodeURIComponent(u.id)}`, "PATCH", body, "return=representation");
+       return dbToUser(Array.isArray(rows) ? rows[0] : rows);
+@@ -204,10 +242,11 @@ const DB = {
+     }
+   },
+   async deleteUser(id) {
+-    await sbFetch(`crm_users?id=eq.${encodeURIComponent(id)}`, "DELETE");
++    const rows = await sbFetch(`crm_users?id=eq.${encodeURIComponent(id)}`, "DELETE");
++    if (!Array.isArray(rows) || rows.length === 0) throw new Error("Not permitted, or user no longer exists.");
+   },
+   async updateLastLogin(id) {
+-    await sbFetch(`crm_users?id=eq.${encodeURIComponent(id)}`, "PATCH", { last_login: new Date().toISOString() }, "return=minimal");
++    await sbFetch("rpc/crm_touch_login", "POST", {}, "return=minimal");
+   },
+ 
+   // Audit log
+@@ -233,7 +272,10 @@ const DB = {
+   },
+   async saveSettings(settings) {
+     // Upsert all settings at once using Supabase merge-duplicates
+-    const rows = Object.entries(settings).map(([key, value]) => ({ key, value: String(value) }));
++    // Third-party API keys are NEVER stored in system_settings.
++    const rows = Object.entries(settings)
++      .filter(([key]) => !/key$|secret$|token$/i.test(key))
++      .map(([key, value]) => ({ key, value: String(value) }));
+     await sbFetch("system_settings", "POST", rows, "resolution=merge-duplicates,return=minimal");
+   },
+ 
+@@ -241,24 +283,16 @@ const DB = {
+   // in their own table so each integration carries its own metadata
+   // (last updated, by whom). Returns a flat { apollo: "key", hunter: "key", ... } map.
+   async getApiCredentials() {
+-    const rows = await sbFetch("api_credentials?select=service,api_key,updated_at,updated_by");
++    // Status only — the browser can never read a key. Returns { apollo: KEY_MASK, ... }
++    // for each service that has a key saved server-side.
++    const rows = await sbFetch("rpc/crm_api_key_status", "POST", {});
+     const out = {};
+-    (rows||[]).forEach(r => { out[r.service] = r.api_key || ""; });
++    (rows||[]).forEach(r => { if (r.configured) out[r.service] = KEY_MASK; });
+     return out;
+   },
+-  // Upsert a single credential by service name. Uses PATCH-then-POST-
+-  // fallback (same pattern as saveSettings's sibling methods) so this
+-  // works whether or not the seed row for this service already exists.
+-  async saveApiCredential(service, apiKey, username) {
+-    const patchResult = await sbFetch(`api_credentials?service=eq.${encodeURIComponent(service)}`, "PATCH",
+-      { api_key: apiKey, updated_by: username||"" }, "return=representation"
+-    ).catch(()=>null);
+-    if (patchResult && Array.isArray(patchResult) && patchResult.length>0) return patchResult[0];
+-    // No existing row — insert one
+-    const inserted = await sbFetch("api_credentials", "POST",
+-      { service, api_key: apiKey, updated_by: username||"" }, "return=representation"
+-    );
+-    return Array.isArray(inserted) ? inserted[0] : inserted;
++  // Write-only, admin-only (enforced in Postgres). Empty string removes the key.
++  async saveApiCredential(service, apiKey) {
++    await sbFetch("rpc/crm_set_api_credential", "POST", { p_service: service, p_key: apiKey }, "return=minimal");
+   },
+ 
+   // Emails
+@@ -588,7 +622,14 @@ function LoginScreen({users,onLogin}){
+   const attempt=async(u,p)=>{
+     const usr=(u||un).trim();const pass=p||pw;if(!usr||!pass)return;
+     setErr("");setLoading(true);
+-    await new Promise(r=>setTimeout(r,420)); // small delay for UX feel
++    if(isConfigured){
++      // Real authentication: Supabase verifies the password (salted, rate-limited).
++      // On success the session listener in <App/> loads the profile + data.
++      const {error}=await supabaseAuth.auth.signInWithPassword({email:usr,password:pass});
++      if(error){setErr("Incorrect email or password.");setLoading(false);}
++      return;
++    }
++    await new Promise(r=>setTimeout(r,420)); // small delay for UX feel (demo mode only)
+     const candidate=users.find(x=>x.username.toLowerCase()===usr.toLowerCase());
+     if(candidate){
+       const ok=await verifyPassword(pass,candidate.password);
+@@ -657,8 +698,8 @@ function LoginScreen({users,onLogin}){
+           </div>
+ 
+           <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:16}}>
+-            <FG label="Username">
+-              <input value={un} onChange={e=>{setUn(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&attempt()} placeholder="Enter your username" style={inp()} autoFocus/>
++            <FG label={isConfigured?"Email":"Username"}>
++              <input value={un} onChange={e=>{setUn(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&attempt()} placeholder={isConfigured?"you@company.com":"Enter your username"} style={inp()} autoFocus/>
+             </FG>
+             <FG label="Password">
+               <div style={{position:"relative"}}>
+@@ -874,12 +915,16 @@ async function hunterSearch(query, apiKey, vertical, market, log){
+     : query.trim().toLowerCase().replace(/[^a-z0-9]+/g,"") + ".com";
+ 
+   try{
+-    const url = `https://api.hunter.io/v2/domain-search?domain=${encodeURIComponent(domain)}&api_key=${encodeURIComponent(apiKey)}&limit=10`;
+-    const res = await fetch(url);
+-    const data = await res.json();
++    // Server-side proxy: the Hunter key never reaches the browser.
++    const res = await fetch(`${SUPABASE_URL}/functions/v1/hunter-search`, {
++      method: "POST",
++      headers: await authHeaders(),
++      body: JSON.stringify({ domain, limit: 10 }),
++    });
++    const data = await res.json().catch(()=>({}));
+ 
+     if(!res.ok){
+-      const msg = data?.errors?.[0]?.details || data?.errors?.[0]?.id || `HTTP ${res.status}`;
++      const msg = data?.error || data?.errors?.[0]?.details || data?.errors?.[0]?.id || `HTTP ${res.status}`;
+       log?.(`Hunter.io: ${msg}`);
+       return {ok:false, reason:"api_error", status:res.status, message:msg, results:[]};
+     }
+@@ -916,12 +961,8 @@ async function apolloSearch(query, apiKey, vertical, market, log){
+   try{
+     const res = await fetch(`${SUPABASE_URL}/functions/v1/apollo-search`, {
+       method: "POST",
+-      headers: {
+-        "Content-Type": "application/json",
+-        "Authorization": `Bearer ${SUPABASE_KEY}`,
+-        "apikey": SUPABASE_KEY,
+-      },
+-      body: JSON.stringify({ apiKey, query, page: 1, perPage: 10 }),
++      headers: await authHeaders(),
++      body: JSON.stringify({ query, page: 1, perPage: 10 }), // key is read server-side
+     });
+ 
+     if(res.status===404){
+@@ -1107,11 +1148,7 @@ async function nppesSearch(query, vertical, market, log){
+ 
+     const res = await fetch(`${SUPABASE_URL}/functions/v1/nppes-search`, {
+       method: "POST",
+-      headers: {
+-        "Content-Type": "application/json",
+-        "Authorization": `Bearer ${SUPABASE_KEY}`,
+-        "apikey": SUPABASE_KEY,
+-      },
++      headers: await authHeaders(),
+       body: JSON.stringify({
+         organizationName: orgName,
+         taxonomyDescription: taxonomy || null,
+@@ -1236,11 +1273,7 @@ async function osmSearch(query, vertical, market, log){
+ 
+     const res = await fetch(`${SUPABASE_URL}/functions/v1/osm-search`, {
+       method: "POST",
+-      headers: {
+-        "Content-Type": "application/json",
+-        "Authorization": `Bearer ${SUPABASE_KEY}`,
+-        "apikey": SUPABASE_KEY,
+-      },
++      headers: await authHeaders(),
+       body: JSON.stringify({ overpassQL }),
+     });
+ 
+@@ -1294,11 +1327,7 @@ async function guidestarSearch(query, vertical, market, log){
+ 
+     const res = await fetch(`${SUPABASE_URL}/functions/v1/guidestar-search`, {
+       method: "POST",
+-      headers: {
+-        "Content-Type": "application/json",
+-        "Authorization": `Bearer ${SUPABASE_KEY}`,
+-        "apikey": SUPABASE_KEY,
+-      },
++      headers: await authHeaders(),
+       body: JSON.stringify({ query: q, state: "NC", nteeCode }),
+     });
+ 
+@@ -2197,30 +2226,38 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
+   const openEditU=u=>{setUForm({...u,password:""});setFErr("");setUDlg(u);};
+   const saveU=async()=>{
+     if(!uForm.name?.trim()||!uForm.username?.trim()||!uForm.email?.trim()){setFErr("All fields required.");return;}
++    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(uForm.email.trim())){setFErr("Enter a valid email — it is the user's login.");return;}
+     if(uDlg==="add"&&!uForm.password?.trim()){setFErr("Password required for new users.");return;}
+-    if(uForm.password&&uForm.password.length<4){setFErr("Password min 4 chars.");return;}
++    if(uForm.password&&uForm.password.length<10){setFErr("Password must be at least 10 characters.");return;}
+     if(uForm.role==="superadmin"&&!isSuper){setFErr("Only Super Admin can assign this role.");return;}
+-    if(uDlg==="add"){
+-      if(users.find(u=>u.username.toLowerCase()===uForm.username.toLowerCase())){setFErr("Username already exists.");return;}
+-      const hashed=await hashPassword(uForm.password);
+-      const nu={...uForm,password:hashed,id:uid(),createdAt:today(),lastLogin:null,avatar:initials(uForm.name)};
+-      await onSaveUser(nu);
+-      addAudit(currentUser.username,`Created user: ${nu.username} (${nu.role})`);t2(`User "${nu.username}" created.`);
+-    }else{
+-      if(uDlg.id===currentUser.id&&uForm.role!==currentUser.role){setFErr("Cannot change your own role.");return;}
+-      // Empty password field on edit = "leave unchanged" — keep the
+-      // existing stored hash. Only hash+replace if a new value was typed.
+-      const passwordToStore=uForm.password?.trim()
+-        ? await hashPassword(uForm.password.trim())
+-        : uDlg.password;
+-      const updated={...uDlg,...uForm,password:passwordToStore};
+-      await onSaveUser(updated);
+-      addAudit(currentUser.username,`Updated user: ${uForm.username}`);t2(`"${uForm.username}" updated.`);
+-    }
+-    setUDlg(null);
++    try{
++      if(uDlg==="add"){
++        if(users.find(u=>u.username.toLowerCase()===uForm.username.toLowerCase())){setFErr("Username already exists.");return;}
++        if(users.find(u=>(u.email||"").toLowerCase()===uForm.email.trim().toLowerCase())){setFErr("A user with that email already exists.");return;}
++        // 1) real login in Supabase Auth (server-side)   2) CRM profile + role row
++        await adminUsersCall({action:"create",email:uForm.email.trim(),password:uForm.password});
++        const pw=isConfigured?"":await hashPassword(uForm.password); // hash only kept in demo mode
++        const nu={...uForm,email:uForm.email.trim(),password:pw,id:uid(),createdAt:today(),lastLogin:null,avatar:initials(uForm.name)};
++        await onSaveUser(nu);
++        addAudit(currentUser.username,`Created user: ${nu.username} (${nu.role})`);t2(`User "${nu.username}" created.`);
++      }else{
++        if(uDlg.id===currentUser.id&&uForm.role!==currentUser.role){setFErr("Cannot change your own role.");return;}
++        if(isConfigured&&uForm.email.trim().toLowerCase()!==(uDlg.email||"").toLowerCase()){setFErr("Email is the user's login and can't be changed. Delete and recreate the user instead.");return;}
++        // Empty password field on edit = "leave unchanged".
++        let pw=uDlg.password;
++        if(uForm.password?.trim()){
++          await adminUsersCall({action:"set_password",email:uDlg.email,password:uForm.password.trim()});
++          pw=isConfigured?"":await hashPassword(uForm.password.trim());
++        }
++        const updated={...uDlg,...uForm,password:pw};
++        await onSaveUser(updated);
++        addAudit(currentUser.username,`Updated user: ${uForm.username}`);t2(`"${uForm.username}" updated.`);
++      }
++      setUDlg(null);
++    }catch(e){setFErr(e.message||"Could not save user.");}
+   };
+-  const deleteU=async u=>{if(u.id===currentUser.id){t2("Cannot delete yourself.","err");return;}await onDeleteUser(u.id);addAudit(currentUser.username,`Deleted user: ${u.username}`);t2(`"${u.username}" deleted.`,"err");setConfirmDel(null);};
+-  const toggleActive=async u=>{if(u.id===currentUser.id){t2("Cannot deactivate yourself.","err");return;}await onSaveUser({...u,active:!u.active});addAudit(currentUser.username,`${u.active?"Deactivated":"Activated"}: ${u.username}`);t2(`${u.name} ${u.active?"deactivated":"activated"}.`,u.active?"err":"ok");};
++  const deleteU=async u=>{if(u.id===currentUser.id){t2("Cannot delete yourself.","err");return;}try{await onDeleteUser(u.id);await adminUsersCall({action:"delete",email:u.email});}catch(e){t2(`Delete failed: ${e.message}`,"err");return;}addAudit(currentUser.username,`Deleted user: ${u.username}`);t2(`"${u.username}" deleted.`,"err");setConfirmDel(null);};
++  const toggleActive=async u=>{if(u.id===currentUser.id){t2("Cannot deactivate yourself.","err");return;}try{await onSaveUser({...u,active:!u.active});}catch(e){t2(`Update failed: ${e.message}`,"err");return;}addAudit(currentUser.username,`${u.active?"Deactivated":"Activated"}: ${u.username}`);t2(`${u.name} ${u.active?"deactivated":"activated"}.`,u.active?"err":"ok");};
+ 
+   // Prospect ops
+   const saveP=async form=>{const isNew=!crmData.find(p=>p.id===form.id);await onSaveProspect(form);addAudit(currentUser.username,isNew?`Added: ${form.companyName}`:`Edited: ${form.companyName}`);t2(isNew?"Added!":"Saved!");setPDlg(null);};
+@@ -2440,21 +2477,24 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
+                       <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+                         <div style={{flex:1}}>
+                           <label style={{...LBL,color:`${p.color}cc`}}>API Key</label>
+-                          <input type="password" value={settings[p.key]||""} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,[p.key]:e.target.value}));}} placeholder={`Enter your ${p.name} API key…`} style={inp()}/>
++                          <input type="password" autoComplete="off" value={settings[p.key]===KEY_MASK?"":(settings[p.key]||"")} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,[p.key]:e.target.value}));}} placeholder={settings[p.key]===KEY_MASK?"•••••••• saved securely — type a new key to replace":`Enter your ${p.name} API key…`} style={inp()}/>
+                         </div>
+                         <button onClick={async()=>{
+                           const newKey=settings[p.key]||"";
+-                          // Optimistic UI update so the LIVE badge etc. respond immediately
+-                          setSysSettings(s=>({...s,[p.key]:newKey}));
++                          if(isConfigured&&(newKey===KEY_MASK||!newKey.trim())){t2("Type a new key to replace the saved one.","err");return;}
+                           if(isConfigured){
+                             try{
+-                              await DB.saveApiCredential(p.service,newKey,currentUser.username);
++                              await DB.saveApiCredential(p.service,newKey.trim());
++                              // The key now lives server-side only; the browser keeps just a marker.
++                              setSysSettings(s=>({...s,[p.key]:KEY_MASK}));
++                              setSettings(s=>({...s,[p.key]:KEY_MASK}));
+                               addAudit(currentUser.username,`Updated ${p.name} API key`);
+-                              t2(`${p.name} key saved — will persist across refresh & relogin.`);
++                              t2(`${p.name} key saved securely on the server.`);
+                             }catch(e){
+-                              t2(`${p.name} key saved locally, but DB save failed: ${e.message}`,"err");
++                              t2(`Could not save ${p.name} key: ${e.message}`,"err");
+                             }
+                           }else{
++                            setSysSettings(s=>({...s,[p.key]:newKey}));
+                             addAudit(currentUser.username,`Updated ${p.name} API key (local only — Supabase not configured)`);
+                             t2(`${p.name} key set for this session (Supabase not configured — won't persist).`,"err");
+                           }
+@@ -4251,7 +4291,7 @@ export default function App(){
+   const [screen,setScreen]   = useState("loading");
+   const [currentUser,setCurrentUser] = useState(null);
+   // Start with empty arrays — DB data loads in useEffect below.
+-  // INIT_USERS / SEED only used as fallback if DB is empty or not configured.
++  // INIT_USERS / SEED are used ONLY in demo mode (Supabase not configured).
+   const [users,setUsers]     = useState([]);
+   const [crmData,setCrmData] = useState([]);
+   const [sysSettings,setSysSettings] = useState(DEFAULT_SYS);
+@@ -4259,241 +4299,156 @@ export default function App(){
+   const [dbStatus,setDbStatus] = useState(isConfigured ? "connecting" : "local");
+   const [dbError,setDbError]   = useState(null);
+ 
+-  // Tracks whether Google OAuth already completed login during this page load,
+-  // so the data-init effect doesn't overwrite the screen back to "login".
+-  const oauthLoginRef = useRef(false);
+   // Tracks whether we're currently mid-OAuth-redirect (URL has #access_token)
+   // so the init effect can wait instead of racing to "login" first.
+   const isOAuthRedirect = typeof window !== "undefined" &&
+     (window.location.hash.includes("access_token") || window.location.hash.includes("provider_token"));
+ 
+-  /* ── Load everything from DB on mount ────────────────────── */
++  /* ── Session bootstrap ──────────────────────────────────────
++   * Demo mode (no Supabase): seed data + local login.
++   * Supabase mode: identity ALWAYS comes from a real Supabase Auth
++   * session (email+password or Google). We ask Postgres who that user
++   * is (crm_me) and load only what Row Level Security lets them see.
++   * Nothing is read before sign-in and no role/ID is trusted from
++   * browser storage.                                                  */
++  const bootedUserRef = useRef(null);
++  const nowStamp = () => new Date().toLocaleString("sv-SE",{hour12:false}).replace("T"," ").slice(0,16);
++
+   useEffect(()=>{
+-    const init = async () => {
+-      // Always restore session from sessionStorage first
+-      let sessionUser = null;
++    if (!isConfigured) {
++      dlog("[NC CRM] Running in Demo Mode — no Supabase credentials found.");
++      setUsers(INIT_USERS);
++      setCrmData(SEED);
++      setSysSettings(DEFAULT_SYS);
++      setAuditLog([{time: nowStamp(), user:"system", action:"Demo mode initialized"}]);
++      setDbStatus("local");
+       try {
+-        const s = sessionStorage.getItem("crm_v4");
+-        if (s) sessionUser = JSON.parse(s);
++        const saved = JSON.parse(sessionStorage.getItem("crm_v4") || "null");
++        const live = saved && INIT_USERS.find(u => u.id === saved.id && u.active);
++        if (live) { setCurrentUser(live); setScreen("crm"); return; }
+       } catch {}
++      setScreen("login");
++      return;
++    }
+ 
+-      if (!isConfigured) {
+-        dlog("[NC CRM] Running in Demo Mode — no Supabase credentials found.");
+-        // Populate with seed data for demo mode
+-        setUsers(INIT_USERS);
+-        setCrmData(SEED);
+-        setSysSettings(DEFAULT_SYS);
+-        setAuditLog([{time: new Date().toLocaleString("sv-SE").slice(0,16).replace("T"," "), user:"system", action:"Demo mode initialized"}]);
+-        setDbStatus("local");
+-        if (sessionUser) {
+-          const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
+-          if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
+-        }
+-        if (isOAuthRedirect || oauthLoginRef.current) return;
+-        setScreen("login");
+-        return;
+-      }
+-
+-      // ── Supabase mode ─────────────────────────────────────────
+-      dlog("[NC CRM] Connecting to Supabase…");
+-      try {
+-        // Test connection first with a lightweight query
+-        const testResult = await DB.getSettings();
+-        dlog("[NC CRM] Supabase connection OK. Settings keys:", Object.keys(testResult).length);
+-
+-        // Now load all data in parallel
+-        const [dbUsers, dbProspects, dbAudit, dbApiCreds] = await Promise.all([
+-          DB.getUsers().catch(e => { dwarn("[NC CRM] getUsers failed:", e.message); return []; }),
+-          DB.getProspects().catch(e => { dwarn("[NC CRM] getProspects failed:", e.message); return []; }),
+-          DB.getAuditLog().catch(e => { dwarn("[NC CRM] getAuditLog failed:", e.message); return []; }),
+-          DB.getApiCredentials().catch(e => { dwarn("[NC CRM] getApiCredentials failed:", e.message); return {}; }),
+-        ]);
+-
+-        // Always use DB data when connected.
+-        // Fall back to hardcoded seed ONLY if DB tables are completely empty
+-        // (e.g. first run before schema was seeded).
+-        if (dbUsers && dbUsers.length > 0) {
+-          setUsers(dbUsers);
+-          dlog("[NC CRM] Loaded", dbUsers.length, "users from DB");
+-        } else {
+-          dwarn("[NC CRM] No users in DB — using hardcoded INIT_USERS as fallback");
+-          setUsers(INIT_USERS);
+-        }
++    let cancelled = false;
++    const clearGoogleTokens = () => ["google_access_token","google_refresh_token","google_email"].forEach(k => sessionStorage.removeItem(k));
++    const cleanUrl = () => { if (window.location.hash) window.history.replaceState(null, "", window.location.pathname + window.location.search); };
+ 
+-        if (dbProspects && dbProspects.length > 0) {
+-          setCrmData(dbProspects);
+-          dlog("[NC CRM] Loaded", dbProspects.length, "prospects from DB");
+-        } else {
+-          dwarn("[NC CRM] No prospects in DB — starting with empty list");
+-          setCrmData([]);
+-        }
++    const rejectSession = async (msg) => {
++      bootedUserRef.current = null;
++      alert(msg);
++      await supabaseAuth.auth.signOut().catch(()=>{});
++      cleanUrl();
++      if (!cancelled) { setCurrentUser(null); setScreen("login"); }
++    };
+ 
+-        // Merge: defaults < system_settings < api_credentials.
+-        // API keys live in api_credentials (apolloKey/hunterKey/anthropicKey
+-        // map to api_credentials.service "apollo"/"hunter"/"anthropic"),
+-        // but the rest of the app reads them off sysSettings.apolloKey etc,
+-        // so we translate here to keep every existing reference working.
+-        const apiKeyMap = {
+-          apolloKey: dbApiCreds.apollo || "",
+-          hunterKey: dbApiCreds.hunter || "",
+-          anthropicKey: dbApiCreds.anthropic || "",
+-        };
+-        if (Object.keys(testResult).length > 0 || Object.keys(dbApiCreds).length > 0) {
+-          setSysSettings(s => ({...s, ...testResult, ...apiKeyMap}));
+-          dlog("[NC CRM] Loaded system settings + API credentials from DB");
+-        } else {
+-          setSysSettings(DEFAULT_SYS);
++    const bootstrap = async (session) => {
++      if (!session?.user) return;
++      // INITIAL_SESSION and SIGNED_IN can both fire for one sign-in; also SIGNED_IN
++      // re-fires on tab focus. Handle each user session once.
++      if (bootedUserRef.current === session.user.id) return;
++      bootedUserRef.current = session.user.id;
++      setScreen("loading");
++      try {
++        const profile = await DB.getMyProfile();
++        if (!profile) {
++          await rejectSession(`No active CRM account for ${session.user.email}.\n\nAsk an administrator to add or reactivate this email under Admin → Users.`);
++          return;
+         }
+-
+-        if (dbAudit && dbAudit.length > 0) {
+-          setAuditLog(dbAudit);
+-        } else {
+-          setAuditLog([{time: new Date().toLocaleString("sv-SE").slice(0,16).replace("T"," "), user:"system", action:"CRM initialized"}]);
++        // Gmail tokens (Google sign-in only) for the Email Hub
++        if (session.provider_token) {
++          sessionStorage.setItem("google_access_token", session.provider_token);
++          if (session.provider_refresh_token) sessionStorage.setItem("google_refresh_token", session.provider_refresh_token);
++          sessionStorage.setItem("google_email", (session.user.email || "").toLowerCase());
+         }
+ 
++        const [settings, dbUsers, dbProspects, dbAudit, keyStatus] = await Promise.all([
++          DB.getSettings().catch(e => { dwarn("[NC CRM] getSettings failed:", e.message); return {}; }),
++          DB.getUsers().catch(e => { dwarn("[NC CRM] getUsers failed:", e.message); return []; }),
++          DB.getProspects(),                       // surface real errors (RLS / network)
++          DB.getAuditLog().catch(() => []),        // admins only — empty for everyone else
++          DB.getApiCredentials().catch(() => ({})),
++        ]);
++        if (cancelled) return;
++
++        setUsers(dbUsers && dbUsers.length ? dbUsers : [profile]);
++        setCrmData(dbProspects || []);
++        setSysSettings({
++          ...DEFAULT_SYS, ...settings,
++          // keys never reach the browser — only a "configured" marker
++          apolloKey: keyStatus.apollo || "", hunterKey: keyStatus.hunter || "", anthropicKey: keyStatus.anthropic || "",
++        });
++        const me = { ...profile, lastLogin: new Date().toLocaleString() };
++        setAuditLog([...(dbAudit || []), { time: nowStamp(), user: me.username, action: "Logged in" }]);
+         setDbStatus("connected");
+-        dlog("[NC CRM] ✅ Supabase connected and data loaded.");
+-
+-        // Restore session against DB users
+-        if (sessionUser) {
+-          const allUsers = dbUsers && dbUsers.length > 0 ? dbUsers : INIT_USERS;
+-          const live = allUsers.find(u => u.id === sessionUser.id && u.active);
+-          if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
+-        }
+-
+-        // If a Google OAuth redirect is in progress, or already completed,
+-        // let the OAuth handler control the screen — don't force "login" here.
+-        if (isOAuthRedirect || oauthLoginRef.current) {
+-          dlog("[NC CRM] OAuth redirect in progress — deferring to auth handler.");
+-          return;
+-        }
+-        setScreen("login");
+-
+-      } catch(e) {
+-        console.error("[NC CRM] ❌ Supabase connection failed:", e.message);
+-        console.error("[NC CRM] Full error:", e);
++        setDbError(null);
++        setCurrentUser(me);
++        DB.updateLastLogin().catch(() => {});
++        DB.addAudit(me.username, "Logged in").catch(() => {});
++        cleanUrl(); // drop #access_token=… from the address bar
++        setScreen("crm");
++      } catch (e) {
++        console.error("[NC CRM] ❌ Sign-in bootstrap failed:", e.message);
++        bootedUserRef.current = null;
+         setDbError(e.message);
+         setDbStatus("error");
+-        if (isOAuthRedirect || oauthLoginRef.current) return;
+-        // Graceful fallback — app still works with seed data
+-        if (sessionUser) {
+-          const live = INIT_USERS.find(u => u.id === sessionUser.id && u.active);
+-          if (live) { setCurrentUser(sessionUser); setScreen("crm"); return; }
+-        }
+         setScreen("login");
+       }
+     };
+-    init();
+-  },[]);
++
++    supabaseAuth.auth.getSession().then(({ data }) => {
++      if (data?.session) bootstrap(data.session);
++      else if (!isOAuthRedirect) setScreen("login");
++    });
++    // If an OAuth redirect never yields a session, don't hang on the loader.
++    const fallback = setTimeout(() => setScreen(s => (s === "loading" && !bootedUserRef.current) ? "login" : s), 6000);
++
++    const { data: listener } = supabaseAuth.auth.onAuthStateChange((event, session) => {
++      if (event === "SIGNED_OUT") {
++        bootedUserRef.current = null;
++        clearGoogleTokens();
++        // wipe in-memory data so nothing lingers after sign-out
++        setCurrentUser(null); setCrmData([]); setUsers([]); setAuditLog([]);
++        setSysSettings(DEFAULT_SYS);
++        setScreen("login");
++      } else if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
++        // Never await other Supabase calls inside this callback (can deadlock) — defer.
++        setTimeout(() => bootstrap(session), 0);
++      }
++    });
++
++    return () => { cancelled = true; clearTimeout(fallback); listener?.subscription?.unsubscribe(); };
++  }, []);
+ 
+   /* ── Audit helper ────────────────────────────────────────── */
+   const addAudit = useCallback(async (username, action) => {
+-    const ts = new Date().toLocaleString("sv-SE",{hour12:false}).replace("T"," ").slice(0,16);
+-    const entry = { time:ts, user:username, action };
++    const entry = { time: nowStamp(), user: username, action };
+     setAuditLog(prev => [...prev, entry]);
+     if (isConfigured && dbStatus === "connected") {
+       try { await DB.addAudit(username, action); } catch {}
+     }
+   },[dbStatus]);
+ 
+-  /* ── Login / Logout ──────────────────────────────────────── */
++  /* ── Demo-mode login / logout ────────────────────────────── */
++  // (In Supabase mode sign-in is handled by the auth listener above.)
+   const login = async (user) => {
+     const u = { ...user, lastLogin: new Date().toLocaleString() };
+     setCurrentUser(u);
+     setUsers(prev => prev.map(x => x.id === u.id ? {...x, lastLogin:u.lastLogin} : x));
+-    sessionStorage.setItem("crm_v4", JSON.stringify(u));
++    sessionStorage.setItem("crm_v4", JSON.stringify(u)); // demo mode only
+     addAudit(u.username, "Logged in");
+-    if (isConfigured && dbStatus === "connected") {
+-      try { await DB.updateLastLogin(u.id); } catch {}
+-    }
+     setScreen("crm");
+   };
+ 
+-  const logout = () => {
+-    if (currentUser) addAudit(currentUser.username, "Logged out");
++  const logout = async () => {
++    if (currentUser) { try { await addAudit(currentUser.username, "Logged out"); } catch {} }
+     sessionStorage.removeItem("crm_v4");
+-    if (supabaseAuth) supabaseAuth.auth.signOut().catch(()=>{});
++    if (supabaseAuth) await supabaseAuth.auth.signOut().catch(()=>{});
+     setCurrentUser(null);
+     setScreen("login");
+   };
+ 
+-  /* ── Google OAuth callback handler ───────────────────────── *
+-   * When Google redirects back to the app, Supabase fires
+-   * SIGNED_IN with the user's real Google profile (session.user).
+-   * We match session.user.email against crm_users.email — if a
+-   * matching active CRM account exists, log them in as that user.
+-   * If not, sign them out of Supabase Auth and show an error,
+-   * since Google identity alone doesn't grant CRM access.        */
+-  useEffect(() => {
+-    if (!supabaseAuth) return;
+-
+-    const handleGoogleSession = async (session) => {
+-      if (!session?.user?.email) return;
+-      // Avoid double-processing the same session (INITIAL_SESSION + SIGNED_IN
+-      // can both fire for one redirect)
+-      if (oauthLoginRef.current) return;
+-
+-      const googleEmail = session.user.email.toLowerCase();
+-      dlog("[NC CRM] Google OAuth session detected:", googleEmail);
+-
+-      // Look up by email in current users list, falling back to a fresh DB fetch
+-      // (covers the case where `users` hasn't loaded yet on first paint)
+-      let pool = users;
+-      if (!pool || pool.length === 0) {
+-        try { pool = await DB.getUsers(); } catch { pool = INIT_USERS; }
+-        if (!pool || pool.length === 0) pool = INIT_USERS;
+-      }
+-
+-      const matched = pool.find(u => u.email.toLowerCase() === googleEmail);
+-
+-      if (matched && matched.active) {
+-        dlog("[NC CRM] ✅ Matched CRM account:", matched.username);
+-        oauthLoginRef.current = true;
+-        // Store Google access/provider tokens for Gmail inbox integration
+-        if (session.provider_token) {
+-          sessionStorage.setItem("google_access_token", session.provider_token);
+-        }
+-        if (session.provider_refresh_token) {
+-          sessionStorage.setItem("google_refresh_token", session.provider_refresh_token);
+-        }
+-        sessionStorage.setItem("google_email", googleEmail);
+-        await login(matched);
+-        // Clean the #access_token=... fragment out of the URL so a page
+-        // refresh doesn't re-trigger the OAuth flow and force a second login
+-        if (window.location.hash) {
+-          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+-        }
+-      } else if (matched && !matched.active) {
+-        alert(`Your CRM account (${googleEmail}) has been deactivated. Contact your administrator.`);
+-        await supabaseAuth.auth.signOut();
+-        if (window.location.hash) window.history.replaceState(null, "", window.location.pathname);
+-      } else {
+-        alert(`No CRM account found for ${googleEmail}.\n\nAsk your administrator to add this email address as a user in Admin → Users.`);
+-        await supabaseAuth.auth.signOut();
+-        if (window.location.hash) window.history.replaceState(null, "", window.location.pathname);
+-      }
+-    };
+-
+-    // Handle the case where Supabase already has a session on page load
+-    // (e.g. immediately after the OAuth redirect completes)
+-    supabaseAuth.auth.getSession().then(({ data }) => {
+-      if (data?.session) handleGoogleSession(data.session);
+-    });
+-
+-    const { data: listener } = supabaseAuth.auth.onAuthStateChange(async (event, session) => {
+-      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+-        await handleGoogleSession(session);
+-      }
+-      if (event === "SIGNED_OUT") {
+-        oauthLoginRef.current = false;
+-        sessionStorage.removeItem("google_access_token");
+-        sessionStorage.removeItem("google_refresh_token");
+-        sessionStorage.removeItem("google_email");
+-      }
+-    });
+-
+-    return () => { listener?.subscription?.unsubscribe(); };
+-  }, [users]); // re-run if users list updates (so first-load race is handled)
+ 
+   const openAdmin = () => {
+     if (currentUser && ROLES[currentUser.role].canAdmin) setScreen("admin");
+@@ -4568,39 +4523,18 @@ export default function App(){
+   },[]);
+ 
+   const handleSaveUser = useCallback(async (u) => {
+-    // Optimistic update
+-    setUsers(prev => {
+-      const exists = prev.find(x => x.id === u.id);
+-      return exists ? prev.map(x => x.id === u.id ? u : x) : [...prev, u];
+-    });
+-
+-    // Persist to DB
++    let saved = u;
+     if (isConfigured) {
+-      try {
+-        dlog("[NC CRM] Saving user to DB:", u.username);
+-        const saved = await DB.upsertUser(u);
+-        if (saved && saved.id) {
+-          setUsers(prev => prev.map(x => x.id === u.id ? saved : x));
+-          dlog("[NC CRM] ✅ User saved:", saved.username);
+-          return saved;
+-        }
+-      } catch(e) {
+-        console.error("[NC CRM] ❌ User save failed:", e.message);
+-      }
++      saved = await DB.upsertUser(u);            // throws on failure → Admin panel shows the error
++      if (!saved || !saved.id) throw new Error("Not permitted, or the user could not be saved.");
+     }
+-    return u;
++    setUsers(prev => prev.some(x => x.id === u.id) ? prev.map(x => x.id === u.id ? saved : x) : [...prev, saved]);
++    return saved;
+   },[]);
+ 
+   const handleDeleteUser = useCallback(async (id) => {
++    if (isConfigured) await DB.deleteUser(id);   // throws if RLS denies
+     setUsers(prev => prev.filter(u => u.id !== id));
+-    if (isConfigured) {
+-      try {
+-        await DB.deleteUser(id);
+-        dlog("[NC CRM] ✅ User deleted:", id);
+-      } catch(e) {
+-        console.error("[NC CRM] ❌ User delete failed:", e.message);
+-      }
+-    }
+   },[]);
+ 
+   const handleSaveSettings = useCallback(async (settings) => {
+diff --git a/supabase/.temp/cli-latest b/supabase/.temp/cli-latest
+deleted file mode 100644
+index 114c98e..0000000
+--- a/supabase/.temp/cli-latest
++++ /dev/null
+@@ -1 +0,0 @@
+-v2.107.0
+\ No newline at end of file
+diff --git a/supabase/.temp/gotrue-version b/supabase/.temp/gotrue-version
+deleted file mode 100644
+index c6efa2d..0000000
+--- a/supabase/.temp/gotrue-version
++++ /dev/null
+@@ -1 +0,0 @@
+-v2.190.0
+\ No newline at end of file
+diff --git a/supabase/.temp/linked-project.json b/supabase/.temp/linked-project.json
+deleted file mode 100644
+index 8725060..0000000
+--- a/supabase/.temp/linked-project.json
++++ /dev/null
+@@ -1 +0,0 @@
+-{"ref":"ifpzpepurqlvaixxshzk","name":"nc-compliance-crm","organization_id":"pripdnwraboeurmmgthc","organization_slug":"pripdnwraboeurmmgthc"}
+\ No newline at end of file
+diff --git a/supabase/.temp/pooler-url b/supabase/.temp/pooler-url
+deleted file mode 100644
+index d01690f..0000000
+--- a/supabase/.temp/pooler-url
++++ /dev/null
+@@ -1 +0,0 @@
+-postgresql://postgres.ifpzpepurqlvaixxshzk@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+\ No newline at end of file
+diff --git a/supabase/.temp/postgres-version b/supabase/.temp/postgres-version
+deleted file mode 100644
+index 9c97203..0000000
+--- a/supabase/.temp/postgres-version
++++ /dev/null
+@@ -1 +0,0 @@
+-17.6.1.127
+\ No newline at end of file
+diff --git a/supabase/.temp/project-ref b/supabase/.temp/project-ref
+deleted file mode 100644
+index dca83c9..0000000
+--- a/supabase/.temp/project-ref
++++ /dev/null
+@@ -1 +0,0 @@
+-ifpzpepurqlvaixxshzk
+\ No newline at end of file
+diff --git a/supabase/.temp/rest-version b/supabase/.temp/rest-version
+deleted file mode 100644
+index 908947a..0000000
+--- a/supabase/.temp/rest-version
++++ /dev/null
+@@ -1 +0,0 @@
+-v14.5
+\ No newline at end of file
+diff --git a/supabase/.temp/storage-migration b/supabase/.temp/storage-migration
+deleted file mode 100644
+index d5c3834..0000000
+--- a/supabase/.temp/storage-migration
++++ /dev/null
+@@ -1 +0,0 @@
+-optimize-existing-functions-again
+\ No newline at end of file
+diff --git a/supabase/.temp/storage-version b/supabase/.temp/storage-version
+deleted file mode 100644
+index 63c5d15..0000000
+--- a/supabase/.temp/storage-version
++++ /dev/null
+@@ -1 +0,0 @@
+-v1.60.10
+\ No newline at end of file
+diff --git a/supabase/functions/_shared/auth.ts b/supabase/functions/_shared/auth.ts
+new file mode 100644
+index 0000000..9e0cd5e
+--- /dev/null
++++ b/supabase/functions/_shared/auth.ts
+@@ -0,0 +1,89 @@
++// ═══════════════════════════════════════════════════════
++//  Shared helpers for every CRM Edge Function
++//  ───────────────────────────────────────────────────────
++//  • corsFor(req)       – CORS locked to ALLOWED_ORIGINS (no more "*")
++//  • requireCrmUser()   – the caller must hold a real signed-in session
++//                         AND map to an ACTIVE crm_users row. The public
++//                         anon key alone is rejected.
++//  • getApiKey()        – third-party keys are read server-side only
++//                         (env secret first, then api_credentials table)
++// ═══════════════════════════════════════════════════════
++import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.45.4";
++
++const DEFAULT_ORIGINS = ["http://localhost:3000", "http://localhost:5173"];
++
++export function corsFor(req: Request): Record<string, string> {
++  const allowed = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
++    .split(",").map((s) => s.trim()).filter(Boolean);
++  const list = allowed.length ? allowed : DEFAULT_ORIGINS;
++  const origin = req.headers.get("Origin") ?? "";
++  const headers: Record<string, string> = {
++    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
++    "Access-Control-Allow-Methods": "POST, OPTIONS",
++    "Vary": "Origin",
++  };
++  // Only echo an origin that is explicitly allowed; otherwise send none,
++  // and the browser blocks the response.
++  if (list.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
++  return headers;
++}
++
++export function json(body: unknown, status: number, cors: Record<string, string>): Response {
++  return new Response(JSON.stringify(body), {
++    status,
++    headers: { ...cors, "Content-Type": "application/json" },
++  });
++}
++
++export type AuthOk = { ok: true; role: string; email: string; admin: SupabaseClient };
++export type AuthFail = { ok: false; response: Response };
++
++export async function requireCrmUser(
++  req: Request,
++  cors: Record<string, string>,
++  opts: { adminOnly?: boolean } = {},
++): Promise<AuthOk | AuthFail> {
++  const url = Deno.env.get("SUPABASE_URL")!;
++  const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
++  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
++  const authHeader = req.headers.get("Authorization") ?? "";
++
++  if (!authHeader.toLowerCase().startsWith("bearer ")) {
++    return { ok: false, response: json({ error: "Sign in required" }, 401, cors) };
++  }
++
++  // Act as the caller so crm_role() sees their identity.
++  const asUser = createClient(url, anon, {
++    global: { headers: { Authorization: authHeader } },
++    auth: { persistSession: false },
++  });
++
++  const { data: userData, error: userErr } = await asUser.auth.getUser();
++  if (userErr || !userData?.user) {
++    // The bare anon key is a valid JWT but has no user — rejected here.
++    return { ok: false, response: json({ error: "Invalid or expired session" }, 401, cors) };
++  }
++
++  const { data: role, error: roleErr } = await asUser.rpc("crm_role");
++  if (roleErr || !role) {
++    return { ok: false, response: json({ error: "No active CRM account for this user" }, 403, cors) };
++  }
++  if (opts.adminOnly && !["superadmin", "admin"].includes(role as string)) {
++    return { ok: false, response: json({ error: "Admin access required" }, 403, cors) };
++  }
++
++  const admin = createClient(url, service, { auth: { persistSession: false } });
++  return { ok: true, role: role as string, email: userData.user.email ?? "", admin };
++}
++
++export async function getApiKey(
++  admin: SupabaseClient,
++  service: string,
++  envName: string,
++): Promise<string | null> {
++  const fromEnv = Deno.env.get(envName);
++  if (fromEnv) return fromEnv;
++  const { data } = await admin
++    .from("api_credentials").select("api_key").eq("service", service).maybeSingle();
++  return data?.api_key || null;
++}
+diff --git a/supabase/functions/admin-users/index.ts b/supabase/functions/admin-users/index.ts
+new file mode 100644
+index 0000000..eee373b
+--- /dev/null
++++ b/supabase/functions/admin-users/index.ts
+@@ -0,0 +1,86 @@
++// ═══════════════════════════════════════════════════════
++//  Supabase Edge Function: admin-users
++//  ───────────────────────────────────────────────────────
++//  Admin-only user lifecycle for Supabase Auth. The browser can never
++//  create or change login credentials itself (that needs the service
++//  role key), so Admin → Users calls this function.
++//
++//  POST { action: "create" | "set_password" | "delete", email, password? }
++//
++//  Rules enforced here (in addition to RLS on crm_users):
++//   • caller must be admin / superadmin
++//   • only a superadmin may touch a superadmin's login
++//   • nobody can delete or reset their own login through this endpoint
++//   • passwords must be at least 10 characters
++// ═══════════════════════════════════════════════════════
++import { corsFor, json, requireCrmUser } from "../_shared/auth.ts";
++
++Deno.serve(async (req: Request) => {
++  const cors = corsFor(req);
++  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
++  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, cors);
++
++  const auth = await requireCrmUser(req, cors, { adminOnly: true });
++  if (!auth.ok) return auth.response;
++  const { admin } = auth;
++
++  try {
++    const { action, email, password } = await req.json();
++    const target = String(email ?? "").trim().toLowerCase();
++    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(target)) return json({ error: "Valid email required" }, 400, cors);
++
++    if (target === auth.email.toLowerCase() && action !== "create") {
++      return json({ error: "Use another admin to change your own login." }, 400, cors);
++    }
++
++    // Protect superadmin accounts from plain admins.
++    const { data: profile } = await admin
++      .from("crm_users").select("role").ilike("email", target).maybeSingle();
++    if (profile?.role === "superadmin" && auth.role !== "superadmin") {
++      return json({ error: "Only a Super Admin can modify a Super Admin." }, 403, cors);
++    }
++
++    if (action === "create") {
++      if (typeof password !== "string" || password.length < 10) {
++        return json({ error: "Password must be at least 10 characters." }, 400, cors);
++      }
++      const { error } = await admin.auth.admin.createUser({ email: target, password, email_confirm: true });
++      if (error) {
++        // Already has a login → treat as success so the profile can still be saved.
++        if (/already|exists|registered/i.test(error.message)) return json({ ok: true, existed: true }, 200, cors);
++        return json({ error: error.message }, 400, cors);
++      }
++      return json({ ok: true }, 200, cors);
++    }
++
++    const { data: uid } = await admin.rpc("crm_auth_user_id", { p_email: target });
++
++    if (action === "set_password") {
++      if (typeof password !== "string" || password.length < 10) {
++        return json({ error: "Password must be at least 10 characters." }, 400, cors);
++      }
++      // Existing CRM users from before the security upgrade have no login yet:
++      // setting a password for them creates it.
++      if (!uid) {
++        if (!profile) return json({ error: "No CRM user with that email." }, 404, cors);
++        const { error } = await admin.auth.admin.createUser({ email: target, password, email_confirm: true });
++        if (error) return json({ error: error.message }, 400, cors);
++        return json({ ok: true, created: true }, 200, cors);
++      }
++      const { error } = await admin.auth.admin.updateUserById(uid as string, { password });
++      if (error) return json({ error: error.message }, 400, cors);
++      return json({ ok: true }, 200, cors);
++    }
++
++    if (action === "delete") {
++      if (!uid) return json({ ok: true, noLogin: true }, 200, cors); // nothing to remove
++      const { error } = await admin.auth.admin.deleteUser(uid as string);
++      if (error) return json({ error: error.message }, 400, cors);
++      return json({ ok: true }, 200, cors);
++    }
++
++    return json({ error: "Unknown action" }, 400, cors);
++  } catch (e) {
++    return json({ error: (e as Error).message || "Unknown error" }, 500, cors);
++  }
++});
+diff --git a/supabase/functions/apollo-search/index.ts b/supabase/functions/apollo-search/index.ts
+index 10a9b1b..2a40f56 100644
+--- a/supabase/functions/apollo-search/index.ts
++++ b/supabase/functions/apollo-search/index.ts
+@@ -1,94 +1,51 @@
+-// ═══════════════════════════════════════════════════════════════════
++// ═══════════════════════════════════════════════════════
+ //  Supabase Edge Function: apollo-search
+-//  ─────────────────────────────────────────────────────────────────
+-//  Proxies People Search requests to Apollo.io. Apollo's API does not
+-//  send CORS headers, so browsers block direct requests from the CRM.
+-//  This function runs server-side (Deno), calls Apollo, and returns
+-//  the result with CORS headers so the browser can read it.
++//  ───────────────────────────────────────────────────────
++//  Proxies People Search requests to Apollo.io (Apollo sends no CORS
++//  headers, so browsers can't call it directly).
+ //
+-//  The Apollo API key is read from sysSettings.apolloKey, which the
+-//  CRM sends in the request body — NOT stored as a Supabase secret —
+-//  so each organization's own key is used (matches how the CRM already
+-//  manages per-org plugin keys in Admin → Plugins).
+-// ═══════════════════════════════════════════════════════════════════
+-
+-const CORS_HEADERS = {
+-  "Access-Control-Allow-Origin": "*",
+-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+-};
++//  SECURITY: the caller must be a signed-in CRM user. The Apollo key is
++//  read SERVER-SIDE (APOLLO_API_KEY secret, or the locked-down
++//  api_credentials table) and is never sent by — or returned to — the
++//  browser. Previously this function accepted any key in the request
++//  body and was callable with just the public anon key.
++// ═══════════════════════════════════════════════════════
++import { corsFor, getApiKey, json, requireCrmUser } from "../_shared/auth.ts";
+ 
+ Deno.serve(async (req: Request) => {
+-  // Handle CORS preflight
+-  if (req.method === "OPTIONS") {
+-    return new Response("ok", { headers: CORS_HEADERS });
+-  }
++  const cors = corsFor(req);
++  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
++  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, cors);
+ 
+-  if (req.method !== "POST") {
+-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+-      status: 405,
+-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-    });
+-  }
++  const auth = await requireCrmUser(req, cors);
++  if (!auth.ok) return auth.response;
+ 
+   try {
+-    const body = await req.json();
+-    const { apiKey, query, page = 1, perPage = 10 } = body;
++    const { query, page = 1, perPage = 10 } = await req.json();
++    if (!query || !String(query).trim()) return json({ error: "Missing query" }, 400, cors);
+ 
++    const apiKey = await getApiKey(auth.admin, "apollo", "APOLLO_API_KEY");
+     if (!apiKey) {
+-      return new Response(JSON.stringify({ error: "Missing apiKey" }), {
+-        status: 400,
+-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-      });
+-    }
+-    if (!query || !query.trim()) {
+-      return new Response(JSON.stringify({ error: "Missing query" }), {
+-        status: 400,
+-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-      });
++      return json({ error: "Apollo is not configured. An admin can add the key under Admin → Plugins." }, 400, cors);
+     }
+ 
+-    // Forward the request to Apollo.io's People Search API.
+-    // This call happens server-side, so Apollo's lack of CORS support
+-    // doesn't matter — only the browser-to-edge-function hop needs CORS,
+-    // which we provide via CORS_HEADERS above.
+     const apolloRes = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+       method: "POST",
+-      headers: {
+-        "Content-Type": "application/json",
+-        "Cache-Control": "no-cache",
+-      },
++      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+       body: JSON.stringify({
+         api_key: apiKey,
+-        q_organization_name: query,
+-        page,
+-        per_page: perPage,
++        q_organization_name: String(query).slice(0, 200),
++        page: Math.max(1, Number(page) || 1),
++        per_page: Math.min(25, Math.max(1, Number(perPage) || 10)),
+       }),
+     });
+ 
+-    const data = await apolloRes.json();
+-
++    const data = await apolloRes.json().catch(() => ({}));
+     if (!apolloRes.ok) {
+-      return new Response(JSON.stringify({
+-        error: data?.error || `Apollo API error (HTTP ${apolloRes.status})`,
+-        status: apolloRes.status,
+-      }), {
+-        status: apolloRes.status,
+-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-      });
++      return json({ error: data?.error || `Apollo API error (HTTP ${apolloRes.status})`, status: apolloRes.status }, apolloRes.status, cors);
+     }
+-
+-    // Pass through Apollo's response as-is — the CRM\'s apolloSearch()
+-    // function already knows how to map data.people into prospects.
+-    return new Response(JSON.stringify(data), {
+-      status: 200,
+-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-    });
+-
++    return json(data, 200, cors);
+   } catch (e) {
+-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
+-      status: 500,
+-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+-    });
++    return json({ error: (e as Error).message || "Unknown error" }, 500, cors);
+   }
+ });
+diff --git a/supabase/functions/google-search/index.ts b/supabase/functions/google-search/index.ts
+index 15f5067..f241828 100644
+--- a/supabase/functions/google-search/index.ts
++++ b/supabase/functions/google-search/index.ts
+@@ -1,3 +1,5 @@
++import { corsFor, requireCrmUser } from "../_shared/auth.ts";
++
+ // ═══════════════════════════════════════════════════════════════════
+ //  Supabase Edge Function: google-search
+ //  ─────────────────────────────────────────────────────────────────
+@@ -14,13 +16,8 @@
+ //  Docs: https://developers.google.com/custom-search/v1/overview
+ // ═══════════════════════════════════════════════════════════════════
+ 
+-const CORS_HEADERS = {
+-  "Access-Control-Allow-Origin": "*",
+-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+-};
+-
+ Deno.serve(async (req: Request) => {
++  const CORS_HEADERS = corsFor(req);
+   // Handle CORS preflight
+   if (req.method === "OPTIONS") {
+     return new Response("ok", { headers: CORS_HEADERS });
+@@ -33,6 +30,10 @@ Deno.serve(async (req: Request) => {
+     });
+   }
+ 
++  // Must be a signed-in user with an active CRM account (anon key alone is rejected)
++  const auth = await requireCrmUser(req, CORS_HEADERS);
++  if (!auth.ok) return auth.response;
++
+   try {
+     // The API key and Search Engine ID are read from Supabase secrets
+     // (set via `supabase secrets set`), never from the request body —
+@@ -42,7 +43,7 @@ Deno.serve(async (req: Request) => {
+ 
+     if (!apiKey || !cseId) {
+       return new Response(JSON.stringify({
+-        error: "Google API key or Search Engine ID not configured on the server. Run: supabase secrets set GOOGLE_API_KEY=AIzaSyDPkG2u7heg4bqdhifZ16MtJnnlp-NcAjs GOOGLE_CSE_ID=b37b5c147a97f4cbd",
++        error: "Google API key or Search Engine ID not configured on the server. Run: supabase secrets set GOOGLE_API_KEY=<your-key> GOOGLE_CSE_ID=<your-cse-id>",
+       }), {
+         status: 500,
+         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+@@ -86,7 +87,7 @@ Deno.serve(async (req: Request) => {
+     });
+ 
+   } catch (e) {
+-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
++    return new Response(JSON.stringify({ error: (e as Error).message || "Unknown error" }), {
+       status: 500,
+       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+     });
+diff --git a/supabase/functions/guidestar-search/index.ts b/supabase/functions/guidestar-search/index.ts
+index 84094aa..f941d44 100644
+--- a/supabase/functions/guidestar-search/index.ts
++++ b/supabase/functions/guidestar-search/index.ts
+@@ -1,3 +1,5 @@
++import { corsFor, requireCrmUser } from "../_shared/auth.ts";
++
+ // ═══════════════════════════════════════════════════════════════════
+ //  Supabase Edge Function: guidestar-search
+ //  ─────────────────────────────────────────────────────────────────
+@@ -14,13 +16,8 @@
+ //  Docs: https://projects.propublica.org/nonprofits/api
+ // ═══════════════════════════════════════════════════════════════════
+ 
+-const CORS_HEADERS = {
+-  "Access-Control-Allow-Origin": "*",
+-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+-};
+-
+ Deno.serve(async (req: Request) => {
++  const CORS_HEADERS = corsFor(req);
+   // Handle CORS preflight
+   if (req.method === "OPTIONS") {
+     return new Response("ok", { headers: CORS_HEADERS });
+@@ -33,6 +30,10 @@ Deno.serve(async (req: Request) => {
+     });
+   }
+ 
++  // Must be a signed-in user with an active CRM account (anon key alone is rejected)
++  const auth = await requireCrmUser(req, CORS_HEADERS);
++  if (!auth.ok) return auth.response;
++
+   try {
+     const body = await req.json();
+     const { query, state = "NC", nteeCode = null } = body;
+@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
+     });
+ 
+   } catch (e) {
+-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
++    return new Response(JSON.stringify({ error: (e as Error).message || "Unknown error" }), {
+       status: 500,
+       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+     });
+diff --git a/supabase/functions/hunter-search/index.ts b/supabase/functions/hunter-search/index.ts
+new file mode 100644
+index 0000000..2b36f68
+--- /dev/null
++++ b/supabase/functions/hunter-search/index.ts
+@@ -0,0 +1,39 @@
++// ═══════════════════════════════════════════════════════
++//  Supabase Edge Function: hunter-search
++//  ───────────────────────────────────────────────────────
++//  Server-side proxy for Hunter.io domain search. Replaces the old
++//  browser-side call that put the Hunter API key in a URL query string
++//  (visible in devtools, logs and browser history).
++// ═══════════════════════════════════════════════════════
++import { corsFor, getApiKey, json, requireCrmUser } from "../_shared/auth.ts";
++
++Deno.serve(async (req: Request) => {
++  const cors = corsFor(req);
++  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
++  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, cors);
++
++  const auth = await requireCrmUser(req, cors);
++  if (!auth.ok) return auth.response;
++
++  try {
++    const { domain, limit = 10 } = await req.json();
++    const d = String(domain ?? "").trim().toLowerCase();
++    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) return json({ error: "Invalid domain" }, 400, cors);
++
++    const apiKey = await getApiKey(auth.admin, "hunter", "HUNTER_API_KEY");
++    if (!apiKey) {
++      return json({ error: "Hunter.io is not configured. An admin can add the key under Admin → Plugins." }, 400, cors);
++    }
++
++    const url = new URL("https://api.hunter.io/v2/domain-search");
++    url.searchParams.set("domain", d);
++    url.searchParams.set("limit", String(Math.min(25, Math.max(1, Number(limit) || 10))));
++    url.searchParams.set("api_key", apiKey);
++
++    const res = await fetch(url);
++    const data = await res.json().catch(() => ({}));
++    return json(data, res.status, cors);
++  } catch (e) {
++    return json({ error: (e as Error).message || "Unknown error" }, 500, cors);
++  }
++});
+diff --git a/supabase/functions/nppes-search/index.ts b/supabase/functions/nppes-search/index.ts
+index f7b1258..6ed2cf6 100644
+--- a/supabase/functions/nppes-search/index.ts
++++ b/supabase/functions/nppes-search/index.ts
+@@ -1,3 +1,5 @@
++import { corsFor, requireCrmUser } from "../_shared/auth.ts";
++
+ // ═══════════════════════════════════════════════════════════════════
+ //  Supabase Edge Function: nppes-search
+ //  ─────────────────────────────────────────────────────────────────
+@@ -14,13 +16,8 @@
+ //  Docs: https://npiregistry.cms.hhs.gov/api-page
+ // ═══════════════════════════════════════════════════════════════════
+ 
+-const CORS_HEADERS = {
+-  "Access-Control-Allow-Origin": "*",
+-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+-};
+-
+ Deno.serve(async (req: Request) => {
++  const CORS_HEADERS = corsFor(req);
+   // Handle CORS preflight
+   if (req.method === "OPTIONS") {
+     return new Response("ok", { headers: CORS_HEADERS });
+@@ -33,6 +30,10 @@ Deno.serve(async (req: Request) => {
+     });
+   }
+ 
++  // Must be a signed-in user with an active CRM account (anon key alone is rejected)
++  const auth = await requireCrmUser(req, CORS_HEADERS);
++  if (!auth.ok) return auth.response;
++
+   try {
+     const body = await req.json();
+     const { organizationName = null, taxonomyDescription = null, state = "NC" } = body;
+@@ -73,7 +74,7 @@ Deno.serve(async (req: Request) => {
+     });
+ 
+   } catch (e) {
+-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
++    return new Response(JSON.stringify({ error: (e as Error).message || "Unknown error" }), {
+       status: 500,
+       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+     });
+diff --git a/supabase/functions/osm-search/index.ts b/supabase/functions/osm-search/index.ts
+index a1a8995..01ff631 100644
+--- a/supabase/functions/osm-search/index.ts
++++ b/supabase/functions/osm-search/index.ts
+@@ -1,3 +1,5 @@
++import { corsFor, requireCrmUser } from "../_shared/auth.ts";
++
+ // ═══════════════════════════════════════════════════════════════════
+ //  Supabase Edge Function: osm-search
+ //  ─────────────────────────────────────────────────────────────────
+@@ -19,18 +21,13 @@
+ //  Docs: https://wiki.openstreetmap.org/wiki/Overpass_API
+ // ═══════════════════════════════════════════════════════════════════
+ 
+-const CORS_HEADERS = {
+-  "Access-Control-Allow-Origin": "*",
+-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+-};
+-
+ const OVERPASS_ENDPOINTS = [
+   "https://overpass-api.de/api/interpreter",
+   "https://overpass.kumi.systems/api/interpreter",
+ ];
+ 
+ Deno.serve(async (req: Request) => {
++  const CORS_HEADERS = corsFor(req);
+   // Handle CORS preflight
+   if (req.method === "OPTIONS") {
+     return new Response("ok", { headers: CORS_HEADERS });
+@@ -43,6 +40,10 @@ Deno.serve(async (req: Request) => {
+     });
+   }
+ 
++  // Must be a signed-in user with an active CRM account (anon key alone is rejected)
++  const auth = await requireCrmUser(req, CORS_HEADERS);
++  if (!auth.ok) return auth.response;
++
+   try {
+     const body = await req.json();
+     const { overpassQL } = body;
+@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
+           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+         });
+       } catch (e) {
+-        lastError = e.message;
++        lastError = (e as Error).message;
+         continue; // try next mirror
+       }
+     }
+@@ -92,7 +93,7 @@ Deno.serve(async (req: Request) => {
+     });
+ 
+   } catch (e) {
+-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
++    return new Response(JSON.stringify({ error: (e as Error).message || "Unknown error" }), {
+       status: 500,
+       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+     });
+diff --git a/supabase/migrations/20261019000000_security_hardening.sql b/supabase/migrations/20261019000000_security_hardening.sql
+new file mode 100644
+index 0000000..1946ee2
+--- /dev/null
++++ b/supabase/migrations/20261019000000_security_hardening.sql
+@@ -0,0 +1,272 @@
++-- ════════════════════════════════════════════════════════════════════
++--  NC Compliance CRM — Security hardening
++--  ────────────────────────────────────────────────────────────────────
++--  What this does
++--    1. Ties every CRM user to a real Supabase Auth account (matched by
++--       VERIFIED email) and derives their role server-side.
++--    2. Enables Row Level Security on every table and replaces any
++--       existing "allow all" policies with role-based ones.
++--    3. Removes the anon role's access to CRM data entirely.
++--    4. Locks api_credentials so third-party API keys can never be read
++--       from a browser. Keys are written through an admin-only function
++--       and read only by Edge Functions (service role).
++--    5. Drops the legacy crm_users.password column (weak unsalted hashes).
++--
++--  BEFORE RUNNING (see SECURITY_HARDENING.md):
++--    • Take a backup (Database → Backups, or pg_dump).
++--    • Create a Supabase Auth user for at least one admin whose email
++--      matches an ACTIVE row in crm_users (Authentication → Users →
++--      Add user, tick "Auto Confirm User"), or you will be locked out of
++--      the app (the database itself stays reachable from the dashboard).
++--
++--  Safe to re-run (idempotent).
++-- ════════════════════════════════════════════════════════════════════
++
++-- ── 0. Pre-flight: refuse to run if it would lock everyone out ──────
++do $$
++begin
++  if to_regclass('public.crm_users') is null then
++    raise exception 'public.crm_users not found — is this the right database?';
++  end if;
++
++  if not exists (
++    select 1
++    from public.crm_users c
++    join auth.users a
++      on lower(a.email) = lower(c.email)
++     and a.email_confirmed_at is not null
++    where c.active
++      and c.role in ('superadmin', 'admin')
++  ) then
++    raise exception
++      'ABORTED: no active admin in crm_users has a confirmed Supabase Auth account with the same email. '
++      'Create one first (Authentication → Users → Add user → Auto Confirm), then re-run.';
++  end if;
++end $$;
++
++-- ── 1. Helper functions (SECURITY DEFINER so RLS can call them) ─────
++-- Role of the signed-in caller, or NULL if they have no active CRM account.
++-- Requires a CONFIRMED auth email so nobody can claim an address they
++-- don't control.
++create or replace function public.crm_role()
++returns text
++language sql stable security definer
++set search_path = public, auth
++as $$
++  select c.role
++  from public.crm_users c
++  join auth.users a on a.id = auth.uid()
++  where c.active
++    and a.email_confirmed_at is not null
++    and lower(c.email) = lower(a.email)
++  limit 1
++$$;
++
++create or replace function public.crm_uid()
++returns uuid
++language sql stable security definer
++set search_path = public, auth
++as $$
++  select c.id
++  from public.crm_users c
++  join auth.users a on a.id = auth.uid()
++  where c.active
++    and a.email_confirmed_at is not null
++    and lower(c.email) = lower(a.email)
++  limit 1
++$$;
++
++create or replace function public.crm_is_admin()
++returns boolean language sql stable security definer set search_path = public, auth
++as $$ select coalesce(public.crm_role() in ('superadmin','admin'), false) $$;
++
++create or replace function public.crm_can_edit()
++returns boolean language sql stable security definer set search_path = public, auth
++as $$ select coalesce(public.crm_role() in ('superadmin','admin','manager','user'), false) $$;
++
++-- The caller's own profile row (used by the app right after sign-in).
++create or replace function public.crm_me()
++returns setof public.crm_users
++language sql stable security definer
++set search_path = public, auth
++as $$
++  select * from public.crm_users where id = public.crm_uid()
++$$;
++
++-- Lets a user stamp their own last_login without any UPDATE permission.
++create or replace function public.crm_touch_login()
++returns void
++language sql security definer
++set search_path = public, auth
++as $$
++  update public.crm_users set last_login = now() where id = public.crm_uid()
++$$;
++
++-- Resolve an auth user id from an email (used only by the admin-users
++-- Edge Function via the service role).
++create or replace function public.crm_auth_user_id(p_email text)
++returns uuid
++language sql stable security definer
++set search_path = public, auth
++as $$
++  select id from auth.users where lower(email) = lower(p_email) limit 1
++$$;
++
++-- ── 2. Remove the legacy password column and enforce unique emails ──
++alter table public.crm_users drop column if exists password;
++
++do $$
++begin
++  create unique index if not exists crm_users_email_lower_uniq
++    on public.crm_users (lower(email));
++exception when unique_violation then
++  raise notice 'Duplicate emails exist in crm_users — de-duplicate them, then create index crm_users_email_lower_uniq.';
++end $$;
++
++-- ── 3. Wipe every existing policy on CRM tables, enable RLS ─────────
++do $$
++declare
++  r record;
++  t text;
++  tables text[] := array['prospects','crm_users','audit_log','system_settings','api_credentials','emails'];
++begin
++  foreach t in array tables loop
++    if to_regclass('public.' || t) is not null then
++      for r in select policyname from pg_policies where schemaname = 'public' and tablename = t loop
++        execute format('drop policy %I on public.%I', r.policyname, t);
++      end loop;
++      execute format('alter table public.%I enable row level security', t);
++      -- anon (not signed in) gets nothing, ever.
++      execute format('revoke all on public.%I from anon', t);
++      execute format('grant select, insert, update, delete on public.%I to authenticated', t);
++    end if;
++  end loop;
++end $$;
++
++-- ── 4. Policies ─────────────────────────────────────────────────────
++-- prospects: everyone with a CRM account reads; editors write; admins delete
++create policy prospects_select on public.prospects
++  for select to authenticated using (public.crm_role() is not null);
++create policy prospects_insert on public.prospects
++  for insert to authenticated with check (public.crm_can_edit());
++create policy prospects_update on public.prospects
++  for update to authenticated using (public.crm_can_edit()) with check (public.crm_can_edit());
++create policy prospects_delete on public.prospects
++  for delete to authenticated using (public.crm_is_admin());
++
++-- crm_users: admins manage all; everyone else can read only their own row.
++-- Only a superadmin may create/modify/delete a superadmin (prevents an
++-- admin promoting themselves).
++create policy crm_users_select on public.crm_users
++  for select to authenticated
++  using (public.crm_is_admin() or id = public.crm_uid());
++create policy crm_users_insert on public.crm_users
++  for insert to authenticated
++  with check (public.crm_is_admin() and (role <> 'superadmin' or public.crm_role() = 'superadmin'));
++create policy crm_users_update on public.crm_users
++  for update to authenticated
++  using      (public.crm_is_admin() and (role <> 'superadmin' or public.crm_role() = 'superadmin'))
++  with check (public.crm_is_admin() and (role <> 'superadmin' or public.crm_role() = 'superadmin'));
++create policy crm_users_delete on public.crm_users
++  for delete to authenticated
++  using (public.crm_is_admin() and role <> 'superadmin' and id <> public.crm_uid());
++
++-- audit_log: append-only. Admins read; any CRM user may append an entry
++-- under their own username (no spoofing). No update/delete policy = immutable.
++create policy audit_select on public.audit_log
++  for select to authenticated using (public.crm_is_admin());
++create policy audit_insert on public.audit_log
++  for insert to authenticated
++  with check (
++    public.crm_role() is not null
++    and username = (select c.username from public.crm_users c where c.id = public.crm_uid())
++  );
++
++-- system_settings: read by CRM users, written by admins
++create policy settings_select on public.system_settings
++  for select to authenticated using (public.crm_role() is not null);
++create policy settings_insert on public.system_settings
++  for insert to authenticated with check (public.crm_is_admin());
++create policy settings_update on public.system_settings
++  for update to authenticated using (public.crm_is_admin()) with check (public.crm_is_admin());
++create policy settings_delete on public.system_settings
++  for delete to authenticated using (public.crm_is_admin());
++
++-- emails: CRM users read/log; admins can clean up (guarded: schema not in repo)
++do $$
++begin
++  if to_regclass('public.emails') is not null then
++    execute 'create policy emails_select on public.emails for select to authenticated using (public.crm_role() is not null)';
++    execute 'create policy emails_insert on public.emails for insert to authenticated with check (public.crm_can_edit())';
++    execute 'create policy emails_update on public.emails for update to authenticated using (public.crm_is_admin()) with check (public.crm_is_admin())';
++    execute 'create policy emails_delete on public.emails for delete to authenticated using (public.crm_is_admin())';
++  end if;
++end $$;
++
++-- api_credentials: NO policies at all => no direct access from any browser
++-- session. Access is only through the two functions below and the service
++-- role used by Edge Functions.
++
++-- ── 5. API-key functions (the only browser path to credentials) ─────
++-- Which integrations have a key? Never returns the key itself.
++create or replace function public.crm_api_key_status()
++returns table (service text, configured boolean, updated_at timestamptz, updated_by text)
++language sql stable security definer
++set search_path = public, auth
++as $$
++  select a.service,
++         coalesce(length(a.api_key), 0) > 0 as configured,
++         a.updated_at,
++         a.updated_by
++  from public.api_credentials a
++  where public.crm_role() is not null
++$$;
++
++-- Write-only, admin-only. Pass an empty string to remove a key.
++create or replace function public.crm_set_api_credential(p_service text, p_key text)
++returns void
++language plpgsql security definer
++set search_path = public, auth
++as $$
++declare
++  v_name text;
++begin
++  if not public.crm_is_admin() then
++    raise exception 'Admin access required' using errcode = '42501';
++  end if;
++  if p_service is null or p_service !~ '^[a-z0-9_-]{1,40}$' then
++    raise exception 'Invalid service name';
++  end if;
++
++  select username into v_name from public.crm_users where id = public.crm_uid();
++
++  update public.api_credentials
++     set api_key = coalesce(p_key, ''), updated_by = v_name, updated_at = now()
++   where service = p_service;
++  if not found then
++    insert into public.api_credentials (service, api_key, updated_by, updated_at)
++    values (p_service, coalesce(p_key, ''), v_name, now());
++  end if;
++end $$;
++
++-- ── 6. Purge third-party keys that older versions copied into settings ──
++do $$
++begin
++  if to_regclass('public.system_settings') is not null then
++    delete from public.system_settings where key ilike '%key' or key ilike '%secret' or key ilike '%token';
++  end if;
++end $$;
++
++-- ── 7. Function privileges ──────────────────────────────────────────
++revoke all on function public.crm_role(), public.crm_uid(), public.crm_is_admin(),
++  public.crm_can_edit(), public.crm_me(), public.crm_touch_login(),
++  public.crm_api_key_status(), public.crm_set_api_credential(text, text),
++  public.crm_auth_user_id(text) from public, anon;
++
++grant execute on function public.crm_role(), public.crm_uid(), public.crm_is_admin(),
++  public.crm_can_edit(), public.crm_me(), public.crm_touch_login(),
++  public.crm_api_key_status(), public.crm_set_api_credential(text, text)
++  to authenticated;
++
++-- crm_auth_user_id is for Edge Functions only
++grant execute on function public.crm_auth_user_id(text) to service_role;
+-- 
+2.43.0
+
