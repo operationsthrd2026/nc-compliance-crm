@@ -19,10 +19,10 @@ export function contactReadiness(prospect={}) {
  return "Needs research";
 }
 export function leadCategory(prospect={}) {
- const source=[prospect.vertical,prospect.sourceType].join(" ");
- return /nonprofit|non-profit|foundation|charit|faith|social service|human service|advocacy|community development|environmental|cultural|grantmaker|propublica|wikidata \(community records\)/i.test(source)
-   &&!/wikidata \(community records\)/i.test(source)
-  ? "Nonprofit" : "Business / Other";
+ const vertical=String(prospect.vertical||"");
+ const source=String(prospect.sourceType||"");
+ return /nonprofit|non-profit|foundation|charit|faith|social service|human service|advocacy|community development|environmental|cultural|grantmaker/i.test(vertical)
+  ||/propublica|nonprofit explorer/i.test(source)?"Nonprofit":"Business / Other";
 }
 export function filterSavedLeads(leads=[],{query="",status="all",readiness="all",category="all"}={}) {
  const q=String(query).toLocaleLowerCase().trim();
