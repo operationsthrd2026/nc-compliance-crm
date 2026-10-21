@@ -55,6 +55,7 @@ Deno.serve(async (req: Request) => {
 
     const npiRes = await fetch(npiUrl.toString(), {
       headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!npiRes.ok) {
