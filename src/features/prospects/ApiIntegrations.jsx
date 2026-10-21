@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 const builtin = [
   { id: "apollo", label: "Apollo.io", kind: "B2B company and people discovery", link: "https://docs.apollo.io/", note: "People Search is available in Find Prospects when the account has API access. It does not include email or phone." },
   { id: "hunter", label: "Hunter.io", kind: "Domain search and email contacts", link: "https://hunter.io/api-documentation/v2", note: "Domain Search is available in Find Prospects for admins. It can consume Hunter credits." },
+  { id: "groq", label: "Groq GPT-OSS Browser Search", kind: "Optional LLM-powered live web search", link: "https://console.groq.com/docs/tool-use/built-in-tools/browser-search", note: "Uses Groq's GPT-OSS 20B Browser Search on the free API plan within your account limits. Sources and contact information are AI-reported and require verification. Off by default." },
   { id: "gemini", label: "Gemini + Google Search", kind: "Grounded search for businesses and nonprofits", link: "https://ai.google.dev/gemini-api/docs/google-search", note: "Gemini picks a Flash model available to this key, but model access does not guarantee Google Search grounding quota. Gemini 3.x Google Search grounding is unavailable on the API free tier; paid-tier limits and included search allowances depend on your Google project. Off by default." },
 
 ];
@@ -90,11 +91,11 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     finally{setCustomBusy(false);}
   };
   const testProvider=async id=>{
-    if(!isConnected||!canAdmin||!["apollo","hunter","gemini"].includes(id))return;
+    if(!isConnected||!canAdmin||!["apollo","hunter","gemini","groq"].includes(id))return;
     setTesting(id);
     setTests(old=>({...old,[id]:{busy:true}}));
     try{
-      const res=await fetch(baseUrl+"/functions/v1/"+(id==="gemini"?"prospectfinder-gemini":"prospectfinder-contacts"),{
+      const res=await fetch(baseUrl+"/functions/v1/"+(id==="gemini"?"prospectfinder-gemini":id==="groq"?"prospectfinder-groq":"prospectfinder-contacts"),{
         method:"POST",headers:await requestHeaders(),body:JSON.stringify({action:"test",provider:id}),
         signal:AbortSignal.timeout(16000)
       });
@@ -114,10 +115,10 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       </div>
       <div style={{...styles.small,marginTop:10}}>{p.note}</div>
       {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"#6250CE",marginTop:8}}>Provider documentation ↗</a>}
-      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter","gemini"].includes(p.id)&&
+      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter","gemini","groq"].includes(p.id)&&
         <div style={{marginTop:12,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
           <button type="button" disabled={!!testing} style={styles.secondary} onClick={()=>testProvider(p.id)}>
-            {testing===p.id?"Checking…":p.id==="gemini"?"Check available Gemini models · free":"Test key · no search"}
+            {testing===p.id?"Checking…":p.id==="gemini"?"Check available Gemini models · free":p.id==="groq"?"Test Groq key · no search":"Test key · no search"}
           </button>
           {tests[p.id]&&!tests[p.id].busy&&<span role="status" style={{fontSize:11,color:tests[p.id].ok?"#157858":"#B34943"}}>
             {tests[p.id].ok?"✓ API responding":"✕ Check failed"} — {tests[p.id].text}
@@ -147,8 +148,8 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     </div>
 
     <section style={{...styles.panel,background:"#F7F7FF",border:"1px solid #DDD9FA"}}>
-      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Set up Gemini search</h3>
-      <p style={{...styles.note,margin:"8px 0 10px"}}>Already have a Gemini API key? Find <strong>Gemini + Google Search</strong> under Optional API providers below and save it there. Do not paste it into chats or public files.</p>
+      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Set up AI search providers</h3>
+      <p style={{...styles.note,margin:"8px 0 10px"}}>Have a Groq API key? Under Optional API providers below, find <strong>Groq GPT-OSS Browser Search</strong> and save the key. Groq is a free-tier option with account limits. Do not paste keys into chats or public files.</p>
       <p style={{...styles.note,margin:"0 0 10px"}}>Use <strong>Test key</strong> to validate the credential without making a Google Search request. Then go to Find Prospects, select Gemini and approve one grounded search. Gemini model key checks do not test Google Search. For current Gemini 3.x models, Google Search grounding is unavailable on the API free tier; paid-tier limits and included allowances apply.</p>
       <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Manage Gemini API keys ↗</a>{" · "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Review API usage and quota ↗</a>
     </section>
@@ -163,7 +164,7 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
 
     <section style={styles.panel}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional API providers</h3>
-      <p style={{...styles.note,margin:"7px 0 12px"}}>Gemini adds optional live Google Search grounding. Free public directories work without keys. Gemini may consume API quota or incur provider charges; Hunter may consume credits.</p>
+      <p style={{...styles.note,margin:"7px 0 12px"}}>Groq GPT-OSS Browser Search is an optional free-tier LLM search subject to your Groq account limits. Gemini remains off by default and can require paid grounding; Hunter may consume credits. Public directories remain keyless.</p>
       {builtin.map(provider)}
       {others.map(id=>provider({id,label:recordName(id),kind:"Custom provider",note:"Credential stored only. This custom provider cannot return search results until an API adapter is implemented."}))}
       {canAdmin&&isConnected&&<div style={{marginTop:17,borderTop:"1px solid #EDF0F6",paddingTop:17}}>
