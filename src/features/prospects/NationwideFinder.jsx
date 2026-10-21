@@ -51,9 +51,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [busy,setBusy]=useState(false),[adding,setAdding]=useState(false),[rows,setRows]=useState([]),[selected,setSelected]=useState([]);
  const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
  const [diagnostics,setDiagnostics]=useState([]),[checking,setChecking]=useState(false);
- const [provider,setProvider]=useState("apollo"),[contactBusy,setContactBusy]=useState(false);
+ const [apolloEnabled,setApolloEnabled]=useState(true),[hunterEnabled,setHunterEnabled]=useState(false);
  const [contactTitle,setContactTitle]=useState("Human Resources"),[domain,setDomain]=useState(""),[allowCredits,setAllowCredits]=useState(false);
- const [contactNotice,setContactNotice]=useState("");
  const existing=useMemo(()=>new Set(crmData.map(idFor)),[crmData]);
  const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(idFor(r))})),[rows,existing]);
  const append=items=>setRows(prev=>{const seen=new Set(prev.map(idFor));return [...prev,...items.filter(r=>{const id=idFor(r);if(seen.has(id))return false;seen.add(id);return true;})];});
@@ -91,76 +90,116 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   }else record("Local business directory",false,"Not run because ZIP lookup failed");
   setChecking(false);
  };
- const searchProvider=async()=>{
-   if(contactBusy||busy)return;
-   if(provider==="hunter"&&!canAdmin){setContactNotice("Admin access is required for Hunter credit-consuming lookups.");return;}
-   if(provider==="hunter"&&!allowCredits){setContactNotice("Confirm Hunter credit usage before running a domain search.");return;}
-   if(provider==="hunter"&&!domain.trim()){setContactNotice("Enter an exact company domain such as example.org.");return;}
-   if(provider==="apollo"&&!keyword.trim()&&!city.trim()&&!state){setContactNotice("For Apollo, enter a company/industry keyword or choose a city and state.");return;}
-   setContactBusy(true);setContactNotice("");
-   try{
-     const info=provider==="hunter"
-       ?await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:domain.trim()})
-       :await post("prospectfinder-contacts",{action:"apollo-people",provider:"apollo",keywords:keyword.trim(),location:[city.trim(),state].filter(Boolean).join(", "),title:contactTitle.trim()});
-     const people=(info.people||[]).filter(p=>p.companyName).map(p=>({...p,
-       cityMarket:p.cityMarket||locationLabel(state,city,zip),market:p.cityMarket||locationLabel(state,city,zip),
-       contactName:p.contactName||"",emailPhone:p.emailPhone||"",title:p.title||"",
-       hrPersonListed:p.hrPersonListed||"Unknown"}));
-     append(people);
-     setContactNotice(people.length+" contact"+(people.length===1?"":"s")+" returned by "+(provider==="hunter"?"Hunter":"Apollo")+". "+(provider==="hunter"?"Hunter credit usage may apply.":"Apollo People Search does not include emails or phone numbers."));
-   }catch(e){setContactNotice("Contact search failed: "+(e?.message||"Check API Integrations for connection status."));}
-   finally{setContactBusy(false);}
- };
+ // All source requests are started by the SAME Search Prospects button.
+ // Free sources run by category; Apollo is optional and Hunter always requires explicit credit consent.
  const run=async(next=false)=>{
+  if(busy)return;
   const error=locationIssue(state,city.trim(),zip);
   if(error){setMessage(error);return;}
-  if(!keyword.trim()&&!vertical&&!state&&!city&&!zip){setMessage("Choose an area, category, or keyword to begin.");return;}
+  if(next&&page==null)return;
+  if(!next&&!keyword.trim()&&!vertical&&!state&&!city.trim()&&!zip&&!(hunterEnabled&&domain.trim())){
+   setMessage("Enter a keyword, location, industry, or company domain to search.");return;
+  }
+  if(!next&&hunterEnabled&&(!canAdmin||!domain.trim()||!allowCredits)){
+   setMessage(!canAdmin?"Admin access is required for Hunter searches.":"To include Hunter, enter an exact company domain and confirm possible credit usage.");
+   return;
+  }
   setBusy(true);setMessage("");
-  if(!next){setRows([]);setSelected([]);setLogs([]);setPage(null);setSourceErrors([]);}
+  if(!next){setRows([]);setSelected([]);setLogs([]);setSourceErrors([]);setPage(null);}
   const loc=locationLabel(state,city.trim(),zip);
-  const failed=[];
-  let totalFound=0;
-  try{
-   if(type!=="smb"){
-    try{
-     if(zip&&!city){addLog("Nonprofit Explorer does not support exact ZIP-only filtering. Choose city and state for a targeted nonprofit search.");}
-     else{
-      // ProPublica searches names and city names, not generic nonprofit category labels.
-      // A city without a keyword is a useful broad search; use "foundation" for state-only discovery.
-      const q=keyword.trim()||(city.trim()?city.trim():"foundation");
-      if(!keyword.trim()&&!city.trim())addLog("Showing organizations with 'foundation' in their name. Try a name/keyword for other nonprofits.");
-      const currentPage=next?(page||0):0;
-      const info=await post("prospectfinder-nonprofits",{query:q,city:city.trim(),state:state||null,page:currentPage});
-      let organizations=info.organizations||[];
-      if(city.trim())organizations=organizations.filter(o=>clean(o.city)===clean(city));
-      totalFound+=organizations.length;
-      append(organizations.map(fromNonprofit));
-      setPage(currentPage+1<Number(info.num_pages||0)?currentPage+1:null);
-      addLog("Nonprofits: "+organizations.length+" results from page "+(currentPage+1)+" in "+loc+".");
-     }
-    }catch(e){failed.push("Nonprofit source: "+e.message);addLog("Nonprofit source: "+e.message);}
+  const tasks=[];
+  const notes=[];
+  const wantNonprofits=(type!=="smb");
+  const wantBusinesses=(type!=="nonprofit");
+  const nonprofitQuery=keyword.trim()||(city.trim()?city.trim():"foundation");
+  const currentPage=next?(page||0):0;
+  if(wantNonprofits&&(keyword.trim()||vertical||state||city.trim()||zip)){
+   if(zip&&!city.trim()){
+    if(!next)notes.push("Nonprofits: ZIP-only searches are not supported. Add a city to include nonprofit directory results.");
+   }else{
+    tasks.push(["Nonprofit Explorer",async()=>{
+     const info=await post("prospectfinder-nonprofits",{query:nonprofitQuery,city:city.trim(),state:state||null,page:currentPage});
+     let matches=Array.isArray(info.organizations)?info.organizations:[];
+     if(city.trim())matches=matches.filter(o=>clean(o.city)===clean(city));
+     return {items:matches.map(fromNonprofit),page:currentPage+1<Number(info.num_pages||0)?currentPage+1:null};
+    }]);
+    if(!next&&!keyword.trim()&&!city.trim())notes.push("Nonprofits: showing organizations matching 'foundation'. Enter a keyword for other types.");
    }
-   if(!next&&type!=="nonprofit"){
-    if(!city.trim()&&!zip){addLog("Small businesses need a city or ZIP. Nationwide bulk OSM searches are not supported.");}
-    else{
-     try{
-      const location=await post("prospectfinder-geocode",{city:city.trim(),state,zip});
-      const tags=categories[vertical]||fallbackTags;
-      const raw=await post("prospectfinder-businesses",{lat:location.lat,lon:location.lon,radiusMiles:Number(radius),tags});
-      let businesses=(raw.elements||[]).filter(e=>e.tags?.name);
-      if(keyword.trim())businesses=businesses.filter(e=>clean(e.tags.name).includes(clean(keyword))||clean(Object.values(e.tags).join(" ")).includes(clean(keyword)));
-      totalFound+=businesses.length;
-      append(businesses.slice(0,60).map(e=>fromBusiness(e,loc)));
-      addLog("Small businesses: "+businesses.length+" matched near "+loc+". OSM coverage varies.");
-     }catch(e){failed.push("Small business source: "+e.message);addLog("Small business source: "+e.message);}
+  }
+  if(!next){
+   if(wantBusinesses){
+    if(!city.trim()&&!zip)notes.push("Local businesses: enter a city or ZIP to search OpenStreetMap.");
+    else tasks.push(["Local businesses",async()=>{
+     const location=await post("prospectfinder-geocode",{city:city.trim(),state,zip});
+     const tags=categories[vertical]||fallbackTags;
+     const raw=await post("prospectfinder-businesses",{lat:location.lat,lon:location.lon,radiusMiles:Number(radius),tags});
+     let businesses=(raw.elements||[]).filter(e=>e.tags?.name);
+     if(keyword.trim())businesses=businesses.filter(e=>clean(e.tags.name).includes(clean(keyword))||clean(Object.values(e.tags).join(" ")).includes(clean(keyword)));
+     return {items:businesses.slice(0,60).map(e=>fromBusiness(e,loc))};
+    }]);
+   }
+   if(apolloEnabled){
+    const location=[city.trim(),state,zip].filter(Boolean).join(", ");
+    if(!keyword.trim()&&!location)notes.push("Apollo: enter a keyword or U.S. location to include people search.");
+    else tasks.push(["Apollo People Search",async()=>{
+     const info=await post("prospectfinder-contacts",{
+      action:"apollo-people",provider:"apollo",keywords:keyword.trim(),location,title:contactTitle.trim()||"Human Resources"
+     });
+     return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
+      ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
+      emailPhone:p.emailPhone||"",verificationNotes:p.verificationNotes||"Apollo does not provide email/phone in People Search."
+     }))};
+    }]);
+   }
+   if(hunterEnabled){
+    tasks.push(["Hunter Domain Search",async()=>{
+     const info=await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:domain.trim()});
+     return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
+      ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc
+     }))};
+    }]);
+   }
+  }
+  if(!tasks.length){
+   setBusy(false);
+   setMessage(notes.join(" ")||"No eligible sources. Choose a location or keyword to search.");
+   return;
+  }
+  try{
+   // Run the enabled sources concurrently; a failure from one must not hide other results.
+   const outcomes=await Promise.all(tasks.map(async ([name,query])=>{
+    try{return {name,...await query()};}
+    catch(e){return {name,error:e?.message||"Source unavailable"};}
+   }));
+   const merged=[],seen=new Set(),logsOut=[...notes],failed=[];
+   let nextPage=null;
+   for(const outcome of outcomes){
+    if(outcome.error){
+     failed.push(outcome.name+": "+outcome.error);
+     logsOut.push("✕ "+outcome.name+": "+outcome.error);
+     continue;
+    }
+    const items=outcome.items||[];
+    logsOut.push("✓ "+outcome.name+": "+items.length+" result"+(items.length===1?"":"s")+".");
+    if(outcome.name==="Nonprofit Explorer")nextPage=outcome.page??null;
+    for(const item of items){
+     const key=idFor(item);
+     if(!seen.has(key)){seen.add(key);merged.push(item);}
     }
    }
-  }finally{
-   setBusy(false);
+   if(next)append(merged);else setRows(merged);
+   setPage(nextPage);
    setSourceErrors(failed);
-   if(failed.length) setMessage(failed.join(" • ")+" Use a specific keyword and 5-mile radius, or try nonprofits only.");
-   else if(!next&&totalFound===0) setMessage("Search completed but the selected public directories returned no matching organizations. Try a different keyword, or select a city and a smaller radius.");
-  }
+   setLogs(prev=>next?[...prev,...logsOut]:logsOut);
+   if(failed.length){
+    setMessage(merged.length+" results returned; "+failed.length+" source"+(failed.length===1?"":"s")+" failed. "+failed.join(" • "));
+   }else if(!merged.length&&!next){
+    setMessage("Search finished. No matching prospects from the selected sources. Try another keyword or a city and a 5-mile radius.");
+   }
+  }catch(e){
+   setSourceErrors(["Search: "+(e?.message||"Unexpected error")]);
+   setMessage("Search could not complete: "+(e?.message||"Unexpected error"));
+  }finally{setBusy(false);}
  };
  const add=async()=>{
   const items=shown.filter(r=>selected.includes(idFor(r))&&!r.already).map(r=>{
@@ -182,7 +221,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   <div style={embedded?{maxWidth:"none",margin:0,background:"#fff",border:"1px solid #E6EAF2",borderRadius:18,padding:23,boxShadow:"0 8px 32px #15213a08"}:{maxWidth:1160,margin:"20px auto",background:DARK,border:"1px solid "+EDGE,borderRadius:16,padding:22,boxShadow:"0 18px 60px #0008"}}>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
     <div><h2 style={{margin:"0 0 5px",color:embedded?"#4F42CE":GOLD,fontSize:embedded?19:21}}>{embedded?"U.S. organization search":"ProspectFinder · United States"}</h2>
-    <p style={{margin:0,color:MUTED,fontSize:12}}>Discover nonprofits and small businesses. Contact verification is separate from directory discovery.</p></div>
+    <p style={{margin:0,color:embedded?"#60708A":MUTED,fontSize:12}}>One search searches multiple directories and optional APIs. All results appear below in one table.</p></div>
     {!embedded&&<button onClick={onClose} style={{...btn,background:PANEL,color:"#F0F4FF"}} aria-label="Close finder">✕</button>}
    </div>
    <div className={embedded?"pf-native-search":""} style={{background:embedded?"#F6F7FC":PANEL,borderRadius:12,padding:16,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:12,marginBottom:16}}>
@@ -193,7 +232,29 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     {field("Local search radius",<select style={inp} value={radius} onChange={e=>setRadius(Number(e.target.value))}>{RADII.map(n=><option key={n} value={n}>{n} miles</option>)}</select>)}
     {field("Industry (optional)",<select style={inp} value={vertical} onChange={e=>setVertical(e.target.value)}><option value="">All industries</option>{VERTICALS.map(v=><option key={v} value={v}>{v}</option>)}{Object.keys(categories).filter(x=>!VERTICALS.includes(x)).map(v=><option key={v} value={v}>{v}</option>)}</select>)}
     <div style={{gridColumn:"1 / -1"}}>{field("Business or organization keyword",<input style={inp} value={keyword} onChange={e=>setKeyword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!busy)run();}} placeholder="e.g. dental, community center, software, charity"/>)}</div>
-    <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching live directories…":"Search Prospects"}</button>
+    <div style={{gridColumn:"1 / -1",border:"1px solid "+(embedded?"#DDDFF0":EDGE),borderRadius:12,padding:"15px 16px",background:embedded?"#FFFFFF":"#0C1B32",color:embedded?"#26324C":"#F0F4FF"}}>
+     <strong style={{fontSize:13}}>One search · multiple sources</strong>
+     <p style={{margin:"6px 0 12px",fontSize:11,color:embedded?"#64728A":MUTED,lineHeight:1.5}}>Free nonprofit and local-business directories are automatically searched based on the category. Optional APIs below join the same results table.</p>
+     <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:18}}>
+      <span style={{fontSize:11,color:embedded?"#248067":"#7DE5BF",fontWeight:700}}>✓ Public directories · no key</span>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={apolloEnabled} onChange={e=>setApolloEnabled(e.target.checked)}/> Apollo people · no search credits</label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={hunterEnabled} disabled={!canAdmin} onChange={e=>{setHunterEnabled(e.target.checked);if(!e.target.checked)setAllowCredits(false);}}/> Hunter emails · may use credits {canAdmin?"":"(admin only)"}</label>
+     </div>
+     {(apolloEnabled||hunterEnabled)&&<div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:13}}>
+      {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
+       <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
+      </label>}
+      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#405271":MUTED}}>Hunter company domain
+       <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
+      </label>}
+     </div>}
+     {hunterEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
+       <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
+       I authorize this search to use Hunter API credits for the specified domain.
+     </label>}
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Hunter queries only run when enabled with a domain and explicit credit consent.</p>
+    </div>
+    <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
     <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
    </div>
    {diagnostics.length>0&&<div role="status" aria-live="polite" style={{background:embedded?"#F4F5FD":"#182644",padding:13,borderRadius:10,marginBottom:14,fontSize:12,color:embedded?"#33435F":"#F0F4FF"}}>
@@ -202,36 +263,6 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
    </div>}
    {message&&<div role="alert" style={{background:embedded?"#FFF5F1":"rgba(255,151,101,.12)",border:"1px solid #F9B4A4",borderRadius:10,padding:"12px 14px",color:embedded?"#9F3E33":"#ffd1c7",fontSize:12,marginBottom:14,lineHeight:1.5}}><strong>{sourceErrors.length?"Search service issue":"Search notice"}:</strong> {message}</div>}
    {logs.length>0&&<div style={{background:embedded?"#F5F7FD":"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"#57627A":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
-   <section aria-label="Optional contact research" style={{marginTop:18,marginBottom:17,padding:16,border:"1px solid "+(embedded?"#DFE3F3":EDGE),background:embedded?"#F7F8FE":PANEL,borderRadius:13}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-      <div><strong style={{fontSize:14,color:embedded?"#253451":"#E6EAF7"}}>Find decision-maker contacts · Optional APIs</strong>
-      <p style={{fontSize:11,lineHeight:1.6,color:embedded?"#66758D":MUTED,margin:"5px 0 0"}}>Uses API keys saved under API Integrations. Results appear with directory results above and can be saved separately.</p></div>
-    </div>
-    <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap",marginTop:13}}>
-      <label style={{flex:"1 1 170px",fontSize:11,color:embedded?"#445675":MUTED}}>Contact source
-        <select style={{...inp,marginTop:6,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={provider} onChange={e=>{setProvider(e.target.value);setContactNotice("");}}>
-          <option value="apollo">Apollo · People Search (0 credits)</option>
-          <option value="hunter">Hunter · Domain Search (may use credits)</option>
-        </select>
-      </label>
-      {provider==="apollo"&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#445675":MUTED}}>Target job title
-        <input style={{...inp,marginTop:6,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
-      </label>}
-      {provider==="hunter"&&<label style={{flex:"1 1 240px",fontSize:11,color:embedded?"#445675":MUTED}}>Company domain
-        <input style={{...inp,marginTop:6,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
-      </label>}
-    </div>
-    {provider==="apollo"&&<p style={{fontSize:11,color:embedded?"#66758D":MUTED,margin:"9px 0 0"}}>Uses the keyword and location fields above to filter people. Apollo search excludes contact emails and phone numbers.</p>}
-    {provider==="hunter"&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,color:embedded?"#4B5975":"#CBD6E8"}}>
-      <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
-      I understand this Hunter domain search may consume API credits.
-    </label>}
-    <button type="button" style={{...btn,marginTop:12,background:embedded?"#5D50D0":GOLD,color:embedded?"#fff":DARK}} disabled={busy||contactBusy||(provider==="hunter"&&!canAdmin)} onClick={searchProvider}>
-      {contactBusy?"Searching contacts…":provider==="apollo"?"Search Apollo people":"Search Hunter emails · uses credits"}
-    </button>
-    {provider==="hunter"&&!canAdmin&&<span style={{fontSize:11,color:embedded?"#B54A43":"#FFB9AF",marginLeft:10}}>Admin permissions required</span>}
-    {contactNotice&&<p role="status" style={{fontSize:11,color:embedded?"#51607D":"#DCE4FA",lineHeight:1.6,margin:"10px 0 0"}}>{contactNotice}</p>}
-   </section>
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
     <div><strong>{shown.length} prospects</strong><span style={{color:MUTED,fontSize:12}}> · {selected.length} selected</span></div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -247,18 +278,22 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       const key=idFor(r);return <tr key={key} style={{borderTop:"1px solid "+EDGE,opacity:r.already?.55:1}}>
        <td style={{padding:10}}><input type="checkbox" aria-label={"Select "+r.companyName} disabled={r.already} checked={selected.includes(key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,key]:prev.filter(k=>k!==key))}/></td>
        <td style={{padding:10,fontWeight:650}}>{r.companyName}</td>
-       <td style={{padding:10,color:MUTED}}>{r.sourceType}</td><td style={{padding:10,color:MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
-       <td style={{padding:10}}>{r.emailPhone||<span style={{color:MUTED}}>Not listed</span>}</td>
+       <td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
+       <td style={{padding:10}}>
+        {r.contactName&&<div style={{fontWeight:700,color:embedded?"#20324F":"#F0F4FF"}}>{r.contactName}</div>}
+        {r.title&&<div style={{fontSize:11,color:embedded?"#66758D":MUTED,marginTop:2}}>{r.title}</div>}
+        {r.emailPhone?<div style={{fontSize:11,marginTop:r.contactName?3:0}}>{r.emailPhone}</div>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>{r.contactName?"Email / phone not provided":"Not listed"}</span>}
+       </td>
        <td style={{padding:10}}>{r.sourceUrl?<a href={r.sourceUrl} target="_blank" rel="noreferrer" style={{color:GOLD}}>{r.website?"Website":"View listing"} ↗</a>:"—"}</td>
        <td style={{padding:10,color:r.already?"#34d399":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
       </tr>;
      })}
-     {!shown.length&&<tr><td colSpan={7} style={{padding:30,textAlign:"center",color:embedded?"#66758D":MUTED}}>{busy?"Searching public directories…":"No prospects displayed. Select a city and a specific category, then click Search Prospects. Any API errors will appear above."}</td></tr>}
+     {!shown.length&&<tr><td colSpan={7} style={{padding:30,textAlign:"center",color:embedded?"#66758D":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
      </tbody>
     </table>
    </div>
    {page!=null&&type!=="smb"&&<button onClick={()=>run(true)} disabled={busy} style={{...btn,marginTop:12,background:"#253454",color:"#F0F4FF"}}>Load more nonprofits</button>}
-   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Nationwide bulk business crawling and verified decision-maker contacts are not included in this phase. ZIP filtering is not available in ProPublica nonprofit results.</p>
+   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Apollo/Hunter contact data may be limited by provider permissions and available credits; results are not independently verified. ZIP filtering is not available in ProPublica nonprofit results.</p>
   </div>
  </div>;
 }
