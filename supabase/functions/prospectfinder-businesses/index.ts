@@ -18,7 +18,7 @@ Deno.serve(async(req:Request)=>{
   try {body=await req.json();}catch{return response({error:"Invalid JSON"},400,headers);}
   const lat=Number(body.lat), lon=Number(body.lon), radiusMiles=Number(body.radiusMiles);
   const tags=body.tags;
-  if(!Number.isFinite(lat)||lat<24||lat>50||!Number.isFinite(lon)||lon< -125||lon> -66
+  if(!Number.isFinite(lat)||lat<18||lat>72||!Number.isFinite(lon)||lon< -180||lon> -65
       ||!Number.isFinite(radiusMiles)||radiusMiles<1||radiusMiles>50
       ||!Array.isArray(tags)||tags.length<1||tags.length>12
       ||!tags.every(t=>Array.isArray(t)&&t.length===2&&t.every(v=>typeof v==="string"&&safeTag.test(v))))
