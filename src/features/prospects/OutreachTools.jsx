@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useState} from "react";
 import {contactChecklist,defaultTemplateFor,draftFor,mailtoLink,messageEligibility,OUTREACH_TEMPLATES,verificationActivityDetails} from "../../lib/outreachTemplates.js";
+import {safeWebsite} from "../../lib/contactDetails.js";
 
 const panel={border:"1px solid #E6EAF3",borderRadius:15,padding:20,background:"#fff"};
 const small={fontSize:11,color:"#66758F",lineHeight:1.6};
@@ -197,7 +198,7 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
       <div style={{...small,marginTop:5,overflowWrap:"anywhere"}}>{x.value||x.detail}</div>
       {x.value&&<div style={{...small,fontSize:10,marginTop:4}}>{x.detail}</div>}
      </div>)}
-     {prospect.sourceUrl&&<a href={prospect.sourceUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6453D0",overflowWrap:"anywhere"}}>View original prospect source ↗</a>}
+     {safeWebsite(prospect.sourceUrl)&&<a href={safeWebsite(prospect.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6453D0",overflowWrap:"anywhere"}}>View original prospect source ↗</a>}
      {enabled&&canEdit&&<label style={small}>Source evidence / manual check details
       <textarea rows={3} style={{...field,marginTop:5,resize:"vertical"}} value={evidence} onChange={e=>setEvidence(e.target.value)} placeholder="Source URL, page reviewed, date and what was checked…"/>
      </label>}
