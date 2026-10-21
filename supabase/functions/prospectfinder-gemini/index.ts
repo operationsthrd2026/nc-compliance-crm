@@ -164,8 +164,28 @@ Deno.serve(async(req:Request)=>{
    });
    if(r.status===404){last404=true;continue;}
    if(!r.ok){
-    const msg=r.status===429?"Gemini quota or rate limit reached; check Google AI Studio quotas.":r.status===400?"Google rejected this grounding request (HTTP 400). Check model/tool availability and API configuration.":r.status===403?"Gemini model or Google Search tool access denied (HTTP 403); check this API key's project.":"Gemini returned HTTP "+r.status+".";
-    return response({error:msg,model},r.status===429?429:502,h);
+    // Google returns 429 both for transient rate limits and permanent zero
+    // free-tier grounding quota. Inspect only documented quota metadata;
+    // never return Google's raw response or any secret-bearing request data.
+    if(r.status===429){
+     let details:Json={};
+     try{details=await r.json();}catch{}
+     const googleError=details?.error||{};
+     const items=Array.isArray(googleError.details)?googleError.details:[];
+     const violations=items.flatMap((d:Json)=>Array.isArray(d.violations)?d.violations:[]);
+     const quotaZero=violations.some((q:Json)=>String(q.quotaValue)==="0")
+       ||/limit:\s*0(?:\s|,|$)/i.test(String(googleError.message||""));
+     const retryInfo=items.find((d:Json)=>typeof d.retryDelay==="string");
+     const retryMatch=String(retryInfo?.retryDelay||"").match(/^(\d+(?:\.\d+)?)s$/);
+     const retryAfterSeconds=retryMatch?Math.min(3600,Math.ceil(Number(retryMatch[1]))):null;
+     const code=quotaZero?"GEMINI_QUOTA_ZERO":"GEMINI_RATE_LIMIT";
+     const msg=quotaZero
+      ?"Google reports zero available quota for this Gemini model or Google Search grounding. The API free tier may not include grounding. Check Google AI Studio usage and billing; free CRM sources remain available."
+      :"Google returned HTTP 429 (quota or rate limit). Check Gemini project quota and billing in Google AI Studio. A temporary rate limit may reset; zero quota will not.";
+     return response({error:msg,code,model,retryAfterSeconds},429,h);
+    }
+    const msg=r.status===400?"Google rejected this grounding request (HTTP 400). Check model/tool availability and API configuration.":r.status===403?"Gemini model or Google Search tool access denied (HTTP 403); check this API key's project.":"Gemini returned HTTP "+r.status+".";
+    return response({error:msg,model},502,h);
    }
    data=await r.json();
    modelUsed=model;
