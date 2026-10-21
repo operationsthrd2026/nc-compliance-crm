@@ -54,6 +54,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
  const [diagnostics,setDiagnostics]=useState([]),[checking,setChecking]=useState(false);
  const [apolloEnabled,setApolloEnabled]=useState(false),[hunterEnabled,setHunterEnabled]=useState(false);
+ const [geminiEnabled,setGeminiEnabled]=useState(false),[geminiConsent,setGeminiConsent]=useState(false);
  const [contactTitle,setContactTitle]=useState("Human Resources"),[domain,setDomain]=useState(""),[allowCredits,setAllowCredits]=useState(false);
  const existing=useMemo(()=>new Set(crmData.map(idFor)),[crmData]);
  const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(idFor(r))})),[rows,existing]);
@@ -62,7 +63,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const post=async(path,body)=>{
   if(!baseUrl || !baseUrl.startsWith("https://"))throw new Error("Supabase is not configured in this preview.");
   let res;
-  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(path==="prospectfinder-wikidata"?30000:path==="prospectfinder-businesses"?25000:18000)}); }
+  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(path==="prospectfinder-gemini"?55000:path==="prospectfinder-wikidata"?30000:path==="prospectfinder-businesses"?25000:18000)}); }
   catch(e) {throw new Error("Cannot contact "+path+". Check the preview URL, login session, and network/CORS configuration.");}
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
@@ -106,11 +107,16 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(!next&&!keyword.trim()&&!vertical&&!state&&!city.trim()&&!zip&&!(hunterEnabled&&domain.trim())){
    setMessage("Enter a keyword, location, industry, or company domain to search.");return;
   }
+  if(!next&&geminiEnabled&&(!canAdmin||!geminiConsent)){
+   setMessage(!canAdmin?"Only CRM administrators can enable Gemini.":"Approve Gemini Google Search quota usage and possible API charges for this search.");
+   return;
+  }
   if(!next&&hunterEnabled&&(!canAdmin||!allowCredits)){
    setMessage(!canAdmin?"Admin access is required for Hunter searches.":"Confirm possible Hunter API credit usage before searching.");
    return;
   }
   setBusy(true);setMessage("");
+  if(!next&&geminiEnabled)setGeminiConsent(false); // Approval applies to this one search only.
   if(!next){setRows([]);setSelected([]);setLogs([]);setSourceErrors([]);setPage(null);}
   const loc=locationLabel(state,city.trim(),zip);
   const tasks=[];
@@ -155,6 +161,22 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
       website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||""),
       emailPhone:p.emailPhone||"",verificationNotes:p.verificationNotes||"Apollo does not provide email/phone in People Search."
+     }))};
+    }]);
+   }
+   if(geminiEnabled){
+    tasks.push(["Gemini + Google Search",async()=>{
+     const stateName=(US_STATES.find(([code])=>code===state)||[])[1]||"";
+     const data=await post("prospectfinder-gemini",{
+       action:"search",confirmUsage:true,keyword:keyword.trim(),city:city.trim(),
+       state:stateName||state,category:vertical,type
+     });
+     return {items:(data.organizations||[]).filter(p=>p.companyName&&p.sourceUrl).map(p=>({
+       ...p,website:safeOrganizationWebsite(p.website||""),
+       email:safeEmail(p.email||""),phone:safePhone(p.phone||""),
+       emailPhone:[safeEmail(p.email||""),safePhone(p.phone||"")].filter(Boolean).join(" | "),
+       sourceUrl:safeWebsite(p.sourceUrl),
+       verificationNotes:(p.verificationNotes||"")+" Gemini-grounded result; verify against its source before outreach."
      }))};
     }]);
    }
@@ -302,6 +324,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       <span style={{fontSize:11,color:embedded?"#248067":"#7DE5BF",fontWeight:700}}>✓ ProPublica + OpenStreetMap + Wikidata · no key</span>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={apolloEnabled} onChange={e=>setApolloEnabled(e.target.checked)}/> Apollo people · no search credits</label>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={hunterEnabled} disabled={!canAdmin} onChange={e=>{setHunterEnabled(e.target.checked);if(!e.target.checked)setAllowCredits(false);}}/> Hunter emails · may use credits {canAdmin?"":"(admin only)"}</label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={geminiEnabled} disabled={!canAdmin} onChange={e=>{setGeminiEnabled(e.target.checked);setGeminiConsent(false);}}/> Gemini + Google Search · optional, uses quota {canAdmin?"":"(admin only)"}</label>
      </div>
      {(apolloEnabled||hunterEnabled)&&<div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:13}}>
       {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
@@ -311,11 +334,15 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
       </label>}
      </div>}
+     {geminiEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
+       <input type="checkbox" checked={geminiConsent} onChange={e=>setGeminiConsent(e.target.checked)}/>
+       I approve one Gemini Google Search grounding request using my API quota; provider charges may apply. This approval resets after searching.
+     </label>}
      {hunterEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
        <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
        I authorize Hunter domain searches that may use up to 3 credits for websites found, or one domain search if I entered a domain.
      </label>}
-     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Free searches use public directories and Wikidata. Wikidata works best for named organizations and may have incomplete contact data. Apollo remains optional; Hunter runs only with explicit credit consent.</p>
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Free public directories and Wikidata run without keys. Gemini is optional and uses API quota with possible charges; its source-reported contacts must be checked. Apollo remains optional; Hunter uses credits only with explicit consent.</p>
     </div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
     <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
