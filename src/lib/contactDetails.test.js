@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {safeWebsite,safeEmail,safePhone,publicDetailsFromOsm,publicDetailsFromApollo} from "./contactDetails.js";
+import {safeWebsite,safeOrganizationWebsite,safeEmail,safePhone,publicDetailsFromOsm,publicDetailsFromApollo} from "./contactDetails.js";
 
 test("legitimate website is retained and invalid source/profile is not treated as a website",()=>{
  assert.equal(safeWebsite("example.org"),"https://example.org/");
@@ -22,4 +22,10 @@ test("emails and phone numbers are never invented",()=>{
 });
 test("Apollo organization metadata does not fabricate contact details",()=>{
  assert.deepEqual(publicDetailsFromApollo({primary_domain:"example.com"}),{website:"https://example.com/",email:"",phone:""});
+});
+
+test("social and source directory profiles are not organization websites",()=>{
+ assert.equal(safeOrganizationWebsite("https://www.facebook.com/example"),"");
+ assert.equal(safeOrganizationWebsite("https://projects.propublica.org/nonprofits/organizations/123"),"");
+ assert.equal(safeOrganizationWebsite("https://example.org/"),"https://example.org/");
 });
