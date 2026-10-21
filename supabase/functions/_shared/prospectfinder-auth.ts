@@ -6,6 +6,11 @@ const knownOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "https://nc-complianc-git-16f2a7-operations-thehrondemand2026-s-projects.vercel.app",
+  // Main production aliases of the linked Vercel project. Keep ALLOWED_ORIGINS
+  // for a separately configured custom domain; do not allow arbitrary websites.
+  "https://nc-compliance-crm.vercel.app",
+  "https://nc-compliance-crm-operations-thehrondemand2026-s-projects.vercel.app",
+  "https://nc-complianc.vercel.app",
 ];
 
 export function finderCors(req: Request): Record<string,string> {
