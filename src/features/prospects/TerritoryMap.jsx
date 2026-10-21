@@ -83,6 +83,15 @@ export default function TerritoryMap({ rows, scoreOf, onPickMarket, onOpen }){
               </CircleMarker>);
           }))}
         </MapContainer>
+        <div aria-label="Map provider diagnostic" style={{
+          position: "absolute", top: 12, right: 12, zIndex: 480,
+          background: "rgba(12,22,39,.95)", color: "#E7EDF9",
+          border: "1px solid rgba(255,255,255,.22)", borderRadius: 8,
+          padding: "7px 10px", fontSize: 11, fontWeight: 700,
+          boxShadow: "0 4px 14px #0006"
+        }}>
+          OpenStreetMap · no API key · map fix v2
+        </div>
         {tileError && <div role="alert" style={{
           position: "absolute", top: 14, left: 14, zIndex: 500,
           maxWidth: 330, padding: "12px 14px", borderRadius: 10,
