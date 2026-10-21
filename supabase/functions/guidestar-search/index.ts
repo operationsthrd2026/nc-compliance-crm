@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { query, state = null, nteeCode = null, page = 0 } = body;
 
-    if (!query || !query.trim()) {
+    if (!query.trim() && !state && !nteeCode) {
       return new Response(JSON.stringify({ error: "Missing query" }), {
         status: 400,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -57,6 +57,7 @@ Deno.serve(async (req: Request) => {
 
     const ppRes = await fetch(ppUrl.toString(), {
       headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!ppRes.ok) {
