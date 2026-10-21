@@ -48,8 +48,8 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { overpassQL } = body;
 
-    if (!overpassQL || !overpassQL.trim()) {
-      return new Response(JSON.stringify({ error: "Missing overpassQL query" }), {
+    if (typeof overpassQL !== "string" || !overpassQL.trim() || overpassQL.length > 12000 || !overpassQL.includes("[out:json]") || !overpassQL.includes("around:")) {
+      return new Response(JSON.stringify({ error: "Invalid or oversized Overpass query" }), {
         status: 400,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
