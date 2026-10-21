@@ -361,6 +361,27 @@ const DB = {
   async addEmail(email) {
     await sbFetch("emails", "POST", email, "return=minimal");
   },
+  // Phase 4: immutable activity timeline; SQL RLS enforces active CRM role
+  // for reads, editors for inserts and server-side author assignment.
+  async getProspectActivities(prospectId) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(prospectId))) throw new Error("Invalid CRM prospect ID.");
+    const rows = await sbFetch("outreach_activities?prospect_id=eq." + encodeURIComponent(prospectId) + "&order=created_at.desc&select=*&limit=100");
+    return Array.isArray(rows) ? rows : [];
+  },
+  async logProspectActivity({prospectId,activityType,summary,details=""}) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(prospectId))) throw new Error("Invalid CRM prospect ID.");
+    const types = ["note","email_prepared","email_sent","call","meeting","verification","reply","other"];
+    if (!types.includes(activityType)) throw new Error("Invalid activity type.");
+    if (!String(summary).trim() || String(summary).trim().length > 180) throw new Error("Activity summary must be 1–180 characters.");
+    if (String(details).length > 4000) throw new Error("Activity details too long.");
+    const rows = await sbFetch("outreach_activities", "POST", {
+      prospect_id: prospectId, activity_type: activityType,
+      summary: String(summary).trim(), details: String(details)
+    }, "return=representation");
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    if (!row?.id) throw new Error("The database did not confirm the new activity.");
+    return row;
+  },
 };
 
 /* ════════════════════════════════════════════════════════════════
@@ -3863,6 +3884,16 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         canAdmin={role.canAdmin}
         onLoadApiCredentials={DB.getApiCredentials}
         onSaveApiCredential={DB.saveApiCredential}
+        activityEnabled={isConfigured && dbStatus==="connected"}
+        onGetActivities={DB.getProspectActivities}
+        onLogActivity={async entry=>{
+          if(!role.canEdit)throw new Error("View-only CRM accounts cannot record activities.");
+          if(!isConfigured)throw new Error("Activity history requires a connected CRM database.");
+          if(!crmData.some(p=>p.id===entry.prospectId))throw new Error("The prospect was not found in your current CRM.");
+          const row=await DB.logProspectActivity(entry);
+          if(addAudit){try{await addAudit(currentUser.username,"Added "+entry.activityType+" activity for CRM prospect.");}catch{}}
+          return row;
+        }}
       />
     ) : (
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
