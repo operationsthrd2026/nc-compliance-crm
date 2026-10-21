@@ -34,12 +34,12 @@ const fromNonprofit=o=>({
  verificationNotes:"Listed in IRS-derived nonprofit records. Contact details and current exemption status not independently verified.",
  whyFit:"Nonprofit directory match",ein:o.ein||"",website:""
 });
-const fromBusiness=e=>{
+const fromBusiness=(e,fallbackLocation)=>{
  const t=e.tags||{},city=t["addr:city"]||"",state=t["addr:state"]||"";
  const website=t.website||t["contact:website"]||"",email=t.email||t["contact:email"]||"",phone=t.phone||t["contact:phone"]||"";
  const osmLink="https://www.openstreetmap.org/"+e.type+"/"+e.id;
  return {companyName:t.name||"Unnamed small business",contactName:"",title:"",
- emailPhone:[email,phone].filter(Boolean).join(" | "),cityMarket:locationLabel(state,city,""),market:locationLabel(state,city,""),
+ emailPhone:[email,phone].filter(Boolean).join(" | "),cityMarket:city||state?locationLabel(state,city,""):fallbackLocation,market:city||state?locationLabel(state,city,""):fallbackLocation,
  sourceUrl:website||osmLink,website,sourceType:"OpenStreetMap (Overpass)",vertical:"",
  hrPersonListed:"Unknown",verificationNotes:"Community-contributed location and contact data; email addresses are not independently verified.",
  whyFit:"Business listing matching chosen category",osmId:e.type+":"+e.id};
@@ -75,7 +75,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      else{
       const q=keyword.trim()||(nonProfitCategories.includes(vertical)?vertical:"nonprofit");
       const currentPage=next?(page||0):0;
-      const info=await post("guidestar-search",{query:q,state:state||null,page:currentPage});
+      const info=await post("prospectfinder-nonprofits",{query:q,state:state||null,page:currentPage});
       let organizations=info.organizations||[];
       if(city.trim())organizations=organizations.filter(o=>clean(o.city)===clean(city));
       append(organizations.map(fromNonprofit));
@@ -88,15 +88,12 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     if(!city.trim()&&!zip){addLog("Small businesses need a city or ZIP. Nationwide bulk OSM searches are not supported.");}
     else{
      try{
-      const location=await post("us-geocode",{city:city.trim(),state,zip});
-      const meters=Math.round(Number(radius)*1609.344);
+      const location=await post("prospectfinder-geocode",{city:city.trim(),state,zip});
       const tags=categories[vertical]||fallbackTags;
-      const clauses=tags.map(([k,v])=>'node["'+k+'"="'+v+'"](around:'+meters+','+location.lat+','+location.lon+');way["'+k+'"="'+v+'"](around:'+meters+','+location.lat+','+location.lon+');').join("");
-      const query="[out:json][timeout:25];("+clauses+");out center 75;";
-      const raw=await post("osm-search",{overpassQL:query});
+      const raw=await post("prospectfinder-businesses",{lat:location.lat,lon:location.lon,radiusMiles:Number(radius),tags});
       let businesses=(raw.elements||[]).filter(e=>e.tags?.name);
       if(keyword.trim())businesses=businesses.filter(e=>clean(e.tags.name).includes(clean(keyword))||clean(Object.values(e.tags).join(" ")).includes(clean(keyword)));
-      append(businesses.slice(0,75).map(fromBusiness));
+      append(businesses.slice(0,75).map(e=>fromBusiness(e,loc)));
       addLog("Small businesses: "+businesses.length+" matched near "+loc+". OSM coverage varies.");
      }catch(e){addLog("Small business source: "+e.message);}
     }
