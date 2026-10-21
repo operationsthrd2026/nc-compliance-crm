@@ -3842,6 +3842,21 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           t2(saved.length+" prospect"+(saved.length===1?"":"s")+" added to CRM!");
           return saved;
         }}
+        canEdit={role.canEdit}
+        onUpdateProspect={async ({id,changes})=>{
+          if(!role.canEdit)throw new Error("Your CRM account has view-only permissions.");
+          const original=crmData.find(p=>p.id===id);
+          if(!original)throw new Error("This prospect could not be found. Refresh the CRM and retry.");
+          let next={...original,...changes};
+          if(changes.currentStatus&&changes.currentStatus!==original.currentStatus)
+            next=applyTouchDates(next,changes.currentStatus);
+          if(original.emailPhone!==next.emailPhone)next={...next,emailStatus:"",emailCheckedAt:""};
+          const saved=await onSaveProspect(next);
+          if(!saved||saved.__saveFailed)throw new Error(saved?.__saveFailed||"Database did not confirm the update.");
+          if(addAudit)await addAudit(currentUser.username,"Qualified prospect: "+original.companyName).catch(()=>{});
+          t2("Qualification saved to CRM.");
+          return saved;
+        }}
         baseUrl={SUPABASE_URL}
         requestHeaders={authHeaders}
         dbStatus={dbStatus}
