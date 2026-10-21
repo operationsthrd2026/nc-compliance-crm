@@ -47,6 +47,10 @@ function rowsFor(answer:string,sources:{uri:string,title:string}[],scope:string)
   const wanted=safeUrl(item.source_url);
   // Citations MUST originate from the API's groundingMetadata, not the model's memory.
   let actual=sources.find(x=>wanted&&x.uri===wanted);
+  if(!actual&&item.source_title){
+   const title=norm(item.source_title);
+   actual=sources.find(x=>title.length>3&&norm(x.title)===title);
+  }
   if(!actual){
    const cleanName=norm(companyName);
    actual=sources.find(x=>{
@@ -83,7 +87,7 @@ function rateLimit(identity:string){
  if(requests.size>300)requests.clear();
  requests.set(identity,[...hits,now]);return false;
 }
-const guide='Find up to 3 genuine U.S. companies or nonprofits using LIVE Google Search. Return only a JSON object with an organizations array. Each item has name, website, email, phone, city, state, source_url. Supply only public information visible in Google Search results. Prefer search results from an organization own website. Copy an actual cited source URL when available; do not invent sources or domains. Never invent emails or phone numbers; use empty strings if absent. If no reliably grounded organization is found return {"organizations":[]}.';
+const guide='Find up to 3 genuine U.S. companies or nonprofits using LIVE Google Search. Return only a JSON object with an organizations array. Each item has name, website, email, phone, city, state, source_url and source_title (all strings). Supply only public information visible in Google Search results. Prefer search results from an organization own website. Copy the title of the actual cited web search result into source_title and its URL into source_url when available; do not invent sources or domains. Never invent emails or phone numbers; use empty strings if absent. If no reliably grounded organization is found return {"organizations":[]}.';
 
 Deno.serve(async(req:Request)=>{
  const h=finderCors(req);
