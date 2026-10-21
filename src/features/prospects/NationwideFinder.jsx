@@ -47,16 +47,18 @@ const fromBusiness=(e,fallbackLocation)=>{
 const field=(label,child)=><label style={{display:"flex",flexDirection:"column",gap:5,fontSize:11,color:MUTED,fontWeight:650}}>{label}{child}</label>;
 export default function NationwideFinder({onClose,onAddProspects,crmData=[],baseUrl,requestHeaders,embedded=false}){
  const [type,setType]=useState("both"),[state,setState]=useState(""),[city,setCity]=useState(""),[zip,setZip]=useState("");
- const [radius,setRadius]=useState(15),[vertical,setVertical]=useState(""),[keyword,setKeyword]=useState("");
+ const [radius,setRadius]=useState(5),[vertical,setVertical]=useState(""),[keyword,setKeyword]=useState("");
  const [busy,setBusy]=useState(false),[adding,setAdding]=useState(false),[rows,setRows]=useState([]),[selected,setSelected]=useState([]);
- const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]);
+ const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
  const existing=useMemo(()=>new Set(crmData.map(x=>clean(x.companyName)+"|"+clean(x.cityMarket||x.market))),[crmData]);
  const shown=useMemo(()=>rows.map(r=>({...r,already:existing.has(clean(r.companyName)+"|"+clean(r.cityMarket||r.market))})),[rows,existing]);
  const append=items=>setRows(prev=>{const seen=new Set(prev.map(idFor));return [...prev,...items.filter(r=>{const id=idFor(r);if(seen.has(id))return false;seen.add(id);return true;})];});
  const addLog=t=>setLogs(prev=>[...prev,t]);
  const post=async(path,body)=>{
-  if(!baseUrl)throw new Error("Supabase is not configured.");
-  const res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body)});
+  if(!baseUrl || !baseUrl.startsWith("https://"))throw new Error("Supabase is not configured in this preview.");
+  let res;
+  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(18000)}); }
+  catch(e) {throw new Error("Cannot contact "+path+". Check the preview URL, login session, and network/CORS configuration.");}
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
   return data;
@@ -66,23 +68,29 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(error){setMessage(error);return;}
   if(!keyword.trim()&&!vertical&&!state&&!city&&!zip){setMessage("Choose an area, category, or keyword to begin.");return;}
   setBusy(true);setMessage("");
-  if(!next){setRows([]);setSelected([]);setLogs([]);setPage(null);}
+  if(!next){setRows([]);setSelected([]);setLogs([]);setPage(null);setSourceErrors([]);}
   const loc=locationLabel(state,city.trim(),zip);
+  const failed=[];
+  let totalFound=0;
   try{
    if(type!=="smb"){
     try{
      if(zip&&!city){addLog("Nonprofit Explorer does not support exact ZIP-only filtering. Choose city and state for a targeted nonprofit search.");}
      else{
-      const q=keyword.trim()||(nonProfitCategories.includes(vertical)?vertical:"nonprofit");
+      // ProPublica searches names and city names, not generic nonprofit category labels.
+      // A city without a keyword is a useful broad search; use "foundation" for state-only discovery.
+      const q=keyword.trim()||(city.trim()?city.trim():"foundation");
+      if(!keyword.trim()&&!city.trim())addLog("Showing organizations with 'foundation' in their name. Try a name/keyword for other nonprofits.");
       const currentPage=next?(page||0):0;
-      const info=await post("prospectfinder-nonprofits",{query:q,state:state||null,page:currentPage});
+      const info=await post("prospectfinder-nonprofits",{query:q,city:city.trim(),state:state||null,page:currentPage});
       let organizations=info.organizations||[];
       if(city.trim())organizations=organizations.filter(o=>clean(o.city)===clean(city));
+      totalFound+=organizations.length;
       append(organizations.map(fromNonprofit));
       setPage(currentPage+1<Number(info.num_pages||0)?currentPage+1:null);
       addLog("Nonprofits: "+organizations.length+" results from page "+(currentPage+1)+" in "+loc+".");
      }
-    }catch(e){addLog("Nonprofit source: "+e.message);}
+    }catch(e){failed.push("Nonprofit source: "+e.message);addLog("Nonprofit source: "+e.message);}
    }
    if(!next&&type!=="nonprofit"){
     if(!city.trim()&&!zip){addLog("Small businesses need a city or ZIP. Nationwide bulk OSM searches are not supported.");}
@@ -93,12 +101,18 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       const raw=await post("prospectfinder-businesses",{lat:location.lat,lon:location.lon,radiusMiles:Number(radius),tags});
       let businesses=(raw.elements||[]).filter(e=>e.tags?.name);
       if(keyword.trim())businesses=businesses.filter(e=>clean(e.tags.name).includes(clean(keyword))||clean(Object.values(e.tags).join(" ")).includes(clean(keyword)));
-      append(businesses.slice(0,75).map(e=>fromBusiness(e,loc)));
+      totalFound+=businesses.length;
+      append(businesses.slice(0,60).map(e=>fromBusiness(e,loc)));
       addLog("Small businesses: "+businesses.length+" matched near "+loc+". OSM coverage varies.");
-     }catch(e){addLog("Small business source: "+e.message);}
+     }catch(e){failed.push("Small business source: "+e.message);addLog("Small business source: "+e.message);}
     }
    }
-  }finally{setBusy(false);}
+  }finally{
+   setBusy(false);
+   setSourceErrors(failed);
+   if(failed.length) setMessage(failed.join(" • ")+" Use a specific keyword and 5-mile radius, or try nonprofits only.");
+   else if(!next&&totalFound===0) setMessage("Search completed but the selected public directories returned no matching organizations. Try a different keyword, or select a city and a smaller radius.");
+  }
  };
  const add=async()=>{
   const items=shown.filter(r=>selected.includes(idFor(r))&&!r.already).map(r=>{
@@ -132,7 +146,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     <div style={{gridColumn:"1 / -1"}}>{field("Business or organization keyword",<input style={inp} value={keyword} onChange={e=>setKeyword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!busy)run();}} placeholder="e.g. dental, community center, software, charity"/>)}</div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching live directories…":"Search Prospects"}</button>
    </div>
-   {message&&<p role="alert" style={{color:embedded?"#BA3E52":"#fca5a5",fontSize:12}}>{message}</p>}
+   {message&&<div role="alert" style={{background:embedded?"#FFF5F1":"rgba(255,151,101,.12)",border:"1px solid #F9B4A4",borderRadius:10,padding:"12px 14px",color:embedded?"#9F3E33":"#ffd1c7",fontSize:12,marginBottom:14,lineHeight:1.5}}><strong>{sourceErrors.length?"Search service issue":"Search notice"}:</strong> {message}</div>}
    {logs.length>0&&<div style={{background:embedded?"#F5F7FD":"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"#57627A":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
     <div><strong>{shown.length} prospects</strong><span style={{color:MUTED,fontSize:12}}> · {selected.length} selected</span></div>
@@ -155,7 +169,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        <td style={{padding:10,color:r.already?"#34d399":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
       </tr>;
      })}
-     {!shown.length&&<tr><td colSpan={7} style={{padding:30,textAlign:"center",color:MUTED}}>Choose your location and click Search Prospects. Results come from public directories, not demo data.</td></tr>}
+     {!shown.length&&<tr><td colSpan={7} style={{padding:30,textAlign:"center",color:embedded?"#66758D":MUTED}}>{busy?"Searching public directories…":"No prospects displayed. Select a city and a specific category, then click Search Prospects. Any API errors will appear above."}</td></tr>}
      </tbody>
     </table>
    </div>
