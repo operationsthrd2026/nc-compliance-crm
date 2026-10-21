@@ -13,6 +13,19 @@ export function safeWebsite(input) {
   }catch{return "";}
 }
 
+
+export function safeOrganizationWebsite(input) {
+  const website=safeWebsite(input);
+  if(!website)return "";
+  const host=new URL(website).hostname.toLowerCase().replace(/^www\./,"");
+  // Profiles and directory pages should be shown as sources, not as a
+  // company's own original website (and never passed to Hunter as its domain).
+  const directories=["facebook.com","instagram.com","linkedin.com","x.com",
+    "twitter.com","yelp.com","tripadvisor.com","linktr.ee","google.com",
+    "projects.propublica.org","openstreetmap.org","hunter.io"];
+  return directories.some(d=>host===d||host.endsWith("."+d))?"":website;
+}
+
 export function safeEmail(input) {
   const raw=String(input??"").trim().split(/[;,\s]+/)[0]||"";
   return /^[^\s@<>]+@[^\s@<>]+\.[a-zA-Z]{2,}$/.test(raw)&&raw.length<=254?raw:"";
@@ -25,7 +38,7 @@ export function safePhone(input) {
 }
 
 export function publicDetailsFromOsm(tags={}) {
-  const website=safeWebsite(tags["contact:website"]||tags.website||tags["website:official"]||tags.url);
+  const website=safeOrganizationWebsite(tags["website:official"]||tags.website||tags["contact:website"]||tags.url);
   const email=safeEmail(tags["contact:email"]||tags.email);
   const phone=safePhone(tags["contact:phone"]||tags.phone||tags["contact:mobile"]||tags.mobile);
   return {website,email,phone};
@@ -34,5 +47,5 @@ export function publicDetailsFromOsm(tags={}) {
 export function publicDetailsFromApollo(organization={}) {
   // Apollo People Search does not supply a person's verified email/phone.
   const site=organization.website_url||organization.website||organization.primary_domain||organization.domain;
-  return {website:safeWebsite(site),email:"",phone:""};
+  return {website:safeOrganizationWebsite(site),email:"",phone:""};
 }
