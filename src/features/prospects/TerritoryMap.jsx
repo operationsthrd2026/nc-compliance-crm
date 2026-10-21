@@ -40,15 +40,18 @@ export default function TerritoryMap({ rows, scoreOf, onPickMarket, onOpen }){
   }).sort((a, b) => b.n - a.n), [places, scoreOf]);
 
   if (!rows.length) return <EmptyState icon="🗺️" title="Nothing to map">No prospects match the current filters.</EmptyState>;
-  if (!stats.length) return <EmptyState icon="🗺️" title="No locations to show">None of these prospects has a recognised North Carolina market or city yet ({unplaced} unplaced). Set a Market on a prospect to place it on the map.</EmptyState>;
+  if (!stats.length) return <EmptyState icon="🗺️" title="No locations to show">This classic CRM map currently supports North Carolina markets only. None of these prospects has a recognized map location ({unplaced} unplaced). Set a Market on a prospect to place it on the map.</EmptyState>;
 
   const max = Math.max(...stats.map(s => s.n));
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 14, alignItems: "start" }} className="nc-map-grid">
       <div className="nc-card" style={{ overflow: "hidden", position: "relative" }}>
         <MapContainer center={DEFAULT_NC_COORDS} zoom={7} style={{ height: 560, width: "100%" }} scrollWheelZoom={true}>
-          <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+          />
           <Fit points={stats.map(s => s.coords)} focus={focus} />
           {stats.map(s => {
             const color = TIERS[s.tier].color;
