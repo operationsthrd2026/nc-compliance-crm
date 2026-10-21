@@ -54,6 +54,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
  const [diagnostics,setDiagnostics]=useState([]),[checking,setChecking]=useState(false);
  const [apolloEnabled,setApolloEnabled]=useState(true),[hunterEnabled,setHunterEnabled]=useState(false);
+ const [claudeEnabled,setClaudeEnabled]=useState(false),[openaiEnabled,setOpenaiEnabled]=useState(false),[paidConsent,setPaidConsent]=useState(false);
  const [contactTitle,setContactTitle]=useState("Human Resources"),[domain,setDomain]=useState(""),[allowCredits,setAllowCredits]=useState(false);
  const existing=useMemo(()=>new Set(crmData.map(idFor)),[crmData]);
  const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(idFor(r))})),[rows,existing]);
@@ -62,7 +63,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const post=async(path,body)=>{
   if(!baseUrl || !baseUrl.startsWith("https://"))throw new Error("Supabase is not configured in this preview.");
   let res;
-  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(path==="prospectfinder-businesses"?25000:18000)}); }
+  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(path==="prospectfinder-ai-search"?55000:path==="prospectfinder-businesses"?25000:18000)}); }
   catch(e) {throw new Error("Cannot contact "+path+". Check the preview URL, login session, and network/CORS configuration.");}
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
@@ -102,11 +103,17 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(!next&&!keyword.trim()&&!vertical&&!state&&!city.trim()&&!zip&&!(hunterEnabled&&domain.trim())){
    setMessage("Enter a keyword, location, industry, or company domain to search.");return;
   }
+  if(!next&&(claudeEnabled||openaiEnabled)&&(!canAdmin||!paidConsent)){
+   setMessage(!canAdmin?"Admin access is required for paid AI web searches.":"Confirm AI API billing before using Claude or ChatGPT web search.");
+   return;
+  }
   if(!next&&hunterEnabled&&(!canAdmin||!allowCredits)){
    setMessage(!canAdmin?"Admin access is required for Hunter searches.":"Confirm possible Hunter API credit usage before searching.");
    return;
   }
   setBusy(true);setMessage("");
+  // Consent applies only to this one click; reset before another paid search.
+  if(!next&&(claudeEnabled||openaiEnabled))setPaidConsent(false);
   if(!next){setRows([]);setSelected([]);setLogs([]);setSourceErrors([]);setPage(null);}
   const loc=locationLabel(state,city.trim(),zip);
   const tasks=[];
@@ -151,6 +158,21 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
       website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||""),
       emailPhone:p.emailPhone||"",verificationNotes:p.verificationNotes||"Apollo does not provide email/phone in People Search."
+     }))};
+    }]);
+   }
+   for(const [enabled,provider,name] of [[openaiEnabled,"openai","ChatGPT Web Search"],[claudeEnabled,"anthropic","Claude Web Search"]]){
+    if(!enabled)continue;
+    tasks.push([name,async()=>{
+     const info=await post("prospectfinder-ai-search",{
+      action:"search",provider,confirmPaid:true,keyword:keyword.trim(),
+      location:[city.trim(),state,zip].filter(Boolean).join(", "),
+      category:vertical,type
+     });
+     return {items:(info.organizations||[]).filter(p=>p.companyName&&p.sourceUrl).map(p=>({
+      ...p,website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||""),
+      phone:safePhone(p.phone||""),emailPhone:[safeEmail(p.email||""),safePhone(p.phone||"")].filter(Boolean).join(" | "),
+      sourceUrl:safeWebsite(p.sourceUrl),verificationNotes:(p.verificationNotes||"")+" AI research lead; confirm with the linked source before outreach."
      }))};
     }]);
    }
@@ -283,6 +305,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       <span style={{fontSize:11,color:embedded?"#248067":"#7DE5BF",fontWeight:700}}>✓ Public directories · no key</span>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={apolloEnabled} onChange={e=>setApolloEnabled(e.target.checked)}/> Apollo people · no search credits</label>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={hunterEnabled} disabled={!canAdmin} onChange={e=>{setHunterEnabled(e.target.checked);if(!e.target.checked)setAllowCredits(false);}}/> Hunter emails · may use credits {canAdmin?"":"(admin only)"}</label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={openaiEnabled} disabled={!canAdmin} onChange={e=>{setOpenaiEnabled(e.target.checked);setPaidConsent(false);}}/> ChatGPT · live web research (paid)</label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={claudeEnabled} disabled={!canAdmin} onChange={e=>{setClaudeEnabled(e.target.checked);setPaidConsent(false);}}/> Claude · live web research (paid)</label>
      </div>
      {(apolloEnabled||hunterEnabled)&&<div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:13}}>
       {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
@@ -292,11 +316,15 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
       </label>}
      </div>}
+     {(openaiEnabled||claudeEnabled)&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer",fontWeight:700}}>
+      <input type="checkbox" checked={paidConsent} onChange={e=>setPaidConsent(e.target.checked)}/>
+      I approve possible OpenAI and/or Anthropic API charges for this single search. Each enabled AI source makes one paid request with live web search. Approval resets after this search.
+     </label>}
      {hunterEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
        <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
        I authorize Hunter domain searches that may use up to 3 credits for websites found, or one domain search if I entered a domain.
      </label>}
-     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Hunter runs only with explicit credit consent. Without a supplied domain it checks at most three websites actually listed by results.</p>
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Claude and ChatGPT require separate API keys and API billing (ChatGPT subscription not included). AI citations and contact details require manual verification. Hunter runs only with explicit credit consent.</p>
     </div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
     <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
