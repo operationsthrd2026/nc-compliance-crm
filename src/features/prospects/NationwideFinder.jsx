@@ -55,6 +55,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [diagnostics,setDiagnostics]=useState([]),[checking,setChecking]=useState(false);
  const [apolloEnabled,setApolloEnabled]=useState(false),[hunterEnabled,setHunterEnabled]=useState(false);
  const [geminiEnabled,setGeminiEnabled]=useState(false),[geminiConsent,setGeminiConsent]=useState(false);
+ const [geminiPaused,setGeminiPaused]=useState(false);
  const [contactTitle,setContactTitle]=useState("Human Resources"),[domain,setDomain]=useState(""),[allowCredits,setAllowCredits]=useState(false);
  const existing=useMemo(()=>new Set(crmData.map(idFor)),[crmData]);
  const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(idFor(r))})),[rows,existing]);
@@ -66,7 +67,13 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(path==="prospectfinder-gemini"?55000:path==="prospectfinder-wikidata"?30000:path==="prospectfinder-businesses"?25000:18000)}); }
   catch(e) {throw new Error("Cannot contact "+path+". Check the preview URL, login session, and network/CORS configuration.");}
   const data=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
+  if(!res.ok){
+   const error=new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
+   error.status=res.status;
+   error.code=data.code||"";
+   error.retryAfterSeconds=data.retryAfterSeconds||null;
+   throw error;
+  }
   return data;
  };
  const checkConnections=async()=>{
@@ -214,12 +221,18 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
    // Run the enabled sources concurrently; a failure from one must not hide other results.
    const outcomes=await Promise.all(tasks.map(async ([name,query])=>{
     try{return {name,...await query()};}
-    catch(e){return {name,error:e?.message||"Source unavailable"};}
+    catch(e){return {name,error:e?.message||"Source unavailable",status:e?.status,code:e?.code,retryAfterSeconds:e?.retryAfterSeconds};}
    }));
    const merged=[],seen=new Set(),logsOut=[...notes],failed=[];
    let nextPage=null;
    for(const outcome of outcomes){
     if(outcome.error){
+     if(outcome.name==="Gemini + Google Search"&&outcome.status===429){
+      setGeminiEnabled(false);
+      setGeminiConsent(false);
+      setGeminiPaused(true);
+      logsOut.push("Gemini automatically turned off for this page session after Google's quota/rate-limit error. Free directory searches remain active.");
+     }
      failed.push(outcome.name+": "+outcome.error);
      logsOut.push("✕ "+outcome.name+": "+outcome.error);
      continue;
@@ -324,8 +337,13 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       <span style={{fontSize:11,color:embedded?"#248067":"#7DE5BF",fontWeight:700}}>✓ ProPublica + OpenStreetMap + Wikidata · no key</span>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={apolloEnabled} onChange={e=>setApolloEnabled(e.target.checked)}/> Apollo people · no search credits</label>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={hunterEnabled} disabled={!canAdmin} onChange={e=>{setHunterEnabled(e.target.checked);if(!e.target.checked)setAllowCredits(false);}}/> Hunter emails · may use credits {canAdmin?"":"(admin only)"}</label>
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={geminiEnabled} disabled={!canAdmin} onChange={e=>{setGeminiEnabled(e.target.checked);setGeminiConsent(false);}}/> Gemini + Google Search · optional, uses quota {canAdmin?"":"(admin only)"}</label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={geminiEnabled} disabled={!canAdmin||geminiPaused} onChange={e=>{setGeminiEnabled(e.target.checked);setGeminiConsent(false);}}/> Gemini + Google Search · optional, may require paid Google Search grounding {geminiPaused?"(paused after quota error)":canAdmin?"":"(admin only)"}</label>
      </div>
+     {geminiPaused&&<div role="status" style={{gridColumn:"1 / -1",fontSize:11,marginTop:10,lineHeight:1.65,color:embedded?"#A45A31":"#FFCE8A"}}>
+      Google returned a Gemini quota/rate-limit error. Gemini has been paused until this page is refreshed; public directory searches remain available. Check
+      {" "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{color:embedded?"#5143BF":"#FFE3A1"}}>Google AI Studio usage and billing ↗</a>.
+      Gemini model availability is not proof of Google Search grounding quota.
+     </div>}
      {(apolloEnabled||hunterEnabled)&&<div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:13}}>
       {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
@@ -342,7 +360,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
        I authorize Hunter domain searches that may use up to 3 credits for websites found, or one domain search if I entered a domain.
      </label>}
-     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Free public directories and Wikidata run without keys. Gemini is optional and uses API quota with possible charges; its source-reported contacts must be checked. Apollo remains optional; Hunter uses credits only with explicit consent.</p>
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Free public directories and Wikidata work without Gemini or billing. Gemini Google Search grounding may be unavailable on a free-tier API project; it can use quota and incur charges. Apollo remains optional; Hunter uses credits only with explicit consent.</p>
     </div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
     <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
