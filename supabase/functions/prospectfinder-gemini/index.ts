@@ -3,8 +3,36 @@ import { requireCrmUser, getApiKey } from "../_shared/auth.ts";
 
 // Optional Gemini search grounded in Google Search results. Keys never leave
 // Supabase; requests are authorized CRM admin sessions and explicitly opted in.
-const MODEL="gemini-2.5-flash";
-const endpoint="https://generativelanguage.googleapis.com/v1beta/models/";
+// Gemini 2.5 is restricted on newer API projects and can return 404 even
+// when visible in Google model listings. Prefer newer search-capable models.
+const PREFERRED_MODELS=["gemini-3.5-flash-lite","gemini-3.6-flash","gemini-3.8-flash","gemini-3.1-flash-lite","gemini-3-flash-preview","gemini-2.5-flash"];
+const API="https://generativelanguage.googleapis.com/v1beta/";
+const endpoint=API+"models/";
+async function listAvailableModels(key:string):Promise<string[]>{
+ const supported=new Set<string>();
+ let pageToken="";
+ for(let index=0;index<2;index++){
+  const qs=new URLSearchParams({pageSize:"100"});
+  if(pageToken)qs.set("pageToken",pageToken);
+  const r=await fetch(API+"models?"+qs.toString(),{
+   headers:{"x-goog-api-key":key},signal:AbortSignal.timeout(9500)
+  });
+  if(!r.ok){
+   const reason=r.status===400||r.status===401||r.status===403
+    ?"Google rejected the Gemini key or model-list access (HTTP "+r.status+")."
+    :"Could not list Gemini models (HTTP "+r.status+").";
+   throw Error(reason);
+  }
+  const info=await r.json();
+  for(const item of info.models||[]){
+   const id=String(item.name||"").replace(/^models\//,"");
+   if((item.supportedGenerationMethods||[]).includes("generateContent"))supported.add(id);
+  }
+  pageToken=String(info.nextPageToken||"");
+  if(!pageToken)break;
+ }
+ return PREFERRED_MODELS.filter(m=>supported.has(m));
+}
 type Json=Record<string,any>;
 const requests=new Map<string,number[]>();
 const max=3;
@@ -106,11 +134,13 @@ Deno.serve(async(req:Request)=>{
   return response({error:"Gemini request limit reached. Try later."},429,h);
  try{
   if(payload.action==="test"){
-   // No model inference or Google Search invocation: no search quota consumed.
-   const check=await fetch(endpoint+MODEL,{headers:{"x-goog-api-key":key},signal:AbortSignal.timeout(9000)});
-   return response({connected:check.ok,provider:"gemini",
-    message:check.ok?"Gemini API key accepted. Search grounding and billing are not tested.":"Gemini key or model access denied (HTTP "+check.status+")."},
-    check.ok?200:502,h);
+   // Query the actual models visible to this key rather than probing retired
+   // Gemini 2.5 and mistaking an unavailable model for an invalid credential.
+   const models=await listAvailableModels(key);
+   if(!models.length)return response({connected:false,provider:"gemini",
+    message:"Key accepted, but Google lists no supported Flash search model for this API project. Check your Google AI Studio model permissions."},200,h);
+   return response({connected:true,provider:"gemini",model:models[0],
+    message:"Key accepted. Preferred available model: "+models[0]+". Live Google Search grounding, quota and billing have not yet been tested."},200,h);
   }
   const keyword=text(payload.keyword,90);
   const city=text(payload.city,70),state=text(payload.state,45),industry=text(payload.category,85);
@@ -118,17 +148,30 @@ Deno.serve(async(req:Request)=>{
   if(!keyword&&!city&&!state&&!industry)
    return response({error:"Enter a city, state, industry or keyword."},400,h);
   const prompt="Research "+(kind==="nonprofit"?"nonprofit organizations":kind==="smb"?"small businesses or companies":"companies and nonprofits")+" in the United States. Keyword: "+(keyword||"any")+". City: "+(city||"unspecified")+". State: "+(state||"unspecified")+". Industry: "+(industry||"any")+". "+guide;
-  const r=await fetch(endpoint+MODEL+":generateContent",{
-   method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},
-   body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],
-     tools:[{google_search:{}}],generationConfig:{temperature:0.1,maxOutputTokens:1500}}),
-   signal:AbortSignal.timeout(42000)
-  });
-  if(!r.ok){
-   const msg=r.status===429?"Gemini rate limit or quota reached.":r.status===400?"Gemini Google Search grounding may not be available on this key/model.":r.status===403?"Gemini key does not have permission for this model or search.":"Gemini service returned HTTP "+r.status+".";
-   return response({error:msg},r.status===429?429:502,h);
+  // Model selection is based on Google's current models.list for this key.
+  // A 404 may still occur for a listed model; only then try the next known
+  // supported option. Never retry quota, billing, or permission errors.
+  const models=await listAvailableModels(key);
+  if(!models.length)return response({error:"No supported Gemini Flash model is available to this API key. Check available models in Google AI Studio."},409,h);
+  const body=JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],
+    tools:[{google_search:{}}],generationConfig:{temperature:0.1,maxOutputTokens:1800}});
+  let data:Json|null=null,modelUsed="",last404=false;
+  const totalTimeout=AbortSignal.timeout(44000);
+  for(const model of models.slice(0,3)){
+   const r=await fetch(endpoint+model+":generateContent",{
+    method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},
+    body,signal:totalTimeout
+   });
+   if(r.status===404){last404=true;continue;}
+   if(!r.ok){
+    const msg=r.status===429?"Gemini quota or rate limit reached; check Google AI Studio quotas.":r.status===400?"Google rejected this grounding request (HTTP 400). Check model/tool availability and API configuration.":r.status===403?"Gemini model or Google Search tool access denied (HTTP 403); check this API key's project.":"Gemini returned HTTP "+r.status+".";
+    return response({error:msg,model},r.status===429?429:502,h);
+   }
+   data=await r.json();
+   modelUsed=model;
+   break;
   }
-  const data=await r.json();
+  if(!data)return response({error:last404?"Google returned HTTP 404 for the Flash models available to this project. Check your Google AI Studio model access; older 2.5 models may be restricted.":"No usable Gemini model was found.",attemptedModels:models.slice(0,3)},502,h);
   const candidates=Array.isArray(data.candidates)?data.candidates:[];
   let all:Json[]=[],sourceCount=0;
   const loc=[city,state].filter(Boolean).join(", ");
@@ -140,9 +183,11 @@ Deno.serve(async(req:Request)=>{
   }
   const seen=new Set();
   all=all.filter((x:Json)=>{const k=norm(x.companyName)+"|"+norm(x.website)+"|"+norm(x.cityMarket);if(seen.has(k))return false;seen.add(k);return true;}).slice(0,max);
-  return response({organizations:all,source:"Gemini Google Search",groundedSources:sourceCount,
+  return response({organizations:all,source:"Gemini Google Search",model:modelUsed,groundedSources:sourceCount,
    note:sourceCount?"Results require source review; source-listed contacts are unverified.":"Google Search grounding returned no source citations; no ungrounded leads were accepted."},200,h);
  }catch(e){
-  return response({error:e instanceof Error&&e.name==="TimeoutError"?"Gemini search timed out.":"Gemini search could not be completed."},502,h);
+  const description=e instanceof Error?e.message:"";
+  const problem=e instanceof Error&&e.name==="TimeoutError"?"Gemini search timed out.":description.startsWith("Google rejected")||description.startsWith("Could not list")?description:"Gemini request could not be completed.";
+  return response({error:problem},502,h);
  }
 });
