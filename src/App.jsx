@@ -3843,6 +3843,8 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         requestHeaders={authHeaders}
         dbStatus={dbStatus}
         canAdmin={role.canAdmin}
+        onLoadApiCredentials={DB.getApiCredentials}
+        onSaveApiCredential={DB.saveApiCredential}
       />
     ) : (
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
