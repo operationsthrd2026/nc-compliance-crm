@@ -3,7 +3,7 @@ import { finderCors, requireCrmUser, response } from "../_shared/prospectfinder-
 // Structured local business search. We build Overpass QL ourselves instead of
 // accepting arbitrary QL from the browser. Results are OpenStreetMap data.
 const endpoints=[
-  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
 ];
 const safeTag=/^[a-z_]{2,25}$/;
@@ -24,21 +24,21 @@ Deno.serve(async(req:Request)=>{
       ||!tags.every(t=>Array.isArray(t)&&t.length===2&&t.every(v=>typeof v==="string"&&safeTag.test(v))))
     return response({error:"Invalid or unsupported area/category"},400,headers);
   // One bounded request; no open-ended bulk scraping or editable query strings.
-  const meters=Math.round(radiusMiles*1609.344);
-  const clauses=tags.map(([key,value])=>
+  const meters=Math.round(Math.min(radiusMiles,15)*1609.344);
+  const clauses=tags.slice(0,3).map(([key,value])=>
     'node["'+key+'"="'+value+'"](around:'+meters+','+lat+','+lon+');'+
     'way["'+key+'"="'+value+'"](around:'+meters+','+lat+','+lon+');'
   ).join("");
-  const query="[out:json][timeout:25];("+clauses+");out center 75;";
+  const query="[out:json][timeout:10];("+clauses+");out center 60;";
   let detail="Search temporarily unavailable";
   for(const endpoint of endpoints) {
     try {
       const result=await fetch(endpoint,{method:"POST",headers:{"Content-Type":jsonType},
-        body:"data="+encodeURIComponent(query),signal:AbortSignal.timeout(29000)});
+        body:"data="+encodeURIComponent(query),signal:AbortSignal.timeout(10500)});
       if(!result.ok){detail="Business directory error ("+result.status+")";continue;}
       const data=await result.json();
-      return response({elements:Array.isArray(data.elements)?data.elements.slice(0,75):[]},200,headers);
+      return response({elements:Array.isArray(data.elements)?data.elements.slice(0,60):[]},200,headers);
     } catch { detail="Business directory timed out or unavailable"; }
   }
-  return response({error:detail},502,headers);
+  return response({error:detail+"; try a 5-mile radius and a specific industry."},502,headers);
 });
