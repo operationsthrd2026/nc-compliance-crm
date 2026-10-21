@@ -3,6 +3,7 @@ import NationwideFinder from "./NationwideFinder.jsx";
 import {safeWebsite,safeEmail,safePhone} from "../../lib/contactDetails.js";
 import ApiIntegrations from "./ApiIntegrations.jsx";
 import LeadQualification from "./LeadQualification.jsx";
+import OutreachWorkspace from "./OutreachWorkspace.jsx";
 
 /**
  * The nationwide ProspectFinder experience is the default authenticated landing page.
@@ -63,14 +64,14 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
   const contacted = crmData.filter(p => /T1 SENT|T2 SENT|T3 SENT|CONTACTED|FOLLOW.UP/i.test(statusName(p.currentStatus))).length;
   const recent = [...crmData].reverse();
   const nav = [
-    ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["leads","▤","Saved Prospects"],["integrations","⚙","API Integrations"],["crm","▦","Classic CRM"]
+    ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["leads","▤","Saved Prospects"],["outreach","◷","Outreach & Reports"],["integrations","⚙","API Integrations"],["crm","▦","Classic CRM"]
   ];
   const toTab = id => id==="crm" ? onOpenCRM() : setTab(id);
   const name = text(currentUser?.name || currentUser?.username || "Team Member");
   return <div className="pf-root">
     <style>{css}</style>
     <aside className="pf-side">
-      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · PHASE 2</div></div></div>
+      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · PHASE 3</div></div></div>
       <p className="pf-navhint">WORKSPACE</p>
       <nav aria-label="ProspectFinder navigation">{nav.map(([id,ico,label]) => <button key={id} className={"pf-navbtn " + (tab===id?"active":"")} onClick={()=>toTab(id)}><span className="pf-ico">{ico}</span>{label}</button>)}</nav>
       <div className="pf-side-bottom">
@@ -81,7 +82,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
       </div>
     </aside>
     <main className="pf-main">
-      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {tab==="overview"?"Overview":tab==="discover"?"Find Prospects":tab==="integrations"?"API Integrations":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
+      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {tab==="overview"?"Overview":tab==="discover"?"Find Prospects":tab==="integrations"?"API Integrations":tab==="outreach"?"Outreach & Reports":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
       <div className="pf-content">
       {tab==="overview" && <>
         <div className="pf-page-kicker">PROSPECTFINDER · NATIONWIDE CRM</div>
@@ -109,7 +110,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
               <button className="pf-action" onClick={()=>setTab("discover")}><span className="pf-action-ico">♡</span><span><strong>Find nonprofits</strong><small>Organizations, charities & foundations</small></span></button>
               <button className="pf-action" onClick={()=>setTab("discover")}><span className="pf-action-ico">▣</span><span><strong>Find small businesses</strong><small>Local services, shops & companies</small></span></button>
               <button className="pf-action" onClick={()=>setTab("leads")}><span className="pf-action-ico">▤</span><span><strong>Qualify saved leads</strong><small>{fresh} prospects currently marked new</small></span></button>
-              <button className="pf-action" onClick={onOpenCRM}><span className="pf-action-ico">↗</span><span><strong>Manage outreach</strong><small>Open your existing CRM pipeline</small></span></button>
+              <button className="pf-action" onClick={()=>setTab("outreach")}><span className="pf-action-ico">◷</span><span><strong>Manage follow-ups</strong><small>Due dates, manual outreach and pipeline reports</small></span></button>
             </div>
           </section>
           <section className="pf-card">
@@ -130,6 +131,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
         <div style={{marginTop:23}}><ApiIntegrations canAdmin={canAdmin} isConnected={dbStatus==="connected"} onLoad={onLoadApiCredentials} onSave={onSaveApiCredential} onOpenAdmin={onOpenAdmin} baseUrl={baseUrl} requestHeaders={requestHeaders}/></div>
       </>}
       {tab==="leads" && <LeadQualification crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM}/>}
+      {tab==="outreach" && <OutreachWorkspace crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM}/>}
       </div>
     </main>
   </div>;
