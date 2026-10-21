@@ -9,7 +9,7 @@
    touching any other code.
 ════════════════════════════════════════════════════════════════ */
 import { extractEmails, extractPhones } from "./text.js";
-import { MARKETS } from "../constants.js";
+
 
 export const SCORING = {
   // Max 25 — heavier regulation ⇒ heavier HR/compliance burden (licensing,
@@ -93,7 +93,7 @@ export function scoreProspect(p, cfg = SCORING){
   add("reach", "Reachability", reach, 20, notes.join(", ") || "No contact details");
 
   // 5. Presence + market
-  const known = p.market && p.market !== "Other" && MARKETS.includes(p.market);
+  const known = Boolean(String(p.market||p.cityMarket||"").trim());
   add("presence", "Online presence & market", (p.sourceUrl ? cfg.presence.website : 0) + (known ? cfg.presence.knownMarket : 0), 10,
     [p.sourceUrl ? "has website" : "no website", known ? `${p.market} market` : "market not set"].join(", "));
 

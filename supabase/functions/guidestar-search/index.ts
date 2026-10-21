@@ -36,9 +36,9 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { query, state = "NC", nteeCode = null } = body;
+    const { query, state = null, nteeCode = null, page = 0 } = body;
 
-    if (!query || !query.trim()) {
+    if (!query.trim() && !state && !nteeCode) {
       return new Response(JSON.stringify({ error: "Missing query" }), {
         status: 400,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -51,11 +51,13 @@ Deno.serve(async (req: Request) => {
     // needs CORS, which we provide via CORS_HEADERS above.
     const ppUrl = new URL("https://projects.propublica.org/nonprofits/api/v2/search.json");
     ppUrl.searchParams.set("q", query);
-    ppUrl.searchParams.set("state[id]", state);
+    if (state && /^[A-Z]{2}$/.test(state)) ppUrl.searchParams.set("state[id]", state);
+    ppUrl.searchParams.set("page", String(Math.min(50, Math.max(0, Number(page) || 0))));
     if (nteeCode) ppUrl.searchParams.set("ntee[id]", String(nteeCode));
 
     const ppRes = await fetch(ppUrl.toString(), {
       headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!ppRes.ok) {

@@ -8,6 +8,8 @@ import "leaflet/dist/leaflet.css";
 import { cleanTag } from "./lib/filters.js";
 import { mapPool } from "./lib/emailCheck.js";
 import ProspectsView from "./features/prospects/ProspectsView.jsx";
+import NationwideFinder from "./features/prospects/NationwideFinder.jsx";
+import ProspectHome from "./features/prospects/ProspectHome.jsx";
 import { localSavedApi } from "./features/useSavedSearches.js";
 import { scoreProspect, priorityFromScore, explainFit } from "./lib/scoring.js";
 import { buildIndex, findMatches, collapseResults } from "./lib/dedupe.js";
@@ -690,21 +692,17 @@ function LoginScreen({users,onLogin}){
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
-            <img src={HR_LOGO} alt="HR on Demand" style={{
-              height:110,width:"auto",objectFit:"contain",
-              filter:"drop-shadow(0 8px 32px rgba(193,127,50,0.45))",
-              borderRadius:10,
-            }}/>
+            <div aria-hidden="true" style={{width:82,height:82,display:"grid",placeItems:"center",background:"linear-gradient(140deg,#A99DFF,#6250E8)",borderRadius:22,color:"#fff",fontSize:45,fontWeight:900,boxShadow:"0 16px 45px rgba(101,84,232,0.35)"}}>P</div>
           </div>
-          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>NC Compliance CRM</h1>
-          <p style={{margin:0,fontSize:13,color:WM}}>HR On Demand · SMB & Nonprofit Outreach</p>
+          <h1 style={{margin:"0 0 6px",fontSize:29,fontWeight:900,color:W,letterSpacing:"-0.045em"}}>ProspectFinder</h1>
+          <p style={{margin:0,fontSize:13,color:WM}}>Discover U.S. nonprofits &amp; small businesses</p>
         </div>
 
         {/* Card */}
         <div style={{background:NL,border:"1px solid rgba(201,150,58,0.2)",borderRadius:20,padding:"28px 28px 24px",boxShadow:"0 32px 80px rgba(0,0,0,0.6)"}}>
           <div style={{marginBottom:22}}>
             <h2 style={{margin:"0 0 4px",fontSize:18,fontWeight:800,color:W}}>Welcome back</h2>
-            <p style={{margin:0,fontSize:13,color:WM}}>Sign in to access your compliance workspace</p>
+            <p style={{margin:0,fontSize:13,color:WM}}>Sign in to your discovery and lead management workspace</p>
           </div>
 
           <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:16}}>
@@ -3708,6 +3706,7 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
 const CHECKLIST=["Pull 10 new prospects using approved sources (AI Finder, Apollo, etc.)","Send Touch 1 emails every Monday","Send Touch 2 emails 7 days after T1 if no reply","ANY reply → Flag to Melissa IMMEDIATELY","Flag to Melissa before Touch 3 — wait for approval","After Touch 3 → update status to NURTURE/T3 SENT","Log Call Booked after Melissa handles reply"];
 
 function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,dbStatus,features,addAudit}){
+  const [experience,setExperience]=useState("prospectfinder");
   const [view,setView]=useState("dashboard");
   const [search,setSearch]=useState("");
   const [sfilt,setSfilt]=useState("All");
@@ -3828,8 +3827,33 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 
 
   return(
+    experience==="prospectfinder" ? (
+      <ProspectHome
+        crmData={crmData}
+        currentUser={currentUser}
+        onOpenCRM={()=>{setView("table");setExperience("classic");}}
+        onOpenAdmin={onOpenAdmin}
+        onLogout={onLogout}
+        onAddProspects={async prospects=>{
+          const saved = await onImportProspects(prospects,"append");
+          t2(saved.length+" prospect"+(saved.length===1?"":"s")+" added to CRM!");
+          return saved;
+        }}
+        baseUrl={SUPABASE_URL}
+        requestHeaders={authHeaders}
+        dbStatus={dbStatus}
+        canAdmin={role.canAdmin}
+      />
+    ) : (
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
       <GS/>
+      <button
+        onClick={()=>setExperience("prospectfinder")}
+        aria-label="Switch from classic CRM to the new ProspectFinder"
+        title="Return to the nationwide ProspectFinder dashboard"
+        style={{position:"fixed",top:8,right:18,zIndex:9995,padding:"10px 16px",border:"1px solid #B2A7FF",borderRadius:10,color:"#fff",background:"#6454E8",boxShadow:"0 6px 22px #11182777",cursor:"pointer",fontWeight:800,fontSize:12}}>
+        ✦ Open New ProspectFinder →
+      </button>
       {toast&&<Toast msg={toast.msg} type={toast.t}/>}
 
       {/* ═══ LEFT SIDEBAR — hover to expand, collapses to icon-only ═══ */}
@@ -4345,9 +4369,10 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 
       {/* MODALS */}
       {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
-      {showFinder&&<ProspectFinderModal crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
+      {showFinder&&<NationwideFinder baseUrl={SUPABASE_URL} requestHeaders={authHeaders} crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
       {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
     </div>
+    )
   );
 }
 
@@ -4588,19 +4613,26 @@ export default function App(){
         } catch(e) { console.error("[NC CRM] ❌ Import replace failed:", e.message); }
       }
     } else {
-      setCrmData(prev => [...prev, ...rows]); // optimistic
+      // Append must be confirmed by the database before presenting leads as saved.
+      // Never swallow a Supabase error or leave optimistic unsaved prospects behind.
+      if (!Array.isArray(rows) || rows.length === 0) return [];
       if (isConfigured) {
         try {
           const saved = await DB.upsertProspects(rows);
-          if (saved && saved.length) {
-            setCrmData(prev => {
-              const tempIds = new Set(rows.map(r => r.id));
-              return [...prev.filter(p => !tempIds.has(p.id)), ...saved];
-            });
-            dlog("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
+          if (!Array.isArray(saved) || saved.length !== rows.length || saved.some(p => !p.id)) {
+            throw new Error("Supabase did not confirm all imported prospects. Check the CRM before retrying.");
           }
-        } catch(e) { console.error("[NC CRM] ❌ Import append failed:", e.message); }
+          setCrmData(prev => [...prev, ...saved]);
+          dlog("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
+          return saved;
+        } catch (e) {
+          console.error("[NC CRM] ❌ Import append failed:", e.message);
+          throw e;
+        }
       }
+      // Explicit demo-mode fallback: no Supabase persistence.
+      setCrmData(prev => [...prev, ...rows]);
+      return rows;
     }
   },[]);
 
@@ -4641,7 +4673,7 @@ export default function App(){
         </div>
         <Spin s={36} c={G}/>
         <p style={{color:WD,fontSize:13,marginTop:16}}>
-          {isConfigured ? "Connecting to database…" : "Loading NC Compliance CRM…"}
+          {isConfigured ? "Connecting to database…" : "Loading ProspectFinder…"}
         </p>
         {isConfigured && <p style={{color:WD,fontSize:11,marginTop:6,opacity:0.6}}>Supabase · PostgreSQL</p>}
       </div>

@@ -36,7 +36,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { organizationName = null, taxonomyDescription = null, state = "NC" } = body;
+    const { organizationName = null, taxonomyDescription = null, state = null, city = null, postalCode = null, skip = 0 } = body;
 
     // Forward the request to the NPPES NPI Registry API. This call
     // happens server-side, so any CORS restriction on NPPES's side
@@ -45,13 +45,17 @@ Deno.serve(async (req: Request) => {
     const npiUrl = new URL("https://npiregistry.cms.hhs.gov/api/");
     npiUrl.searchParams.set("version", "2.1");
     npiUrl.searchParams.set("enumeration_type", "NPI-2"); // organizations only, not individuals
-    npiUrl.searchParams.set("state", state);
-    npiUrl.searchParams.set("limit", "20");
+    if (state && /^[A-Z]{2}$/.test(state)) npiUrl.searchParams.set("state", state);
+    if (city && typeof city === "string") npiUrl.searchParams.set("city", city.trim().slice(0,80));
+    if (postalCode && /^\d{5}$/.test(String(postalCode))) npiUrl.searchParams.set("postal_code", String(postalCode));
+    npiUrl.searchParams.set("skip", String(Math.min(1000, Math.max(0, Number(skip) || 0))));
+    npiUrl.searchParams.set("limit", "50");
     if (organizationName) npiUrl.searchParams.set("organization_name", organizationName);
     if (taxonomyDescription) npiUrl.searchParams.set("taxonomy_description", taxonomyDescription);
 
     const npiRes = await fetch(npiUrl.toString(), {
       headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!npiRes.ok) {
