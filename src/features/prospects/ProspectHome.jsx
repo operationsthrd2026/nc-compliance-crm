@@ -64,7 +64,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
   return <div className="pf-root">
     <style>{css}</style>
     <aside className="pf-side">
-      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">Discovery workspace</div></div></div>
+      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · VERSION 1.5</div></div></div>
       <p className="pf-navhint">WORKSPACE</p>
       <nav aria-label="ProspectFinder navigation">{nav.map(([id,ico,label]) => <button key={id} className={"pf-navbtn " + (tab===id?"active":"")} onClick={()=>toTab(id)}><span className="pf-ico">{ico}</span>{label}</button>)}</nav>
       <div className="pf-side-bottom">
@@ -75,10 +75,10 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
       </div>
     </aside>
     <main className="pf-main">
-      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {tab==="overview"?"Overview":tab==="discover"?"Find Prospects":"Saved Prospects"}</div><strong>United States prospect discovery</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
+      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {tab==="overview"?"Overview":tab==="discover"?"Find Prospects":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
       <div className="pf-content">
       {tab==="overview" && <>
-        <div className="pf-page-kicker">YOUR PROSPECTING COMMAND CENTER</div>
+        <div className="pf-page-kicker">PROSPECTFINDER v1.5 · NATIONWIDE DISCOVERY</div>
         <h1 className="pf-page-title">Good morning, {name.split(" ")[0]} <span aria-hidden="true">✳</span></h1>
         <p className="pf-page-description">Discover organizations nationwide, qualify opportunities, and move prospects into your CRM.</p>
         <section className="pf-hero">
