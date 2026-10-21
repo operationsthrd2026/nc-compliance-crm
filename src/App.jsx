@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 import { cleanTag } from "./lib/filters.js";
 import { mapPool } from "./lib/emailCheck.js";
 import ProspectsView from "./features/prospects/ProspectsView.jsx";
+import NationwideFinder from "./features/prospects/NationwideFinder.jsx";
 import { localSavedApi } from "./features/useSavedSearches.js";
 import { scoreProspect, priorityFromScore, explainFit } from "./lib/scoring.js";
 import { buildIndex, findMatches, collapseResults } from "./lib/dedupe.js";
@@ -4345,7 +4346,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 
       {/* MODALS */}
       {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
-      {showFinder&&<ProspectFinderModal crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
+      {showFinder&&<NationwideFinder baseUrl={SUPABASE_URL} requestHeaders={authHeaders} crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
       {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
     </div>
   );
