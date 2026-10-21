@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 const builtin = [
   { id: "apollo", label: "Apollo.io", kind: "B2B company and people discovery", link: "https://docs.apollo.io/", note: "People Search is available in Find Prospects when the account has API access. It does not include email or phone." },
   { id: "hunter", label: "Hunter.io", kind: "Domain search and email contacts", link: "https://hunter.io/api-documentation/v2", note: "Domain Search is available in Find Prospects for admins. It can consume Hunter credits." },
-  { id: "gemini", label: "Gemini + Google Search", kind: "Grounded search for businesses and nonprofits", link: "https://ai.google.dev/gemini-api/docs/google-search", note: "Gemini chooses a supported Flash model available to your Google project. Use Check available Gemini models before searching. Live grounding may use free quota or incur charges; off by default." },
+  { id: "gemini", label: "Gemini + Google Search", kind: "Grounded search for businesses and nonprofits", link: "https://ai.google.dev/gemini-api/docs/google-search", note: "Gemini picks a Flash model available to this key, but model access does not guarantee Google Search grounding quota. Gemini 3.x Google Search grounding is unavailable on the API free tier; paid-tier limits and included search allowances depend on your Google project. Off by default." },
 
 ];
 const noKey = [
@@ -149,8 +149,8 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     <section style={{...styles.panel,background:"#F7F7FF",border:"1px solid #DDD9FA"}}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Set up Gemini search</h3>
       <p style={{...styles.note,margin:"8px 0 10px"}}>Already have a Gemini API key? Find <strong>Gemini + Google Search</strong> under Optional API providers below and save it there. Do not paste it into chats or public files.</p>
-      <p style={{...styles.note,margin:"0 0 10px"}}>Use <strong>Test key</strong> to validate the credential without making a Google Search request. Then go to Find Prospects, select Gemini and approve one grounded search. Google free-tier limits and charges vary by API model, project and billing status.</p>
-      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Manage Gemini API keys in Google AI Studio ↗</a>
+      <p style={{...styles.note,margin:"0 0 10px"}}>Use <strong>Test key</strong> to validate the credential without making a Google Search request. Then go to Find Prospects, select Gemini and approve one grounded search. Gemini model key checks do not test Google Search. For current Gemini 3.x models, Google Search grounding is unavailable on the API free tier; paid-tier limits and included allowances apply.</p>
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Manage Gemini API keys ↗</a>{" · "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Review API usage and quota ↗</a>
     </section>
     <section style={styles.panel}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Public sources · no API key needed</h3>
