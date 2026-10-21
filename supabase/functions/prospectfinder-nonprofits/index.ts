@@ -11,19 +11,20 @@ Deno.serve(async (req: Request) => {
   try {
     const input=await req.json();
     const query=String(input?.query||"").trim().slice(0,100);
+    const city=String(input?.city||"").trim().slice(0,80);
     const state=String(input?.state||"").toUpperCase().trim();
     const page=Number(input?.page||0);
-    if(!query) return response({error:"A nonprofit search keyword is required"},400,headers);
+    if(!query&&!city) return response({error:"Enter an organization name, nonprofit keyword, or city"},400,headers);
     if(state&&!/^[A-Z]{2}$/.test(state)) return response({error:"Invalid state"},400,headers);
     if(!Number.isInteger(page)||page<0||page>50) return response({error:"Invalid page"},400,headers);
     const url=new URL("https://projects.propublica.org/nonprofits/api/v2/search.json");
-    url.searchParams.set("q",query);
+    url.searchParams.set("q",query||city);
     if(state) url.searchParams.set("state[id]",state);
     url.searchParams.set("page",String(page));
-    const upstream=await fetch(url,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(18000)});
+    const upstream=await fetch(url,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(10000)});
     if(!upstream.ok) return response({error:"Nonprofit directory unavailable",status:upstream.status},502,headers);
     const data=await upstream.json();
-    return response({organizations:Array.isArray(data.organizations)?data.organizations:[],num_pages:data.num_pages||0,total_results:data.total_results||0},200,headers);
+    return response({organizations:Array.isArray(data.organizations)?data.organizations:[],num_pages:data.num_pages||0,total_results:data.total_results||0,search_query:query||city},200,headers);
   } catch(err) {
     const msg=err instanceof Error&&err.name==="TimeoutError"?"Nonprofit directory timed out":"Nonprofit search could not be completed";
     return response({error:msg},502,headers);
