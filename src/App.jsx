@@ -3835,8 +3835,9 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         onOpenAdmin={onOpenAdmin}
         onLogout={onLogout}
         onAddProspects={async prospects=>{
-          await onImportProspects(prospects,"append");
-          t2(prospects.length+" prospect"+(prospects.length===1?"":"s")+" added to CRM!");
+          const saved = await onImportProspects(prospects,"append");
+          t2(saved.length+" prospect"+(saved.length===1?"":"s")+" added to CRM!");
+          return saved;
         }}
         baseUrl={SUPABASE_URL}
         requestHeaders={authHeaders}
@@ -4612,19 +4613,26 @@ export default function App(){
         } catch(e) { console.error("[NC CRM] ❌ Import replace failed:", e.message); }
       }
     } else {
-      setCrmData(prev => [...prev, ...rows]); // optimistic
+      // Append must be confirmed by the database before presenting leads as saved.
+      // Never swallow a Supabase error or leave optimistic unsaved prospects behind.
+      if (!Array.isArray(rows) || rows.length === 0) return [];
       if (isConfigured) {
         try {
           const saved = await DB.upsertProspects(rows);
-          if (saved && saved.length) {
-            setCrmData(prev => {
-              const tempIds = new Set(rows.map(r => r.id));
-              return [...prev.filter(p => !tempIds.has(p.id)), ...saved];
-            });
-            dlog("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
+          if (!Array.isArray(saved) || saved.length !== rows.length || saved.some(p => !p.id)) {
+            throw new Error("Supabase did not confirm all imported prospects. Check the CRM before retrying.");
           }
-        } catch(e) { console.error("[NC CRM] ❌ Import append failed:", e.message); }
+          setCrmData(prev => [...prev, ...saved]);
+          dlog("[NC CRM] ✅ Imported", saved.length, "prospects (append)");
+          return saved;
+        } catch (e) {
+          console.error("[NC CRM] ❌ Import append failed:", e.message);
+          throw e;
+        }
       }
+      // Explicit demo-mode fallback: no Supabase persistence.
+      setCrmData(prev => [...prev, ...rows]);
+      return rows;
     }
   },[]);
 
