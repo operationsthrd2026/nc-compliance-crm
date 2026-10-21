@@ -117,12 +117,12 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
       {tab==="discover" && <>
         <div className="pf-page-kicker">LIVE ORGANIZATION DISCOVERY</div><h1 className="pf-page-title">Find your next prospect</h1>
         <p className="pf-page-description">Search nonprofit and small-business sources by U.S. state, city, ZIP, industry or keyword. Save selected results to your CRM.</p>
-        <section className="pf-finder-card"><NationwideFinder embedded baseUrl={baseUrl} requestHeaders={requestHeaders} crmData={crmData} onAddProspects={onAddProspects}/></section>
+        <section className="pf-finder-card"><NationwideFinder embedded baseUrl={baseUrl} requestHeaders={requestHeaders} crmData={crmData} onAddProspects={onAddProspects} canAdmin={canAdmin}/></section>
       </>}
       {tab==="integrations" && <>
         <div className="pf-page-kicker">CONNECT DATA SOURCES</div><h1 className="pf-page-title">API Integrations</h1>
         <p className="pf-page-description">Add or update optional API keys, see which providers are configured, and review free sources available for prospect discovery.</p>
-        <div style={{marginTop:23}}><ApiIntegrations canAdmin={canAdmin} isConnected={dbStatus==="connected"} onLoad={onLoadApiCredentials} onSave={onSaveApiCredential} onOpenAdmin={onOpenAdmin}/></div>
+        <div style={{marginTop:23}}><ApiIntegrations canAdmin={canAdmin} isConnected={dbStatus==="connected"} onLoad={onLoadApiCredentials} onSave={onSaveApiCredential} onOpenAdmin={onOpenAdmin} baseUrl={baseUrl} requestHeaders={requestHeaders}/></div>
       </>}
       {tab==="leads" && <>
         <div className="pf-page-kicker">YOUR CRM DATABASE</div><h1 className="pf-page-title">Saved prospects</h1>
