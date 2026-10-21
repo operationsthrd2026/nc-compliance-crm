@@ -692,21 +692,17 @@ function LoginScreen({users,onLogin}){
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
-            <img src={HR_LOGO} alt="HR on Demand" style={{
-              height:110,width:"auto",objectFit:"contain",
-              filter:"drop-shadow(0 8px 32px rgba(193,127,50,0.45))",
-              borderRadius:10,
-            }}/>
+            <div aria-hidden="true" style={{width:82,height:82,display:"grid",placeItems:"center",background:"linear-gradient(140deg,#A99DFF,#6250E8)",borderRadius:22,color:"#fff",fontSize:45,fontWeight:900,boxShadow:"0 16px 45px rgba(101,84,232,0.35)"}}>P</div>
           </div>
-          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:900,color:W,letterSpacing:"-0.02em"}}>NC Compliance CRM</h1>
-          <p style={{margin:0,fontSize:13,color:WM}}>HR On Demand · SMB & Nonprofit Outreach</p>
+          <h1 style={{margin:"0 0 6px",fontSize:29,fontWeight:900,color:W,letterSpacing:"-0.045em"}}>ProspectFinder</h1>
+          <p style={{margin:0,fontSize:13,color:WM}}>Discover U.S. nonprofits &amp; small businesses</p>
         </div>
 
         {/* Card */}
         <div style={{background:NL,border:"1px solid rgba(201,150,58,0.2)",borderRadius:20,padding:"28px 28px 24px",boxShadow:"0 32px 80px rgba(0,0,0,0.6)"}}>
           <div style={{marginBottom:22}}>
             <h2 style={{margin:"0 0 4px",fontSize:18,fontWeight:800,color:W}}>Welcome back</h2>
-            <p style={{margin:0,fontSize:13,color:WM}}>Sign in to access your compliance workspace</p>
+            <p style={{margin:0,fontSize:13,color:WM}}>Sign in to your discovery and lead management workspace</p>
           </div>
 
           <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:16}}>
@@ -4667,7 +4663,7 @@ export default function App(){
         </div>
         <Spin s={36} c={G}/>
         <p style={{color:WD,fontSize:13,marginTop:16}}>
-          {isConfigured ? "Connecting to database…" : "Loading NC Compliance CRM…"}
+          {isConfigured ? "Connecting to database…" : "Loading ProspectFinder…"}
         </p>
         {isConfigured && <p style={{color:WD,fontSize:11,marginTop:6,opacity:0.6}}>Supabase · PostgreSQL</p>}
       </div>
