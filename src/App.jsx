@@ -9,6 +9,7 @@ import { cleanTag } from "./lib/filters.js";
 import { mapPool } from "./lib/emailCheck.js";
 import ProspectsView from "./features/prospects/ProspectsView.jsx";
 import NationwideFinder from "./features/prospects/NationwideFinder.jsx";
+import ProspectHome from "./features/prospects/ProspectHome.jsx";
 import { localSavedApi } from "./features/useSavedSearches.js";
 import { scoreProspect, priorityFromScore, explainFit } from "./lib/scoring.js";
 import { buildIndex, findMatches, collapseResults } from "./lib/dedupe.js";
@@ -3709,6 +3710,7 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
 const CHECKLIST=["Pull 10 new prospects using approved sources (AI Finder, Apollo, etc.)","Send Touch 1 emails every Monday","Send Touch 2 emails 7 days after T1 if no reply","ANY reply → Flag to Melissa IMMEDIATELY","Flag to Melissa before Touch 3 — wait for approval","After Touch 3 → update status to NURTURE/T3 SENT","Log Call Booked after Melissa handles reply"];
 
 function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,dbStatus,features,addAudit}){
+  const [experience,setExperience]=useState("prospectfinder");
   const [view,setView]=useState("dashboard");
   const [search,setSearch]=useState("");
   const [sfilt,setSfilt]=useState("All");
@@ -3829,8 +3831,30 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 
 
   return(
+    experience==="prospectfinder" ? (
+      <ProspectHome
+        crmData={crmData}
+        currentUser={currentUser}
+        onOpenCRM={()=>{setView("table");setExperience("classic");}}
+        onOpenAdmin={onOpenAdmin}
+        onLogout={onLogout}
+        onAddProspects={async prospects=>{
+          await onImportProspects(prospects,"append");
+          t2(prospects.length+" prospect"+(prospects.length===1?"":"s")+" added to CRM!");
+        }}
+        baseUrl={SUPABASE_URL}
+        requestHeaders={authHeaders}
+        dbStatus={dbStatus}
+        canAdmin={role.canAdmin}
+      />
+    ) : (
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
       <GS/>
+      <button
+        onClick={()=>setExperience("prospectfinder")}
+        style={{position:"fixed",bottom:20,right:20,zIndex:9995,padding:"12px 18px",border:0,borderRadius:12,color:"#fff",background:"#6454E8",boxShadow:"0 8px 25px #11182755",cursor:"pointer",fontWeight:800,fontSize:12}}>
+        ← Back to ProspectFinder
+      </button>
       {toast&&<Toast msg={toast.msg} type={toast.t}/>}
 
       {/* ═══ LEFT SIDEBAR — hover to expand, collapses to icon-only ═══ */}
@@ -4349,6 +4373,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
       {showFinder&&<NationwideFinder baseUrl={SUPABASE_URL} requestHeaders={authHeaders} crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
       {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
     </div>
+    )
   );
 }
 
