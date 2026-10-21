@@ -50,6 +50,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [radius,setRadius]=useState(5),[vertical,setVertical]=useState(""),[keyword,setKeyword]=useState("");
  const [busy,setBusy]=useState(false),[adding,setAdding]=useState(false),[rows,setRows]=useState([]),[selected,setSelected]=useState([]);
  const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
+ const [diagnostics,setDiagnostics]=useState([]),[checking,setChecking]=useState(false);
  const existing=useMemo(()=>new Set(crmData.map(x=>clean(x.companyName)+"|"+clean(x.cityMarket||x.market))),[crmData]);
  const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(clean(r.companyName)+"|"+clean(r.cityMarket||r.market))})),[rows,existing]);
  const append=items=>setRows(prev=>{const seen=new Set(prev.map(idFor));return [...prev,...items.filter(r=>{const id=idFor(r);if(seen.has(id))return false;seen.add(id);return true;})];});
@@ -62,6 +63,30 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
   return data;
+ };
+ const checkConnections=async()=>{
+  if(checking||busy)return;
+  setChecking(true);setDiagnostics([]);
+  // Fixed, read-only sample searches; this diagnostic never modifies CRM records.
+  const record=(name,ok,detail)=>setDiagnostics(prev=>[...prev,{name,ok,detail}]);
+  let location=null;
+  try{
+   location=await post("prospectfinder-geocode",{city:"Austin",state:"TX",zip:"78701"});
+   record("U.S. ZIP lookup",true,location.source||"Location found");
+  }catch(e){record("U.S. ZIP lookup",false,e?.message||"Lookup failed");}
+  try{
+   const data=await post("prospectfinder-nonprofits",{query:"Austin",state:"TX",page:0});
+   record("Nonprofit directory",true,(data.organizations||[]).length+" sample organizations returned");
+  }catch(e){record("Nonprofit directory",false,e?.message||"Search failed");}
+  if(location){
+   try{
+    const data=await post("prospectfinder-businesses",{
+     lat:location.lat,lon:location.lon,radiusMiles:1,tags:[["amenity","restaurant"]]
+    });
+    record("Local business directory",true,(data.elements||[]).length+" sample locations returned");
+   }catch(e){record("Local business directory",false,e?.message||"Search failed");}
+  }else record("Local business directory",false,"Not run because ZIP lookup failed");
+  setChecking(false);
  };
  const run=async(next=false)=>{
   const error=locationIssue(state,city.trim(),zip);
@@ -146,7 +171,12 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     {field("Industry (optional)",<select style={inp} value={vertical} onChange={e=>setVertical(e.target.value)}><option value="">All industries</option>{VERTICALS.map(v=><option key={v} value={v}>{v}</option>)}{Object.keys(categories).filter(x=>!VERTICALS.includes(x)).map(v=><option key={v} value={v}>{v}</option>)}</select>)}
     <div style={{gridColumn:"1 / -1"}}>{field("Business or organization keyword",<input style={inp} value={keyword} onChange={e=>setKeyword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!busy)run();}} placeholder="e.g. dental, community center, software, charity"/>)}</div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching live directories…":"Search Prospects"}</button>
+    <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
    </div>
+   {diagnostics.length>0&&<div role="status" aria-live="polite" style={{background:embedded?"#F4F5FD":"#182644",padding:13,borderRadius:10,marginBottom:14,fontSize:12,color:embedded?"#33435F":"#F0F4FF"}}>
+    <strong>Connection diagnostics (Austin, Texas; read-only test)</strong>
+    {diagnostics.map(d=><div key={d.name} style={{marginTop:7}}><span style={{color:d.ok?"#059669":"#dc6458",fontWeight:800}}>{d.ok?"✓":"✕"}</span> {d.name}: {d.detail}</div>)}
+   </div>}
    {message&&<div role="alert" style={{background:embedded?"#FFF5F1":"rgba(255,151,101,.12)",border:"1px solid #F9B4A4",borderRadius:10,padding:"12px 14px",color:embedded?"#9F3E33":"#ffd1c7",fontSize:12,marginBottom:14,lineHeight:1.5}}><strong>{sourceErrors.length?"Search service issue":"Search notice"}:</strong> {message}</div>}
    {logs.length>0&&<div style={{background:embedded?"#F5F7FD":"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"#57627A":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
