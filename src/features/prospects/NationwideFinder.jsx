@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from "react";
 import {EMPTY_P,VERTICALS} from "../../constants.js";
 import {US_STATES,RADII,locationIssue,locationLabel} from "../../lib/usLocation.js";
-import {safeWebsite,safeEmail,safePhone,publicDetailsFromOsm} from "../../lib/contactDetails.js";
+import {safeWebsite,safeOrganizationWebsite,safeEmail,safePhone,publicDetailsFromOsm} from "../../lib/contactDetails.js";
 
 const DARK="#0B1426", PANEL="#152442", EDGE="rgba(240,244,255,.14)", GOLD="#DBA843", MUTED="#B1BED7";
 const inp={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid "+EDGE,background:"#1C2B50",color:"#F0F4FF",borderRadius:8,fontSize:13};
@@ -29,7 +29,7 @@ const clean=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const idFor=r=>r.ein?"ein:"+r.ein:r.osmId?"osm:"+r.osmId:(r.contactName||r.emailPhone)?"contact:"+clean(r.companyName)+"|"+clean(r.contactName)+"|"+clean(r.emailPhone):clean(r.companyName)+"|"+clean(r.cityMarket);
 const fromNonprofit=o=>({
  companyName:o.name||"Unnamed nonprofit",contactName:"",title:"",emailPhone:"",
- website:safeWebsite(o.website||o.website_url||""),email:safeEmail(o.email||""),phone:safePhone(o.phone||""),
+ website:safeOrganizationWebsite(o.website||o.website_url||""),email:safeEmail(o.email||""),phone:safePhone(o.phone||""),
  cityMarket:locationLabel(o.state,o.city,""),market:locationLabel(o.state,o.city,""),
  sourceUrl:o.ein?"https://projects.propublica.org/nonprofits/organizations/"+o.ein:"",
  sourceType:"ProPublica Nonprofit Explorer",vertical:"Nonprofits & Associations",hrPersonListed:"Unknown",
@@ -149,7 +149,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      });
      return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
       ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
-      website:safeWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||""),
+      website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||""),
       emailPhone:p.emailPhone||"",verificationNotes:p.verificationNotes||"Apollo does not provide email/phone in People Search."
      }))};
     }]);
@@ -159,7 +159,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      const info=await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:domain.trim()});
      return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
       ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
-      website:safeWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||"")
+      website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||"")
      }))};
     }]);
    }
