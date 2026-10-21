@@ -113,7 +113,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   const wantBusinesses=(type!=="nonprofit");
   const nonprofitQuery=keyword.trim()||(city.trim()?city.trim():"foundation");
   const currentPage=next?(page||0):0;
-  if(wantNonprofits){
+  if(wantNonprofits&&(keyword.trim()||vertical||state||city.trim()||zip)){
    if(zip&&!city.trim()){
     if(!next)notes.push("Nonprofits: ZIP-only searches are not supported. Add a city to include nonprofit directory results.");
    }else{
@@ -278,8 +278,12 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       const key=idFor(r);return <tr key={key} style={{borderTop:"1px solid "+EDGE,opacity:r.already?.55:1}}>
        <td style={{padding:10}}><input type="checkbox" aria-label={"Select "+r.companyName} disabled={r.already} checked={selected.includes(key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,key]:prev.filter(k=>k!==key))}/></td>
        <td style={{padding:10,fontWeight:650}}>{r.companyName}</td>
-       <td style={{padding:10,color:MUTED}}>{r.sourceType}</td><td style={{padding:10,color:MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
-       <td style={{padding:10}}>{r.emailPhone||<span style={{color:MUTED}}>Not listed</span>}</td>
+       <td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
+       <td style={{padding:10}}>
+        {r.contactName&&<div style={{fontWeight:700,color:embedded?"#20324F":"#F0F4FF"}}>{r.contactName}</div>}
+        {r.title&&<div style={{fontSize:11,color:embedded?"#66758D":MUTED,marginTop:2}}>{r.title}</div>}
+        {r.emailPhone?<div style={{fontSize:11,marginTop:r.contactName?3:0}}>{r.emailPhone}</div>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>{r.contactName?"Email / phone not provided":"Not listed"}</span>}
+       </td>
        <td style={{padding:10}}>{r.sourceUrl?<a href={r.sourceUrl} target="_blank" rel="noreferrer" style={{color:GOLD}}>{r.website?"Website":"View listing"} ↗</a>:"—"}</td>
        <td style={{padding:10,color:r.already?"#34d399":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
       </tr>;
