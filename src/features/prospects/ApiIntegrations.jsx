@@ -8,8 +8,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
  */
 
 const builtin = [
-  { id: "apollo", label: "Apollo.io", kind: "B2B company and contact data", link: "https://docs.apollo.io/", note: "Existing classic CRM connector; not yet part of nationwide discovery." },
-  { id: "hunter", label: "Hunter.io", kind: "Domain search and email verification", link: "https://hunter.io/api-documentation/v2", note: "Requires API access and a supported connector. Saving a key does not verify emails." },
+  { id: "apollo", label: "Apollo.io", kind: "B2B company and people discovery", link: "https://docs.apollo.io/", note: "People Search is available in Find Prospects when the account has API access. It does not include email or phone." },
+  { id: "hunter", label: "Hunter.io", kind: "Domain search and email contacts", link: "https://hunter.io/api-documentation/v2", note: "Domain Search is available in Find Prospects for admins. It can consume Hunter credits." },
   { id: "anthropic", label: "Anthropic (Claude)", kind: "AI-assisted research and drafting", link: "https://docs.anthropic.com/", note: "Credential only. AI research automation needs a separate approved integration." },
 ];
 const noKey = [
@@ -28,7 +28,7 @@ const styles = {
 };
 const recordName = id => builtin.find(p=>p.id===id)?.label || id.replaceAll("_"," ").replaceAll("-"," ");
 
-export default function ApiIntegrations({ canAdmin=false, isConnected=false, onLoad, onSave, onOpenAdmin }) {
+export default function ApiIntegrations({ canAdmin=false, isConnected=false, onLoad, onSave, onOpenAdmin, baseUrl, requestHeaders }) {
   const [configured,setConfigured] = useState({});
   const [loading,setLoading] = useState(true);
   const [pending,setPending] = useState("");
@@ -39,6 +39,8 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
   const [customBusy,setCustomBusy] = useState(false);
   const [showCustom,setShowCustom] = useState(false);
   const [reveal,setReveal] = useState({});
+  const [tests,setTests] = useState({});
+  const [testing,setTesting] = useState("");
   const refresh=useCallback(async()=>{
     if(!isConnected){setConfigured({});setLoading(false);return;}
     setLoading(true);
@@ -66,7 +68,8 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       setDrafts(old=>({...old,[id]:""}));
       const status=await onLoad();
       setConfigured(status||{});
-      notice(recordName(id)+" credential stored on the server. This does not test the key or activate a data connector.");
+      setTests(old=>({...old,[id]:undefined}));
+      notice(recordName(id)+" credential stored on the server. Use Test connection to check whether the provider accepts it.");
     }catch(e){notice("Could not save "+recordName(id)+": "+(e?.message||"Request failed"),true);}
     finally{setPending("");}
   };
@@ -84,6 +87,21 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     }catch(e){notice("Could not store custom credential: "+(e?.message||"Request failed"),true);}
     finally{setCustomBusy(false);}
   };
+  const testProvider=async id=>{
+    if(!isConnected||!canAdmin||!["apollo","hunter"].includes(id))return;
+    setTesting(id);
+    setTests(old=>({...old,[id]:{busy:true}}));
+    try{
+      const res=await fetch(baseUrl+"/functions/v1/prospectfinder-contacts",{
+        method:"POST",headers:await requestHeaders(),body:JSON.stringify({action:"test",provider:id}),
+        signal:AbortSignal.timeout(16000)
+      });
+      const data=await res.json().catch(()=>({}));
+      setTests(old=>({...old,[id]:{ok:res.ok&&data.connected===true,text:res.ok?(data.message||"Check completed")+(data.plan?" · Plan: "+data.plan:"")+(typeof data.remaining==="number"?" · Remaining credits: "+data.remaining:""):(data.error||"HTTP "+res.status)}}));
+    }catch(e){
+      setTests(old=>({...old,[id]:{ok:false,text:"Connection test failed. Check your login session and network."}}));
+    }finally{setTesting("");}
+  };
   const provider = (p) => (
     <div key={p.id} style={{border:"1px solid #E7EBF4",borderRadius:13,padding:17,marginTop:11,background:"#FBFCFF"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -94,6 +112,15 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       </div>
       <div style={{...styles.small,marginTop:10}}>{p.note}</div>
       {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"#6250CE",marginTop:8}}>Provider documentation ↗</a>}
+      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter"].includes(p.id)&&
+        <div style={{marginTop:12,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
+          <button type="button" disabled={!!testing} style={styles.secondary} onClick={()=>testProvider(p.id)}>
+            {testing===p.id?"Checking…":"Test connection · free"}
+          </button>
+          {tests[p.id]&&!tests[p.id].busy&&<span role="status" style={{fontSize:11,color:tests[p.id].ok?"#157858":"#B34943"}}>
+            {tests[p.id].ok?"✓ API responding":"✕ Check failed"} — {tests[p.id].text}
+          </span>}
+        </div>}
       {canAdmin&&isConnected&&<div style={{display:"flex",gap:9,alignItems:"center",flexWrap:"wrap",marginTop:14}}>
         <div style={{flex:"1 1 240px",position:"relative"}}>
           <input aria-label={"API key for "+p.label} style={styles.control} type={reveal[p.id]?"text":"password"} autoComplete="off" placeholder={configured[p.id]?"Enter replacement key":"Paste API key"} value={drafts[p.id]||""}
