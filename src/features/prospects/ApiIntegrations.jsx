@@ -10,7 +10,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 const builtin = [
   { id: "apollo", label: "Apollo.io", kind: "B2B company and people discovery", link: "https://docs.apollo.io/", note: "People Search is available in Find Prospects when the account has API access. It does not include email or phone." },
   { id: "hunter", label: "Hunter.io", kind: "Domain search and email contacts", link: "https://hunter.io/api-documentation/v2", note: "Domain Search is available in Find Prospects for admins. It can consume Hunter credits." },
-  { id: "anthropic", label: "Anthropic (Claude)", kind: "AI-assisted research and drafting", link: "https://docs.anthropic.com/", note: "Credential only. AI research automation needs a separate approved integration." },
+  { id: "anthropic", label: "Claude (Anthropic)", kind: "Optional live AI web search", link: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool", note: "Live web search in Find Prospects after adding an API key, enabling Claude web search in the Claude Console, and authorizing per-search charges. Admin-only." },
+  { id: "openai", label: "ChatGPT / OpenAI API", kind: "Optional live AI web search", link: "https://developers.openai.com/api/docs/guides/tools-web-search", note: "Uses an OpenAI API key (not your ChatGPT subscription). Live web search in Find Prospects with explicit paid-search approval. Admin-only." },
 ];
 const noKey = [
   { label: "ProPublica Nonprofit Explorer", detail: "Public nonprofit filings and organization records" },
@@ -88,11 +89,11 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     finally{setCustomBusy(false);}
   };
   const testProvider=async id=>{
-    if(!isConnected||!canAdmin||!["apollo","hunter"].includes(id))return;
+    if(!isConnected||!canAdmin||!["apollo","hunter","openai","anthropic"].includes(id))return;
     setTesting(id);
     setTests(old=>({...old,[id]:{busy:true}}));
     try{
-      const res=await fetch(baseUrl+"/functions/v1/prospectfinder-contacts",{
+      const res=await fetch(baseUrl+"/functions/v1/"+(["openai","anthropic"].includes(id)?"prospectfinder-ai-search":"prospectfinder-contacts"),{
         method:"POST",headers:await requestHeaders(),body:JSON.stringify({action:"test",provider:id}),
         signal:AbortSignal.timeout(16000)
       });
@@ -112,10 +113,10 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       </div>
       <div style={{...styles.small,marginTop:10}}>{p.note}</div>
       {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"#6250CE",marginTop:8}}>Provider documentation ↗</a>}
-      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter"].includes(p.id)&&
+      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter","openai","anthropic"].includes(p.id)&&
         <div style={{marginTop:12,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
           <button type="button" disabled={!!testing} style={styles.secondary} onClick={()=>testProvider(p.id)}>
-            {testing===p.id?"Checking…":"Test connection · free"}
+            {testing===p.id?"Checking…":"Test key · no web search"}
           </button>
           {tests[p.id]&&!tests[p.id].busy&&<span role="status" style={{fontSize:11,color:tests[p.id].ok?"#157858":"#B34943"}}>
             {tests[p.id].ok?"✓ API responding":"✕ Check failed"} — {tests[p.id].text}
@@ -154,7 +155,7 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     </section>
 
     <section style={styles.panel}>
-      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional third-party APIs</h3>
+      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional API providers (including AI web search)</h3>
       <p style={{...styles.note,margin:"7px 0 12px"}}>Add credentials for supported or future integrations. Subscription, endpoint permissions and connection validation depend on the provider.</p>
       {builtin.map(provider)}
       {others.map(id=>provider({id,label:recordName(id),kind:"Custom provider",note:"Credential stored only. This custom provider cannot return search results until an API adapter is implemented."}))}
