@@ -197,7 +197,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        email:safeEmail(p.email||""),phone:safePhone(p.phone||""),
        emailPhone:[safeEmail(p.email||""),safePhone(p.phone||"")].filter(Boolean).join(" | "),
        sourceUrl:safeWebsite(p.sourceUrl)
-     }))};
+     })),note:info.note||""};
     }]);
    }else{
     notes.push("Wikidata: enter a named organization or keyword (3+ characters) to include free organization lookups.");
@@ -239,6 +239,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     }
     const items=outcome.items||[];
     logsOut.push("✓ "+outcome.name+": "+items.length+" result"+(items.length===1?"":"s")+".");
+    if(outcome.name==="Wikidata organizations"&&!items.length)logsOut.push("Wikidata covers named, documented organizations, not every small business. Try a specific company name or use local business search. "+(outcome.note||""));
     if(outcome.name==="Nonprofit Explorer")nextPage=outcome.page??null;
     for(const item of items){
      const key=idFor(item);
