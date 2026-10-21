@@ -25,7 +25,7 @@ const categories={
 };
 const fallbackTags=[["amenity","restaurant"],["amenity","cafe"],["shop","convenience"]];
 const clean=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
-const idFor=r=>r.ein?"ein:"+r.ein:r.osmId?"osm:"+r.osmId:clean(r.companyName)+"|"+clean(r.cityMarket);
+const idFor=r=>r.ein?"ein:"+r.ein:r.osmId?"osm:"+r.osmId:(r.contactName||r.emailPhone)?"contact:"+clean(r.companyName)+"|"+clean(r.contactName)+"|"+clean(r.emailPhone):clean(r.companyName)+"|"+clean(r.cityMarket);
 const fromNonprofit=o=>({
  companyName:o.name||"Unnamed nonprofit",contactName:"",title:"",emailPhone:"",
  cityMarket:locationLabel(o.state,o.city,""),market:locationLabel(o.state,o.city,""),
@@ -45,14 +45,17 @@ const fromBusiness=(e,fallbackLocation)=>{
  whyFit:"Business listing matching chosen category",osmId:e.type+":"+e.id};
 };
 const field=(label,child)=><label style={{display:"flex",flexDirection:"column",gap:5,fontSize:11,color:MUTED,fontWeight:650}}>{label}{child}</label>;
-export default function NationwideFinder({onClose,onAddProspects,crmData=[],baseUrl,requestHeaders,embedded=false}){
+export default function NationwideFinder({onClose,onAddProspects,crmData=[],baseUrl,requestHeaders,embedded=false,canAdmin=false}){
  const [type,setType]=useState("both"),[state,setState]=useState(""),[city,setCity]=useState(""),[zip,setZip]=useState("");
  const [radius,setRadius]=useState(5),[vertical,setVertical]=useState(""),[keyword,setKeyword]=useState("");
  const [busy,setBusy]=useState(false),[adding,setAdding]=useState(false),[rows,setRows]=useState([]),[selected,setSelected]=useState([]);
  const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
  const [diagnostics,setDiagnostics]=useState([]),[checking,setChecking]=useState(false);
- const existing=useMemo(()=>new Set(crmData.map(x=>clean(x.companyName)+"|"+clean(x.cityMarket||x.market))),[crmData]);
- const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(clean(r.companyName)+"|"+clean(r.cityMarket||r.market))})),[rows,existing]);
+ const [provider,setProvider]=useState("apollo"),[contactBusy,setContactBusy]=useState(false);
+ const [contactTitle,setContactTitle]=useState("Human Resources"),[domain,setDomain]=useState(""),[allowCredits,setAllowCredits]=useState(false);
+ const [contactNotice,setContactNotice]=useState("");
+ const existing=useMemo(()=>new Set(crmData.map(idFor)),[crmData]);
+ const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(idFor(r))})),[rows,existing]);
  const append=items=>setRows(prev=>{const seen=new Set(prev.map(idFor));return [...prev,...items.filter(r=>{const id=idFor(r);if(seen.has(id))return false;seen.add(id);return true;})];});
  const addLog=t=>setLogs(prev=>[...prev,t]);
  const post=async(path,body)=>{
@@ -87,6 +90,26 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
    }catch(e){record("Local business directory",false,e?.message||"Search failed");}
   }else record("Local business directory",false,"Not run because ZIP lookup failed");
   setChecking(false);
+ };
+ const searchProvider=async()=>{
+   if(contactBusy||busy)return;
+   if(provider==="hunter"&&!canAdmin){setContactNotice("Admin access is required for Hunter credit-consuming lookups.");return;}
+   if(provider==="hunter"&&!allowCredits){setContactNotice("Confirm Hunter credit usage before running a domain search.");return;}
+   if(provider==="hunter"&&!domain.trim()){setContactNotice("Enter an exact company domain such as example.org.");return;}
+   if(provider==="apollo"&&!keyword.trim()&&!city.trim()&&!state){setContactNotice("For Apollo, enter a company/industry keyword or choose a city and state.");return;}
+   setContactBusy(true);setContactNotice("");
+   try{
+     const info=provider==="hunter"
+       ?await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:domain.trim()})
+       :await post("prospectfinder-contacts",{action:"apollo-people",provider:"apollo",keywords:keyword.trim(),location:[city.trim(),state].filter(Boolean).join(", "),title:contactTitle.trim()});
+     const people=(info.people||[]).filter(p=>p.companyName).map(p=>({...p,
+       cityMarket:p.cityMarket||locationLabel(state,city,zip),market:p.cityMarket||locationLabel(state,city,zip),
+       contactName:p.contactName||"",emailPhone:p.emailPhone||"",title:p.title||"",
+       hrPersonListed:p.hrPersonListed||"Unknown"}));
+     append(people);
+     setContactNotice(people.length+" contact"+(people.length===1?"":"s")+" returned by "+(provider==="hunter"?"Hunter":"Apollo")+". "+(provider==="hunter"?"Hunter credit usage may apply.":"Apollo People Search does not include emails or phone numbers."));
+   }catch(e){setContactNotice("Contact search failed: "+(e?.message||"Check API Integrations for connection status."));}
+   finally{setContactBusy(false);}
  };
  const run=async(next=false)=>{
   const error=locationIssue(state,city.trim(),zip);
@@ -179,6 +202,36 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
    </div>}
    {message&&<div role="alert" style={{background:embedded?"#FFF5F1":"rgba(255,151,101,.12)",border:"1px solid #F9B4A4",borderRadius:10,padding:"12px 14px",color:embedded?"#9F3E33":"#ffd1c7",fontSize:12,marginBottom:14,lineHeight:1.5}}><strong>{sourceErrors.length?"Search service issue":"Search notice"}:</strong> {message}</div>}
    {logs.length>0&&<div style={{background:embedded?"#F5F7FD":"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"#57627A":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
+   <section aria-label="Optional contact research" style={{marginTop:18,marginBottom:17,padding:16,border:"1px solid "+(embedded?"#DFE3F3":EDGE),background:embedded?"#F7F8FE":PANEL,borderRadius:13}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+      <div><strong style={{fontSize:14,color:embedded?"#253451":"#E6EAF7"}}>Find decision-maker contacts · Optional APIs</strong>
+      <p style={{fontSize:11,lineHeight:1.6,color:embedded?"#66758D":MUTED,margin:"5px 0 0"}}>Uses API keys saved under API Integrations. Results appear with directory results above and can be saved separately.</p></div>
+    </div>
+    <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap",marginTop:13}}>
+      <label style={{flex:"1 1 170px",fontSize:11,color:embedded?"#445675":MUTED}}>Contact source
+        <select style={{...inp,marginTop:6,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={provider} onChange={e=>{setProvider(e.target.value);setContactNotice("");}}>
+          <option value="apollo">Apollo · People Search (0 credits)</option>
+          <option value="hunter">Hunter · Domain Search (may use credits)</option>
+        </select>
+      </label>
+      {provider==="apollo"&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#445675":MUTED}}>Target job title
+        <input style={{...inp,marginTop:6,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
+      </label>}
+      {provider==="hunter"&&<label style={{flex:"1 1 240px",fontSize:11,color:embedded?"#445675":MUTED}}>Company domain
+        <input style={{...inp,marginTop:6,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
+      </label>}
+    </div>
+    {provider==="apollo"&&<p style={{fontSize:11,color:embedded?"#66758D":MUTED,margin:"9px 0 0"}}>Uses the keyword and location fields above to filter people. Apollo search excludes contact emails and phone numbers.</p>}
+    {provider==="hunter"&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,color:embedded?"#4B5975":"#CBD6E8"}}>
+      <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
+      I understand this Hunter domain search may consume API credits.
+    </label>}
+    <button type="button" style={{...btn,marginTop:12,background:embedded?"#5D50D0":GOLD,color:embedded?"#fff":DARK}} disabled={busy||contactBusy||(provider==="hunter"&&!canAdmin)} onClick={searchProvider}>
+      {contactBusy?"Searching contacts…":provider==="apollo"?"Search Apollo people":"Search Hunter emails · uses credits"}
+    </button>
+    {provider==="hunter"&&!canAdmin&&<span style={{fontSize:11,color:embedded?"#B54A43":"#FFB9AF",marginLeft:10}}>Admin permissions required</span>}
+    {contactNotice&&<p role="status" style={{fontSize:11,color:embedded?"#51607D":"#DCE4FA",lineHeight:1.6,margin:"10px 0 0"}}>{contactNotice}</p>}
+   </section>
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
     <div><strong>{shown.length} prospects</strong><span style={{color:MUTED,fontSize:12}}> · {selected.length} selected</span></div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
