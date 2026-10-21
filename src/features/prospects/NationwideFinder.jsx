@@ -45,7 +45,7 @@ const fromBusiness=e=>{
  whyFit:"Business listing matching chosen category",osmId:e.type+":"+e.id};
 };
 const field=(label,child)=><label style={{display:"flex",flexDirection:"column",gap:5,fontSize:11,color:MUTED,fontWeight:650}}>{label}{child}</label>;
-export default function NationwideFinder({onClose,onAddProspects,crmData=[],baseUrl,requestHeaders}){
+export default function NationwideFinder({onClose,onAddProspects,crmData=[],baseUrl,requestHeaders,embedded=false}){
  const [type,setType]=useState("both"),[state,setState]=useState(""),[city,setCity]=useState(""),[zip,setZip]=useState("");
  const [radius,setRadius]=useState(15),[vertical,setVertical]=useState(""),[keyword,setKeyword]=useState("");
  const [busy,setBusy]=useState(false),[adding,setAdding]=useState(false),[rows,setRows]=useState([]),[selected,setSelected]=useState([]);
@@ -110,18 +110,22 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   });
   if(!items.length){setMessage("Select at least one prospect not already in the CRM.");return;}
   setAdding(true);setMessage("");
-  try{await onAddProspects(items);onClose();}
+  try{
+    await onAddProspects(items);
+    if(embedded){setRows(prev=>prev.map(r=>selected.includes(idFor(r))?{...r,already:true}:r));setSelected([]);setMessage(items.length+" prospect"+(items.length===1?"":"s")+" sent to CRM.");}
+    else onClose?.();
+  }
   catch(e){setMessage("Could not save: "+(e?.message||"Please try again"));}
   finally{setAdding(false);}
  };
- return <div role="dialog" aria-modal="true" aria-label="Nationwide ProspectFinder" style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(5,9,19,.86)",padding:18,overflowY:"auto",color:"#F0F4FF"}}>
-  <div style={{maxWidth:1160,margin:"20px auto",background:DARK,border:"1px solid "+EDGE,borderRadius:16,padding:22,boxShadow:"0 18px 60px #0008"}}>
+ return <div role={embedded?"region":"dialog"} aria-modal={embedded?undefined:"true"} aria-label="Nationwide ProspectFinder" style={embedded?{position:"relative",background:"transparent",padding:0,color:"#1B2943",width:"100%"}:{position:"fixed",inset:0,zIndex:10000,background:"rgba(5,9,19,.86)",padding:18,overflowY:"auto",color:"#F0F4FF"}}>
+  <div style={embedded?{maxWidth:"none",margin:0,background:"#fff",border:"1px solid #E6EAF2",borderRadius:18,padding:23,boxShadow:"0 8px 32px #15213a08"}:{maxWidth:1160,margin:"20px auto",background:DARK,border:"1px solid "+EDGE,borderRadius:16,padding:22,boxShadow:"0 18px 60px #0008"}}>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
-    <div><h2 style={{margin:"0 0 5px",color:GOLD,fontSize:21}}>ProspectFinder · United States</h2>
+    <div><h2 style={{margin:"0 0 5px",color:embedded?"#4F42CE":GOLD,fontSize:embedded?19:21}}>{embedded?"U.S. organization search":"ProspectFinder · United States"}</h2>
     <p style={{margin:0,color:MUTED,fontSize:12}}>Discover nonprofits and small businesses. Contact verification is separate from directory discovery.</p></div>
-    <button onClick={onClose} style={{...btn,background:PANEL,color:"#F0F4FF"}} aria-label="Close finder">✕</button>
+    {!embedded&&<button onClick={onClose} style={{...btn,background:PANEL,color:"#F0F4FF"}} aria-label="Close finder">✕</button>}
    </div>
-   <div style={{background:PANEL,borderRadius:12,padding:16,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:12,marginBottom:16}}>
+   <div className={embedded?"pf-native-search":""} style={{background:embedded?"#F6F7FC":PANEL,borderRadius:12,padding:16,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:12,marginBottom:16}}>
     {field("Prospect category",<select style={inp} value={type} onChange={e=>setType(e.target.value)}><option value="both">Nonprofits & small businesses</option><option value="nonprofit">Nonprofits only</option><option value="smb">Small businesses only</option></select>)}
     {field("State",<select style={inp} value={state} onChange={e=>setState(e.target.value)}><option value="">All states</option>{US_STATES.map(([code,name])=><option key={code} value={code}>{name}</option>)}</select>)}
     {field("City",<input style={inp} placeholder="e.g. Austin" value={city} onChange={e=>setCity(e.target.value)}/>)}
@@ -129,10 +133,10 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     {field("Local search radius",<select style={inp} value={radius} onChange={e=>setRadius(Number(e.target.value))}>{RADII.map(n=><option key={n} value={n}>{n} miles</option>)}</select>)}
     {field("Industry (optional)",<select style={inp} value={vertical} onChange={e=>setVertical(e.target.value)}><option value="">All industries</option>{VERTICALS.map(v=><option key={v} value={v}>{v}</option>)}{Object.keys(categories).filter(x=>!VERTICALS.includes(x)).map(v=><option key={v} value={v}>{v}</option>)}</select>)}
     <div style={{gridColumn:"1 / -1"}}>{field("Business or organization keyword",<input style={inp} value={keyword} onChange={e=>setKeyword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!busy)run();}} placeholder="e.g. dental, community center, software, charity"/>)}</div>
-    <button style={{...btn,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching live directories…":"Search Prospects"}</button>
+    <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching live directories…":"Search Prospects"}</button>
    </div>
-   {message&&<p role="alert" style={{color:"#fca5a5",fontSize:12}}>{message}</p>}
-   {logs.length>0&&<div style={{background:"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
+   {message&&<p role="alert" style={{color:embedded?"#BA3E52":"#fca5a5",fontSize:12}}>{message}</p>}
+   {logs.length>0&&<div style={{background:embedded?"#F5F7FD":"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"#57627A":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
     <div><strong>{shown.length} prospects</strong><span style={{color:MUTED,fontSize:12}}> · {selected.length} selected</span></div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -141,9 +145,9 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      <button style={btn} disabled={adding||!selected.length} onClick={add}>{adding?"Saving…":"Save selected to CRM"}</button>
     </div>
    </div>
-   <div style={{overflowX:"auto",border:"1px solid "+EDGE,borderRadius:10}}>
+   <div style={{overflowX:"auto",border:"1px solid "+(embedded?"#E4E8F1":EDGE),borderRadius:10}}>
     <table style={{width:"100%",minWidth:750,borderCollapse:"collapse",fontSize:12}}>
-     <thead style={{background:PANEL,color:GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact","Website / Profile","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
+     <thead style={{background:embedded?"#F7F7FC":PANEL,color:embedded?"#4F42CE":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact","Website / Profile","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
      <tbody>{shown.map(r=>{
       const key=idFor(r);return <tr key={key} style={{borderTop:"1px solid "+EDGE,opacity:r.already?.55:1}}>
        <td style={{padding:10}}><input type="checkbox" aria-label={"Select "+r.companyName} disabled={r.already} checked={selected.includes(key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,key]:prev.filter(k=>k!==key))}/></td>
@@ -159,7 +163,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     </table>
    </div>
    {page!=null&&type!=="smb"&&<button onClick={()=>run(true)} disabled={busy} style={{...btn,marginTop:12,background:"#253454",color:"#F0F4FF"}}>Load more nonprofits</button>}
-   <p style={{color:MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). Local businesses: © OpenStreetMap contributors (ODbL). Nationwide bulk business crawling and verified decision-maker contacts are not included in this phase. ZIP filtering is not available in ProPublica nonprofit results.</p>
+   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). Local businesses: © OpenStreetMap contributors (ODbL). Nationwide bulk business crawling and verified decision-maker contacts are not included in this phase. ZIP filtering is not available in ProPublica nonprofit results.</p>
   </div>
  </div>;
 }
