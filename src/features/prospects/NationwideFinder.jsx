@@ -102,8 +102,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(!next&&!keyword.trim()&&!vertical&&!state&&!city.trim()&&!zip&&!(hunterEnabled&&domain.trim())){
    setMessage("Enter a keyword, location, industry, or company domain to search.");return;
   }
-  if(!next&&hunterEnabled&&(!canAdmin||!domain.trim()||!allowCredits)){
-   setMessage(!canAdmin?"Admin access is required for Hunter searches.":"To include Hunter, enter an exact company domain and confirm possible credit usage.");
+  if(!next&&hunterEnabled&&(!canAdmin||!allowCredits)){
+   setMessage(!canAdmin?"Admin access is required for Hunter searches.":"Confirm possible Hunter API credit usage before searching.");
    return;
   }
   setBusy(true);setMessage("");
@@ -154,7 +154,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      }))};
     }]);
    }
-   if(hunterEnabled){
+   if(hunterEnabled&&domain.trim()){
     tasks.push(["Hunter Domain Search",async()=>{
      const info=await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:domain.trim()});
      return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
@@ -189,6 +189,46 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     for(const item of items){
      const key=idFor(item);
      if(!seen.has(key)){seen.add(key);merged.push(item);}
+    }
+   }
+   // Optional credit-based enrichment, limited to 3 unique source-listed domains.
+   // Never guess a website or silently spend credits. Explicit domain searches
+   // are already handled above and are not repeated here.
+   if(!next&&hunterEnabled&&!domain.trim()&&allowCredits&&canAdmin){
+    const candidates=[],seenDomains=new Set();
+    for(const item of merged){
+     if(item.email||!item.website)continue;
+     try{
+      const hostname=new URL(item.website).hostname.toLowerCase().replace(/^www\./,"");
+      if(!hostname.includes(".")||seenDomains.has(hostname))continue;
+      seenDomains.add(hostname);
+      candidates.push({item,hostname});
+      if(candidates.length>=3)break;
+     }catch{continue;}
+    }
+    if(!candidates.length)logsOut.push("Hunter: no source-listed websites are available to look up emails.");
+    else{
+     logsOut.push("Hunter: checking "+candidates.length+" known website domain"+(candidates.length===1?"":"s")+" (may consume up to "+candidates.length+" domain-search credits).");
+     const results=await Promise.all(candidates.map(async ({item,hostname})=>{
+      try {
+       const info=await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:hostname});
+       const contacts=(info.people||[]).filter(p=>safeEmail(p.email||p.emailPhone));
+       const preferred=contacts.find(p=>/human resources|\bhr\b|people|talent/i.test(p.title||""))||contacts[0];
+       return {item,hostname,email:preferred?safeEmail(preferred.email||preferred.emailPhone):""};
+      }catch(e){return {item,hostname,error:e?.message||"Request failed"};}
+     }));
+     let enriched=0;
+     for(const result of results){
+      if(result.error){failed.push("Hunter "+result.hostname+": "+result.error);continue;}
+      if(result.email){
+       result.item.email=result.email;
+       result.item.emailPhone=[result.email,result.item.phone].filter(Boolean).join(" | ");
+       result.item.emailSource="Hunter.io · matched listed domain";
+       result.item.verificationNotes=(result.item.verificationNotes||"")+" Hunter.io returned "+result.email+" for the source-listed domain "+result.hostname+"; address not independently verified.";
+       enriched++;
+      }
+     }
+     logsOut.push("Hunter: "+enriched+" organization"+(enriched===1?"":"s")+" enriched with a public email.");
     }
    }
    if(next)append(merged);else setRows(merged);
@@ -248,15 +288,15 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
       </label>}
-      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#405271":MUTED}}>Hunter company domain
+      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#405271":MUTED}}>Hunter company domain (optional)
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
       </label>}
      </div>}
      {hunterEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
        <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
-       I authorize this search to use Hunter API credits for the specified domain.
+       I authorize Hunter domain searches that may use up to 3 credits for websites found, or one domain search if I entered a domain.
      </label>}
-     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Hunter queries only run when enabled with a domain and explicit credit consent.</p>
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Hunter runs only with explicit credit consent. Without a supplied domain it checks at most three websites actually listed by results.</p>
     </div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
     <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
