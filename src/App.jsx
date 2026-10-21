@@ -3853,7 +3853,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           if(original.emailPhone!==next.emailPhone)next={...next,emailStatus:"",emailCheckedAt:""};
           const saved=await onSaveProspect(next);
           if(!saved||saved.__saveFailed)throw new Error(saved?.__saveFailed||"Database did not confirm the update.");
-          if(addAudit)await addAudit(currentUser.username,"Qualified prospect: "+original.companyName).catch(()=>{});
+          if(addAudit){try{await addAudit(currentUser.username,"Qualified prospect: "+original.companyName);}catch{}}
           t2("Qualification saved to CRM.");
           return saved;
         }}
