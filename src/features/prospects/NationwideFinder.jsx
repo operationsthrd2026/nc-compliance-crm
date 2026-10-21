@@ -1,6 +1,7 @@
 import React,{useMemo,useState} from "react";
 import {EMPTY_P,VERTICALS} from "../../constants.js";
 import {US_STATES,RADII,locationIssue,locationLabel} from "../../lib/usLocation.js";
+import {safeWebsite,safeOrganizationWebsite,safeEmail,safePhone,publicDetailsFromOsm} from "../../lib/contactDetails.js";
 
 const DARK="#0B1426", PANEL="#152442", EDGE="rgba(240,244,255,.14)", GOLD="#DBA843", MUTED="#B1BED7";
 const inp={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid "+EDGE,background:"#1C2B50",color:"#F0F4FF",borderRadius:8,fontSize:13};
@@ -28,6 +29,7 @@ const clean=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const idFor=r=>r.ein?"ein:"+r.ein:r.osmId?"osm:"+r.osmId:(r.contactName||r.emailPhone)?"contact:"+clean(r.companyName)+"|"+clean(r.contactName)+"|"+clean(r.emailPhone):clean(r.companyName)+"|"+clean(r.cityMarket);
 const fromNonprofit=o=>({
  companyName:o.name||"Unnamed nonprofit",contactName:"",title:"",emailPhone:"",
+ website:safeOrganizationWebsite(o.website||o.website_url||""),email:safeEmail(o.email||""),phone:safePhone(o.phone||""),
  cityMarket:locationLabel(o.state,o.city,""),market:locationLabel(o.state,o.city,""),
  sourceUrl:o.ein?"https://projects.propublica.org/nonprofits/organizations/"+o.ein:"",
  sourceType:"ProPublica Nonprofit Explorer",vertical:"Nonprofits & Associations",hrPersonListed:"Unknown",
@@ -36,11 +38,11 @@ const fromNonprofit=o=>({
 });
 const fromBusiness=(e,fallbackLocation)=>{
  const t=e.tags||{},city=t["addr:city"]||"",state=t["addr:state"]||"";
- const website=t.website||t["contact:website"]||"",email=t.email||t["contact:email"]||"",phone=t.phone||t["contact:phone"]||"";
+ const {website,email,phone}=publicDetailsFromOsm(t);
  const osmLink="https://www.openstreetmap.org/"+e.type+"/"+e.id;
  return {companyName:t.name||"Unnamed small business",contactName:"",title:"",
- emailPhone:[email,phone].filter(Boolean).join(" | "),cityMarket:city||state?locationLabel(state,city,""):fallbackLocation,market:city||state?locationLabel(state,city,""):fallbackLocation,
- sourceUrl:website||osmLink,website,sourceType:"OpenStreetMap (Overpass)",vertical:"",
+ emailPhone:[email,phone].filter(Boolean).join(" | "),email,phone,cityMarket:city||state?locationLabel(state,city,""):fallbackLocation,market:city||state?locationLabel(state,city,""):fallbackLocation,
+ sourceUrl:osmLink,website,sourceType:"OpenStreetMap (Overpass)",vertical:"",
  hrPersonListed:"Unknown",verificationNotes:"Community-contributed location and contact data; email addresses are not independently verified.",
  whyFit:"Business listing matching chosen category",osmId:e.type+":"+e.id};
 };
@@ -100,8 +102,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(!next&&!keyword.trim()&&!vertical&&!state&&!city.trim()&&!zip&&!(hunterEnabled&&domain.trim())){
    setMessage("Enter a keyword, location, industry, or company domain to search.");return;
   }
-  if(!next&&hunterEnabled&&(!canAdmin||!domain.trim()||!allowCredits)){
-   setMessage(!canAdmin?"Admin access is required for Hunter searches.":"To include Hunter, enter an exact company domain and confirm possible credit usage.");
+  if(!next&&hunterEnabled&&(!canAdmin||!allowCredits)){
+   setMessage(!canAdmin?"Admin access is required for Hunter searches.":"Confirm possible Hunter API credit usage before searching.");
    return;
   }
   setBusy(true);setMessage("");
@@ -147,15 +149,17 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      });
      return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
       ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
+      website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||""),
       emailPhone:p.emailPhone||"",verificationNotes:p.verificationNotes||"Apollo does not provide email/phone in People Search."
      }))};
     }]);
    }
-   if(hunterEnabled){
+   if(hunterEnabled&&domain.trim()){
     tasks.push(["Hunter Domain Search",async()=>{
      const info=await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:domain.trim()});
      return {items:(info.people||[]).filter(p=>p.companyName).map(p=>({
-      ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc
+      ...p,cityMarket:p.cityMarket||loc,market:p.cityMarket||loc,
+      website:safeOrganizationWebsite(p.website||""),email:safeEmail(p.email||p.emailPhone||""),phone:safePhone(p.phone||"")
      }))};
     }]);
    }
@@ -187,6 +191,46 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      if(!seen.has(key)){seen.add(key);merged.push(item);}
     }
    }
+   // Optional credit-based enrichment, limited to 3 unique source-listed domains.
+   // Never guess a website or silently spend credits. Explicit domain searches
+   // are already handled above and are not repeated here.
+   if(!next&&hunterEnabled&&!domain.trim()&&allowCredits&&canAdmin){
+    const candidates=[],seenDomains=new Set();
+    for(const item of merged){
+     if(item.email||!item.website)continue;
+     try{
+      const hostname=new URL(item.website).hostname.toLowerCase().replace(/^www\./,"");
+      if(!hostname.includes(".")||seenDomains.has(hostname))continue;
+      seenDomains.add(hostname);
+      candidates.push({item,hostname});
+      if(candidates.length>=3)break;
+     }catch{continue;}
+    }
+    if(!candidates.length)logsOut.push("Hunter: no source-listed websites are available to look up emails.");
+    else{
+     logsOut.push("Hunter: checking "+candidates.length+" known website domain"+(candidates.length===1?"":"s")+" (may consume up to "+candidates.length+" domain-search credits).");
+     const results=await Promise.all(candidates.map(async ({item,hostname})=>{
+      try {
+       const info=await post("prospectfinder-contacts",{action:"hunter-domain",provider:"hunter",domain:hostname});
+       const contacts=(info.people||[]).filter(p=>safeEmail(p.email||p.emailPhone));
+       const preferred=contacts.find(p=>/human resources|\bhr\b|people|talent/i.test(p.title||""))||contacts[0];
+       return {item,hostname,email:preferred?safeEmail(preferred.email||preferred.emailPhone):""};
+      }catch(e){return {item,hostname,error:e?.message||"Request failed"};}
+     }));
+     let enriched=0;
+     for(const result of results){
+      if(result.error){failed.push("Hunter "+result.hostname+": "+result.error);continue;}
+      if(result.email){
+       result.item.email=result.email;
+       result.item.emailPhone=[result.email,result.item.phone].filter(Boolean).join(" | ");
+       result.item.emailSource="Hunter.io · matched listed domain";
+       result.item.verificationNotes=(result.item.verificationNotes||"")+" Hunter.io returned "+result.email+" for the source-listed domain "+result.hostname+"; address not independently verified.";
+       enriched++;
+      }
+     }
+     logsOut.push("Hunter: "+enriched+" organization"+(enriched===1?"":"s")+" enriched with a public email.");
+    }
+   }
    if(next)append(merged);else setRows(merged);
    setPage(nextPage);
    setSourceErrors(failed);
@@ -203,8 +247,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  };
  const add=async()=>{
   const items=shown.filter(r=>selected.includes(idFor(r))&&!r.already).map(r=>{
-   const {ein,osmId,website,...cleaned}=r;
-   return {...EMPTY_P,...cleaned,id:Date.now()+Math.random(),priorityScore:"",currentStatus:"NEW"};
+   const {ein,osmId,...cleaned}=r;
+   return {...EMPTY_P,...cleaned,emailPhone:[r.email,r.phone].filter(Boolean).join(" | ")||r.emailPhone||"",id:Date.now()+Math.random(),priorityScore:"",currentStatus:"NEW"};
   });
   if(!items.length){setMessage("Select at least one prospect not already in the CRM.");return;}
   setAdding(true);setMessage("");
@@ -244,15 +288,15 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
       {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
       </label>}
-      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#405271":MUTED}}>Hunter company domain
+      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#405271":MUTED}}>Hunter company domain (optional)
        <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
       </label>}
      </div>}
      {hunterEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
        <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
-       I authorize this search to use Hunter API credits for the specified domain.
+       I authorize Hunter domain searches that may use up to 3 credits for websites found, or one domain search if I entered a domain.
      </label>}
-     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Hunter queries only run when enabled with a domain and explicit credit consent.</p>
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Apollo People Search does not provide email or phone numbers. Hunter runs only with explicit credit consent. Without a supplied domain it checks at most three websites actually listed by results.</p>
     </div>
     <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
     <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
@@ -272,28 +316,30 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     </div>
    </div>
    <div style={{overflowX:"auto",border:"1px solid "+(embedded?"#E4E8F1":EDGE),borderRadius:10}}>
-    <table style={{width:"100%",minWidth:750,borderCollapse:"collapse",fontSize:12}}>
-     <thead style={{background:embedded?"#F7F7FC":PANEL,color:embedded?"#4F42CE":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact","Website / Profile","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
+    <table style={{width:"100%",minWidth:1180,borderCollapse:"collapse",fontSize:12}}>
+     <thead style={{background:embedded?"#F7F7FC":PANEL,color:embedded?"#4F42CE":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact person","Website","Email","Phone","Source listing","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
      <tbody>{shown.map(r=>{
       const key=idFor(r);return <tr key={key} style={{borderTop:"1px solid "+EDGE,opacity:r.already?.55:1}}>
        <td style={{padding:10}}><input type="checkbox" aria-label={"Select "+r.companyName} disabled={r.already} checked={selected.includes(key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,key]:prev.filter(k=>k!==key))}/></td>
        <td style={{padding:10,fontWeight:650}}>{r.companyName}</td>
        <td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
        <td style={{padding:10}}>
-        {r.contactName&&<div style={{fontWeight:700,color:embedded?"#20324F":"#F0F4FF"}}>{r.contactName}</div>}
+        {r.contactName?<div style={{fontWeight:700,color:embedded?"#20324F":"#F0F4FF"}}>{r.contactName}</div>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not listed</span>}
         {r.title&&<div style={{fontSize:11,color:embedded?"#66758D":MUTED,marginTop:2}}>{r.title}</div>}
-        {r.emailPhone?<div style={{fontSize:11,marginTop:r.contactName?3:0}}>{r.emailPhone}</div>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>{r.contactName?"Email / phone not provided":"Not listed"}</span>}
        </td>
-       <td style={{padding:10}}>{r.sourceUrl?<a href={r.sourceUrl} target="_blank" rel="noreferrer" style={{color:GOLD}}>{r.website?"Website":"View listing"} ↗</a>:"—"}</td>
+       <td style={{padding:10}}>{r.website?<a href={r.website} target="_blank" rel="noopener noreferrer" style={{color:embedded?"#5143BF":GOLD}}>Visit website ↗</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not available</span>}</td>
+       <td style={{padding:10}}>{r.email?<a href={"mailto:"+r.email} style={{color:embedded?"#5143BF":GOLD,overflowWrap:"anywhere"}}>{r.email}</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not available</span>}</td>
+       <td style={{padding:10}}>{r.phone?<a href={"tel:"+r.phone.replace(/[^\d+]/g,"")} style={{color:embedded?"#5143BF":GOLD}}>{r.phone}</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not available</span>}</td>
+       <td style={{padding:10}}>{r.sourceUrl&&safeWebsite(r.sourceUrl)?<a href={safeWebsite(r.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{color:embedded?"#5143BF":GOLD}}>View source ↗</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>—</span>}</td>
        <td style={{padding:10,color:r.already?"#34d399":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
       </tr>;
      })}
-     {!shown.length&&<tr><td colSpan={7} style={{padding:30,textAlign:"center",color:embedded?"#66758D":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
+     {!shown.length&&<tr><td colSpan={10} style={{padding:30,textAlign:"center",color:embedded?"#66758D":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
      </tbody>
     </table>
    </div>
    {page!=null&&type!=="smb"&&<button onClick={()=>run(true)} disabled={busy} style={{...btn,marginTop:12,background:"#253454",color:"#F0F4FF"}}>Load more nonprofits</button>}
-   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Apollo/Hunter contact data may be limited by provider permissions and available credits; results are not independently verified. ZIP filtering is not available in ProPublica nonprofit results.</p>
+   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Websites, emails and phones appear only when sources list them. Nonprofit Explorer does not provide official websites or direct contact details. Apollo People Search does not provide contact emails or phones. Listed contacts are not independently verified; Hunter may require credits. ZIP filtering is not available in ProPublica nonprofit results.</p>
   </div>
  </div>;
 }
