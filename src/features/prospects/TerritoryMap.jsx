@@ -24,6 +24,10 @@ function Fit({ points, focus }){
 export default function TerritoryMap({ rows, scoreOf, onPickMarket, onOpen }){
   const [pins, setPins] = useState(false);
   const [focus, setFocus] = useState(null);
+  // Public map services can fail independently of CRM data.
+  // Show a visible warning and allow retry instead of leaving an unexplained blank map.
+  const [tileError, setTileError] = useState(false);
+  const [tileRetry, setTileRetry] = useState(0);
   const { places, unplaced } = useMemo(() => groupByPlace(rows), [rows]);
 
   const stats = useMemo(() => [...places.entries()].map(([place, list]) => {
@@ -40,7 +44,7 @@ export default function TerritoryMap({ rows, scoreOf, onPickMarket, onOpen }){
   }).sort((a, b) => b.n - a.n), [places, scoreOf]);
 
   if (!rows.length) return <EmptyState icon="🗺️" title="Nothing to map">No prospects match the current filters.</EmptyState>;
-  if (!stats.length) return <EmptyState icon="🗺️" title="No locations to show">This classic CRM map currently supports North Carolina markets only. None of these prospects has a recognized map location ({unplaced} unplaced). Set a Market on a prospect to place it on the map.</EmptyState>;
+  if (!stats.length) return <EmptyState icon="🗺️" title="No locations to show">None of these prospects has a recognised North Carolina market or city yet ({unplaced} unplaced). Set a Market on a prospect to place it on the map.</EmptyState>;
 
   const max = Math.max(...stats.map(s => s.n));
   return (
@@ -48,9 +52,11 @@ export default function TerritoryMap({ rows, scoreOf, onPickMarket, onOpen }){
       <div className="nc-card" style={{ overflow: "hidden", position: "relative" }}>
         <MapContainer center={DEFAULT_NC_COORDS} zoom={7} style={{ height: 560, width: "100%" }} scrollWheelZoom={true}>
           <TileLayer
+            key={tileRetry}
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
             maxZoom={19}
+            eventHandlers={{ tileerror: () => setTileError(true) }}
           />
           <Fit points={stats.map(s => s.coords)} focus={focus} />
           {stats.map(s => {
@@ -77,6 +83,32 @@ export default function TerritoryMap({ rows, scoreOf, onPickMarket, onOpen }){
               </CircleMarker>);
           }))}
         </MapContainer>
+        <div aria-label="Map provider diagnostic" style={{
+          position: "absolute", top: 12, right: 12, zIndex: 480,
+          background: "rgba(12,22,39,.95)", color: "#E7EDF9",
+          border: "1px solid rgba(255,255,255,.22)", borderRadius: 8,
+          padding: "7px 10px", fontSize: 11, fontWeight: 700,
+          boxShadow: "0 4px 14px #0006"
+        }}>
+          OpenStreetMap · no API key · map fix v2
+        </div>
+        {tileError && <div role="alert" style={{
+          position: "absolute", top: 14, left: 14, zIndex: 500,
+          maxWidth: 330, padding: "12px 14px", borderRadius: 10,
+          background: "rgba(12,22,39,.96)", border: "1px solid #f0ad4e",
+          color: "#f4f7ff", fontSize: 12, lineHeight: 1.5,
+          boxShadow: "0 8px 20px #0006"
+        }}>
+          <strong>Map tiles could not load.</strong>
+          <div style={{marginTop: 4}}>Your prospect counts are still available under Territories. The map provider may be unavailable or blocked on this network.</div>
+          <div style={{display:"flex",gap:12,alignItems:"center",marginTop:9}}>
+            <button type="button" onClick={() => {setTileError(false);setTileRetry(n => n + 1);}}
+              style={{border:"1px solid #F5B957",background:"#28324C",color:"#fff",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12}}>
+              Retry map
+            </button>
+            <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener noreferrer" style={{color:"#e3c477",textDecoration:"underline"}}>OpenStreetMap ↗</a>
+          </div>
+        </div>}
         <div style={{ position: "absolute", left: 12, bottom: 12, zIndex: 400, display: "flex", gap: 6, flexWrap: "wrap" }}>
           {["hot", "strong", "possible", "low"].map(t => <span key={t} className="nc-chip" style={{ background: "rgba(11,20,38,.85)", color: TIERS[t].color, borderColor: `${TIERS[t].color}55` }}>● {TIERS[t].label}</span>)}
         </div>
