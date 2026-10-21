@@ -3848,8 +3848,10 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
       <GS/>
       <button
         onClick={()=>setExperience("prospectfinder")}
-        style={{position:"fixed",bottom:20,right:20,zIndex:9995,padding:"12px 18px",border:0,borderRadius:12,color:"#fff",background:"#6454E8",boxShadow:"0 8px 25px #11182755",cursor:"pointer",fontWeight:800,fontSize:12}}>
-        ← Back to ProspectFinder
+        aria-label="Switch from classic CRM to the new ProspectFinder"
+        title="Return to the nationwide ProspectFinder dashboard"
+        style={{position:"fixed",top:8,right:18,zIndex:9995,padding:"10px 16px",border:"1px solid #B2A7FF",borderRadius:10,color:"#fff",background:"#6454E8",boxShadow:"0 6px 22px #11182777",cursor:"pointer",fontWeight:800,fontSize:12}}>
+        ✦ Open New ProspectFinder →
       </button>
       {toast&&<Toast msg={toast.msg} type={toast.t}/>}
 
