@@ -10,12 +10,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 const builtin = [
   { id: "apollo", label: "Apollo.io", kind: "B2B company and people discovery", link: "https://docs.apollo.io/", note: "People Search is available in Find Prospects when the account has API access. It does not include email or phone." },
   { id: "hunter", label: "Hunter.io", kind: "Domain search and email contacts", link: "https://hunter.io/api-documentation/v2", note: "Domain Search is available in Find Prospects for admins. It can consume Hunter credits." },
-  { id: "anthropic", label: "Claude (Anthropic)", kind: "Optional live AI web search", link: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool", note: "Live web search in Find Prospects after adding an API key, enabling Claude web search in the Claude Console, and authorizing per-search charges. Admin-only." },
-  { id: "openai", label: "ChatGPT / OpenAI API", kind: "Optional live AI web search", link: "https://developers.openai.com/api/docs/guides/tools-web-search", note: "Uses an OpenAI API key (not your ChatGPT subscription). Live web search in Find Prospects with explicit paid-search approval. Admin-only." },
+
 ];
 const noKey = [
   { label: "ProPublica Nonprofit Explorer", detail: "Public nonprofit filings and organization records" },
   { label: "OpenStreetMap / Overpass", detail: "Community-contributed local business listings" },
+  { label: "Wikidata · Free Organization Search", detail: "Search known organizations by name; official websites, emails and phones if recorded. No API key or paid AI search." },
   { label: "Zippopotam.us", detail: "City and ZIP centroid lookup" },
 ];
 const servicePattern = /^[a-z][a-z0-9_-]{0,39}$/;
@@ -55,7 +55,7 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
   },[isConnected,onLoad]);
 
   useEffect(()=>{refresh();},[refresh]);
-  const others=useMemo(()=>Object.keys(configured).filter(x=>!builtin.some(p=>p.id===x)).sort(),[configured]);
+  const others=useMemo(()=>Object.keys(configured).filter(x=>!["anthropic","openai"].includes(x)&&!builtin.some(p=>p.id===x)).sort(),[configured]);
   const notice=(text,error=false)=>setMessage({text,error});
   const saveKey=async id=>{
     const key=String(drafts[id]||"").trim();
@@ -89,11 +89,11 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     finally{setCustomBusy(false);}
   };
   const testProvider=async id=>{
-    if(!isConnected||!canAdmin||!["apollo","hunter","openai","anthropic"].includes(id))return;
+    if(!isConnected||!canAdmin||!["apollo","hunter"].includes(id))return;
     setTesting(id);
     setTests(old=>({...old,[id]:{busy:true}}));
     try{
-      const res=await fetch(baseUrl+"/functions/v1/"+(["openai","anthropic"].includes(id)?"prospectfinder-ai-search":"prospectfinder-contacts"),{
+      const res=await fetch(baseUrl+"/functions/v1/prospectfinder-contacts",{
         method:"POST",headers:await requestHeaders(),body:JSON.stringify({action:"test",provider:id}),
         signal:AbortSignal.timeout(16000)
       });
@@ -113,7 +113,7 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       </div>
       <div style={{...styles.small,marginTop:10}}>{p.note}</div>
       {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"#6250CE",marginTop:8}}>Provider documentation ↗</a>}
-      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter","openai","anthropic"].includes(p.id)&&
+      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter"].includes(p.id)&&
         <div style={{marginTop:12,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
           <button type="button" disabled={!!testing} style={styles.secondary} onClick={()=>testProvider(p.id)}>
             {testing===p.id?"Checking…":"Test key · no web search"}
@@ -145,21 +145,9 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       <p style={{...styles.small,marginBottom:0,marginTop:14}}>Keys are submitted to the existing admin-authorized Supabase credential function. Previously saved key values are never returned to this page. A stored key is <strong>not</strong> proof that the provider works or is integrated with nationwide search.</p>
     </div>
 
-    <section style={{...styles.panel,border:"1px solid #D9D5FB",background:"#FAF9FF"}}>
-      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Connect your existing OpenAI account</h3>
-      <p style={{...styles.note,margin:"8px 0 12px"}}>Use the same login as ChatGPT, but create a separate <strong>project API key</strong>. ChatGPT subscriptions do not include API web searches.</p>
-      <ol style={{...styles.note,paddingLeft:21,margin:"0 0 12px",lineHeight:1.9}}>
-       <li><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Create a project API key</a> named ProspectFinder CRM.</li>
-       <li><a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer">Configure API billing</a> and set a usage limit.</li>
-       <li>Find <strong>ChatGPT / OpenAI API</strong> below, paste your key, then choose <strong>Save key</strong>.</li>
-       <li>Click <strong>Test key</strong>. This checks key access but not web search, billing or remaining credits.</li>
-       <li>In <strong>Find Prospects</strong>, enable ChatGPT, approve paid usage for that search and click Search Prospects once.</li>
-      </ol>
-      <div style={{fontSize:11,color:"#A06036",lineHeight:1.6}}>Keep the API key private. Never enter it in chat messages, browser URLs or public repository files. An OpenAI Admin API key is not required.</div>
-    </section>
     <section style={styles.panel}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Public sources · no API key needed</h3>
-      <p style={{...styles.note,margin:"7px 0 11px"}}>These sources power the initial nationwide discovery workflow and may have rate limits or incomplete coverage.</p>
+      <p style={{...styles.note,margin:"7px 0 11px"}}>These free services power ProspectFinder organization searches without requiring API credentials or AI subscriptions. Coverage varies and they have public usage limits.</p>
       {noKey.map(p=><div key={p.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,borderBottom:"1px solid #EFF1F7",padding:"11px 0"}}>
         <div><strong style={{fontSize:12}}>{p.label}</strong><div style={styles.small}>{p.detail}</div></div>
         <span style={{color:"#2B8770",fontSize:11,fontWeight:750,whiteSpace:"nowrap"}}>No key</span>
@@ -167,8 +155,8 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     </section>
 
     <section style={styles.panel}>
-      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional API providers (including AI web search)</h3>
-      <p style={{...styles.note,margin:"7px 0 12px"}}>Add credentials for supported or future integrations. Subscription, endpoint permissions and connection validation depend on the provider.</p>
+      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional contact-data APIs (not needed for free search)</h3>
+      <p style={{...styles.note,margin:"7px 0 12px"}}>Apollo and Hunter remain optional contact-data services. The free organization lookup works without them; Hunter may consume credits if enabled.</p>
       {builtin.map(provider)}
       {others.map(id=>provider({id,label:recordName(id),kind:"Custom provider",note:"Credential stored only. This custom provider cannot return search results until an API adapter is implemented."}))}
       {canAdmin&&isConnected&&<div style={{marginTop:17,borderTop:"1px solid #EDF0F6",paddingTop:17}}>
