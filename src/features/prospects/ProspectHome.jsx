@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import NationwideFinder from "./NationwideFinder.jsx";
+import {safeWebsite,safeEmail,safePhone} from "../../lib/contactDetails.js";
 import ApiIntegrations from "./ApiIntegrations.jsx";
 
 /**
@@ -32,14 +33,19 @@ const css = [
   "@media(max-width:720px){.pf-root{display:block}.pf-side{position:relative;width:100%;min-height:auto;padding:10px 12px;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}.pf-brand{padding:4px 7px}.pf-brand-sub,.pf-navhint,.pf-side-bottom{display:none}.pf-side nav{display:flex;flex-wrap:wrap;gap:4px}.pf-navbtn{width:auto;padding:9px 11px;font-size:11px;gap:5px}.pf-ico{width:auto}.pf-header{height:57px;padding:0 18px}.pf-header .pf-pill{display:none}.pf-content{padding:20px 14px 48px}.pf-page-title{font-size:25px}.pf-hero{padding:25px;min-height:205px}.pf-hero-head{font-size:24px}.pf-metrics{grid-template-columns:repeat(2,1fr);gap:9px}.pf-metric{padding:14px}.pf-metric-num{font-size:23px}.pf-actions{grid-template-columns:1fr}.pf-card{padding:17px}}"
 ].join("\n");
 
-function MiniTable({ data, onOpenCRM, limit = 5 }) {
+function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
   const items = data.slice(0, limit);
   return <div style={{overflowX:"auto"}}>
     <table className="pf-recent">
-      <thead><tr><th>ORGANIZATION</th><th>LOCATION</th><th>STATUS</th></tr></thead>
+      <thead><tr><th>ORGANIZATION</th><th>LOCATION</th>{showContacts&&<><th>WEBSITE</th><th>EMAIL</th><th>PHONE</th></>}<th>STATUS</th></tr></thead>
       <tbody>{items.map((p,i)=><tr key={p.id || i}>
         <td><span className="pf-name">{text(p.companyName) || "Unnamed prospect"}</span><div style={{color:"#95A1B5",fontSize:10,marginTop:4}}>{text(p.vertical) || "Uncategorized"}</div></td>
         <td>{text(p.cityMarket || p.market) || "Not listed"}</td>
+        {showContacts&&<>
+         <td>{safeWebsite(p.website)?<a href={safeWebsite(p.website)} target="_blank" rel="noopener noreferrer" style={{color:"#5848C9"}}>Visit ↗</a>:"Not available"}</td>
+         <td>{safeEmail(p.email)?<a href={"mailto:"+safeEmail(p.email)} style={{color:"#5848C9"}}>{safeEmail(p.email)}</a>:"Not available"}</td>
+         <td>{safePhone(p.phone)?<a href={"tel:"+safePhone(p.phone).replace(/[^\d+]/g,"")} style={{color:"#5848C9"}}>{safePhone(p.phone)}</a>:"Not available"}</td>
+        </>}
         <td><span className={"pf-tag " + statusTone(p.currentStatus)}>{statusName(p.currentStatus)}</span></td>
       </tr>)}</tbody>
     </table>
@@ -56,7 +62,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
   const fresh = crmData.filter(p => statusName(p.currentStatus).toUpperCase() === "NEW").length;
   const contacted = crmData.filter(p => /T1 SENT|T2 SENT|T3 SENT|CONTACTED|FOLLOW.UP/i.test(statusName(p.currentStatus))).length;
   const recent = [...crmData].reverse();
-  const filtered = recent.filter(p => [p.companyName,p.vertical,p.cityMarket,p.market,p.emailPhone].some(v => text(v).toLowerCase().includes(term.toLowerCase())));
+  const filtered = recent.filter(p => [p.companyName,p.vertical,p.cityMarket,p.market,p.emailPhone,p.website,p.email,p.phone].some(v => text(v).toLowerCase().includes(term.toLowerCase())));
   const nav = [
     ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["leads","▤","Saved Prospects"],["integrations","⚙","API Integrations"],["crm","▦","Classic CRM"]
   ];
@@ -128,7 +134,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
         <div className="pf-page-kicker">YOUR CRM DATABASE</div><h1 className="pf-page-title">Saved prospects</h1>
         <p className="pf-page-description">A quick overview of your existing leads. For editing, verification, exports and outreach, open the classic CRM.</p>
         <div className="pf-searchline"><input aria-label="Filter saved prospects" placeholder="Search saved organizations by name, category, location or contact…" value={term} onChange={e=>setTerm(e.target.value)}/><button className="pf-button" onClick={onOpenCRM}>↗ Open lead management</button></div>
-        <section className="pf-card"><div className="pf-card-top"><h3 className="pf-card-title">{filtered.length} saved prospects</h3><button className="pf-link" onClick={()=>setTab("discover")}>+ Discover more</button></div><MiniTable data={filtered} onOpenCRM={onOpenCRM} limit={50}/></section>
+        <section className="pf-card"><div className="pf-card-top"><h3 className="pf-card-title">{filtered.length} saved prospects</h3><button className="pf-link" onClick={()=>setTab("discover")}>+ Discover more</button></div><MiniTable data={filtered} onOpenCRM={onOpenCRM} limit={50} showContacts/></section>
       </>}
       </div>
     </main>
