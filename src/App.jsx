@@ -78,7 +78,7 @@ const supabaseAuth = isConfigured
 
 // Which optional database features exist? Filled by DB.detectSchema() after sign-in so the
 // app keeps working if the code is deployed before the SQL migration has been run.
-const SCHEMA = { tags: false, savedSearches: false };
+const SCHEMA = { tags: false, savedSearches: false, contactFields: false };
 
 // Placeholder shown in the UI for an API key that is saved server-side.
 // The real key is never sent to the browser.
@@ -154,6 +154,7 @@ function dbToProspect(r) {
     id: r.id, companyName: r.company_name || "", contactName: r.contact_name || "",
     title: r.title || "", emailPhone: r.email_phone || "", cityMarket: r.city_market || "",
     market: r.market || "", sourceUrl: r.source_url || "", sourceType: r.source_type || "",
+    website: r.website || "", email: r.email || "", phone: r.phone || "",
     verificationNotes: r.verification_notes || "", whyFit: r.why_fit || "",
     vertical: r.vertical || "", hrPersonListed: r.hr_person_listed || "No",
     hrPeopleContact: r.hr_people_contact || "", orgSize: r.org_size || "",
@@ -175,6 +176,7 @@ function prospectToDb(p) {
     company_name: p.companyName, contact_name: p.contactName, title: p.title,
     email_phone: p.emailPhone, city_market: p.cityMarket, market: p.market,
     source_url: p.sourceUrl, source_type: p.sourceType,
+    ...(SCHEMA.contactFields ? { website: p.website || null, email: p.email || null, phone: p.phone || null } : {}),
     verification_notes: p.verificationNotes, why_fit: p.whyFit,
     vertical: p.vertical, hr_person_listed: p.hrPersonListed,
     hr_people_contact: p.hrPeopleContact, org_size: p.orgSize,
@@ -329,6 +331,7 @@ const DB = {
     const probe = async (path) => { try { await sbFetch(path, "GET", null, "return=minimal", true); return true; } catch { return false; } }; // quiet: "missing" is an expected answer
     SCHEMA.tags = await probe("prospects?select=tags,email_status,email_checked_at&limit=1");
     SCHEMA.savedSearches = await probe("saved_searches?select=id&limit=1");
+    SCHEMA.contactFields = await probe("prospects?select=website,email,phone&limit=1");
     return { ...SCHEMA };
   },
 
