@@ -83,15 +83,24 @@ Deno.serve(async(req:Request)=>{
    const r=await fetch("https://api.openai.com/v1/responses",{
     method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
     body:JSON.stringify({model:"gpt-5-mini",tools:[{type:"web_search",search_context_size:"low"}],
-     tool_choice:"required",max_output_tokens:1200,store:false,instructions,input:task}),
+     tool_choice:"required",include:["web_search_call.action.sources"],max_output_tokens:1200,store:false,instructions,input:task}),
     signal:AbortSignal.timeout(44000)
    });
    if(!r.ok)return response({error:"OpenAI web search unavailable (HTTP "+r.status+"). Check API billing and model/tool access."},502,h);
    const raw=await r.json(),outputs=Array.isArray(raw.output)?raw.output:[];
    searched=outputs.some((x:Row)=>x.type==="web_search_call");
-   for(const item of outputs)if(item.type==="message")for(const part of item.content||[]){
-    if(part.type==="output_text")foundText+=String(part.text||"");
-    for(const cite of part.annotations||[])if(cite.type==="url_citation"&&cite.url)cites.push(cite.url);
+   // Use real search metadata as well as text citation annotations. This avoids
+   // discarding a valid source solely because the model returned JSON instead
+   // of a prose paragraph with citation markers.
+   for(const item of outputs){
+    if(item.type==="web_search_call"){
+     const sources=Array.isArray(item.action?.sources)?item.action.sources:[];
+     for(const source of sources)if(source?.type==="url"&&source.url)cites.push(source.url);
+    }
+    if(item.type==="message")for(const part of item.content||[]){
+     if(part.type==="output_text")foundText+=String(part.text||"");
+     for(const cite of part.annotations||[])if(cite.type==="url_citation"&&cite.url)cites.push(cite.url);
+    }
    }
   }else{
    const r=await fetch("https://api.anthropic.com/v1/messages",{

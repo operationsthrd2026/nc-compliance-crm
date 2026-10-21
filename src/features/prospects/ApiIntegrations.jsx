@@ -145,6 +145,18 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       <p style={{...styles.small,marginBottom:0,marginTop:14}}>Keys are submitted to the existing admin-authorized Supabase credential function. Previously saved key values are never returned to this page. A stored key is <strong>not</strong> proof that the provider works or is integrated with nationwide search.</p>
     </div>
 
+    <section style={{...styles.panel,border:"1px solid #D9D5FB",background:"#FAF9FF"}}>
+      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Connect your existing OpenAI account</h3>
+      <p style={{...styles.note,margin:"8px 0 12px"}}>Use the same login as ChatGPT, but create a separate <strong>project API key</strong>. ChatGPT subscriptions do not include API web searches.</p>
+      <ol style={{...styles.note,paddingLeft:21,margin:"0 0 12px",lineHeight:1.9}}>
+       <li><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Create a project API key</a> named ProspectFinder CRM.</li>
+       <li><a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer">Configure API billing</a> and set a usage limit.</li>
+       <li>Find <strong>ChatGPT / OpenAI API</strong> below, paste your key, then choose <strong>Save key</strong>.</li>
+       <li>Click <strong>Test key</strong>. This checks key access but not web search, billing or remaining credits.</li>
+       <li>In <strong>Find Prospects</strong>, enable ChatGPT, approve paid usage for that search and click Search Prospects once.</li>
+      </ol>
+      <div style={{fontSize:11,color:"#A06036",lineHeight:1.6}}>Keep the API key private. Never enter it in chat messages, browser URLs or public repository files. An OpenAI Admin API key is not required.</div>
+    </section>
     <section style={styles.panel}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Public sources · no API key needed</h3>
       <p style={{...styles.note,margin:"7px 0 11px"}}>These sources power the initial nationwide discovery workflow and may have rate limits or incomplete coverage.</p>
