@@ -23,7 +23,7 @@ const categories={
  "Healthcare Practices":[["amenity","clinic"],["amenity","doctors"]],
  "Home Health / Homecare":[["healthcare","home_care"],["office","healthcare"]]
 };
-const fallbackTags=[["shop","yes"],["office","company"],["shop","convenience"],["amenity","restaurant"],["amenity","cafe"],["shop","hairdresser"],["craft","electrician"],["craft","plumber"]];
+const fallbackTags=[["amenity","restaurant"],["amenity","cafe"],["shop","convenience"]];
 const clean=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const idFor=r=>r.ein?"ein:"+r.ein:r.osmId?"osm:"+r.osmId:clean(r.companyName)+"|"+clean(r.cityMarket);
 const fromNonprofit=o=>({
@@ -51,13 +51,13 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [busy,setBusy]=useState(false),[adding,setAdding]=useState(false),[rows,setRows]=useState([]),[selected,setSelected]=useState([]);
  const [message,setMessage]=useState(""),[page,setPage]=useState(null),[logs,setLogs]=useState([]),[sourceErrors,setSourceErrors]=useState([]);
  const existing=useMemo(()=>new Set(crmData.map(x=>clean(x.companyName)+"|"+clean(x.cityMarket||x.market))),[crmData]);
- const shown=useMemo(()=>rows.map(r=>({...r,already:existing.has(clean(r.companyName)+"|"+clean(r.cityMarket||r.market))})),[rows,existing]);
+ const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(clean(r.companyName)+"|"+clean(r.cityMarket||r.market))})),[rows,existing]);
  const append=items=>setRows(prev=>{const seen=new Set(prev.map(idFor));return [...prev,...items.filter(r=>{const id=idFor(r);if(seen.has(id))return false;seen.add(id);return true;})];});
  const addLog=t=>setLogs(prev=>[...prev,t]);
  const post=async(path,body)=>{
   if(!baseUrl || !baseUrl.startsWith("https://"))throw new Error("Supabase is not configured in this preview.");
   let res;
-  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(18000)}); }
+  try { res=await fetch(baseUrl+"/functions/v1/"+path,{method:"POST",headers:await requestHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(path==="prospectfinder-businesses"?25000:18000)}); }
   catch(e) {throw new Error("Cannot contact "+path+". Check the preview URL, login session, and network/CORS configuration.");}
   const data=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||"HTTP "+res.status+" on "+path+". Check Edge Function deployment.");
@@ -122,7 +122,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(!items.length){setMessage("Select at least one prospect not already in the CRM.");return;}
   setAdding(true);setMessage("");
   try{
-    await onAddProspects(items);
+    const saved=await onAddProspects(items);
+    if(!Array.isArray(saved)||saved.length!==items.length)throw new Error("The CRM did not confirm all selected leads. Check Saved Prospects before trying again.");
     if(embedded){setRows(prev=>prev.map(r=>selected.includes(idFor(r))?{...r,already:true}:r));setSelected([]);setMessage(items.length+" prospect"+(items.length===1?"":"s")+" sent to CRM.");}
     else onClose?.();
   }
@@ -174,7 +175,7 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     </table>
    </div>
    {page!=null&&type!=="smb"&&<button onClick={()=>run(true)} disabled={busy} style={{...btn,marginTop:12,background:"#253454",color:"#F0F4FF"}}>Load more nonprofits</button>}
-   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). Local businesses: © OpenStreetMap contributors (ODbL). Nationwide bulk business crawling and verified decision-maker contacts are not included in this phase. ZIP filtering is not available in ProPublica nonprofit results.</p>
+   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Nationwide bulk business crawling and verified decision-maker contacts are not included in this phase. ZIP filtering is not available in ProPublica nonprofit results.</p>
   </div>
  </div>;
 }
