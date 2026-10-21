@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 const builtin = [
   { id: "apollo", label: "Apollo.io", kind: "B2B company and people discovery", link: "https://docs.apollo.io/", note: "People Search is available in Find Prospects when the account has API access. It does not include email or phone." },
   { id: "hunter", label: "Hunter.io", kind: "Domain search and email contacts", link: "https://hunter.io/api-documentation/v2", note: "Domain Search is available in Find Prospects for admins. It can consume Hunter credits." },
+  { id: "gemini", label: "Gemini + Google Search", kind: "Grounded search for businesses and nonprofits", link: "https://ai.google.dev/gemini-api/docs/google-search", note: "Gemini 2.5 Flash with live Google Search grounding. May use free quota or incur API charges. Admin-only; off by default in Find Prospects." },
 
 ];
 const noKey = [
@@ -89,11 +90,11 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     finally{setCustomBusy(false);}
   };
   const testProvider=async id=>{
-    if(!isConnected||!canAdmin||!["apollo","hunter"].includes(id))return;
+    if(!isConnected||!canAdmin||!["apollo","hunter","gemini"].includes(id))return;
     setTesting(id);
     setTests(old=>({...old,[id]:{busy:true}}));
     try{
-      const res=await fetch(baseUrl+"/functions/v1/prospectfinder-contacts",{
+      const res=await fetch(baseUrl+"/functions/v1/"+(id==="gemini"?"prospectfinder-gemini":"prospectfinder-contacts"),{
         method:"POST",headers:await requestHeaders(),body:JSON.stringify({action:"test",provider:id}),
         signal:AbortSignal.timeout(16000)
       });
@@ -113,10 +114,10 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       </div>
       <div style={{...styles.small,marginTop:10}}>{p.note}</div>
       {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"#6250CE",marginTop:8}}>Provider documentation ↗</a>}
-      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter"].includes(p.id)&&
+      {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter","gemini"].includes(p.id)&&
         <div style={{marginTop:12,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
           <button type="button" disabled={!!testing} style={styles.secondary} onClick={()=>testProvider(p.id)}>
-            {testing===p.id?"Checking…":"Test key · no web search"}
+            {testing===p.id?"Checking…":"Test key · no search"}
           </button>
           {tests[p.id]&&!tests[p.id].busy&&<span role="status" style={{fontSize:11,color:tests[p.id].ok?"#157858":"#B34943"}}>
             {tests[p.id].ok?"✓ API responding":"✕ Check failed"} — {tests[p.id].text}
@@ -145,6 +146,12 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       <p style={{...styles.small,marginBottom:0,marginTop:14}}>Keys are submitted to the existing admin-authorized Supabase credential function. Previously saved key values are never returned to this page. A stored key is <strong>not</strong> proof that the provider works or is integrated with nationwide search.</p>
     </div>
 
+    <section style={{...styles.panel,background:"#F7F7FF",border:"1px solid #DDD9FA"}}>
+      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Set up Gemini search</h3>
+      <p style={{...styles.note,margin:"8px 0 10px"}}>Already have a Gemini API key? Find <strong>Gemini + Google Search</strong> under Optional API providers below and save it there. Do not paste it into chats or public files.</p>
+      <p style={{...styles.note,margin:"0 0 10px"}}>Use <strong>Test key</strong> to validate the credential without making a Google Search request. Then go to Find Prospects, select Gemini and approve one grounded search. Google free-tier limits and charges vary by API model, project and billing status.</p>
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Manage Gemini API keys in Google AI Studio ↗</a>
+    </section>
     <section style={styles.panel}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Public sources · no API key needed</h3>
       <p style={{...styles.note,margin:"7px 0 11px"}}>These free services power ProspectFinder organization searches without requiring API credentials or AI subscriptions. Coverage varies and they have public usage limits.</p>
@@ -155,8 +162,8 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     </section>
 
     <section style={styles.panel}>
-      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional contact-data APIs (not needed for free search)</h3>
-      <p style={{...styles.note,margin:"7px 0 12px"}}>Apollo and Hunter remain optional contact-data services. The free organization lookup works without them; Hunter may consume credits if enabled.</p>
+      <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Optional API providers</h3>
+      <p style={{...styles.note,margin:"7px 0 12px"}}>Gemini adds optional live Google Search grounding. Free public directories work without keys. Gemini may consume API quota or incur provider charges; Hunter may consume credits.</p>
       {builtin.map(provider)}
       {others.map(id=>provider({id,label:recordName(id),kind:"Custom provider",note:"Credential stored only. This custom provider cannot return search results until an API adapter is implemented."}))}
       {canAdmin&&isConnected&&<div style={{marginTop:17,borderTop:"1px solid #EDF0F6",paddingTop:17}}>
