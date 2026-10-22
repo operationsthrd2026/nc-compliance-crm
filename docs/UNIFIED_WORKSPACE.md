@@ -1,5 +1,12 @@
 # Unified workspace + light/dark themes
 
+## Today, search and shortcuts
+- **Today (Home)** tells you what to do next instead of listing menus. It ranks: replies waiting → overdue follow-ups → prospects ready for Touch 1 → unchecked emails → prospects with no email → strong prospects needing an HR check → possible duplicates. The most urgent one is shown large; each has a button that opens the exact place to do it (for example, one overdue follow-up opens the email composer with that prospect already chosen). It also shows four numbers, your pipeline by stage, and where your prospects are (click any to drill in).
+- **It only suggests.** Nothing is sent, saved, merged or changed automatically. Do Not Respond and Converted prospects are never suggested.
+- **Getting started** card (new accounts): four steps worked out from what you've actually done; **Hide** dismisses it.
+- **Ctrl+K (⌘K on Mac)** opens a search-and-jump palette: type part of a company name to open it, or type what you want ("add", "map", "calendar", "dark theme"). **/** jumps to the prospect search box. **Esc** closes things.
+- Top bar: a search box (opens the palette) and a **+ New** menu (add a prospect, import, find prospects, new task).
+
 ## The sidebar: seven areas (not fourteen)
 Related screens are **tabs inside an area**, and each area remembers the tab you used last.
 

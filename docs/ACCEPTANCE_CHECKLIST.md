@@ -140,6 +140,7 @@ Open the live site in a normal window **and** a phone (or a narrow window). Do e
 |---|---|---|
 | 8.1 | Sidebar | Seven areas only: Home, Find prospects, Prospects, Email & outreach, Calendar & tasks, Insights, Settings. Each area with several screens shows them as tabs at the top; leave and come back — you return to the tab you were on. |
 | 8.1b | Quick actions | Open a prospect: **Write email** opens the template composer with that prospect chosen; **Schedule follow-up** opens a pre-filled task (nothing saved until you press Save); **Show on map** opens the map at that place. |
+| 8.1c | Today and search | Home says what to do first and lists the next actions; each button opens the right screen with the right prospect or filter. **Ctrl+K** opens the palette — type a company name and press Enter to open it; type "add" for the Add dialog; Esc closes. The Today suggestions never send or change anything by themselves. |
 | 8.2 | Prospects | Four views (Table / Map / Duplicates / Qualification). Open a row → the side panel has **Qualify**; it opens that prospect in Qualification. |
 | 8.3 | Pipeline, Calendar, Email Hub | Open, show your data, move a pipeline card and reload — it stays. Email Hub signs in to Gmail as before. |
 | 8.4 | Admin | Users, plugins, audit log all open. Create a test user, then delete it. |
