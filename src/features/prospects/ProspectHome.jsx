@@ -7,6 +7,7 @@ import OutreachWorkspace from "./OutreachWorkspace.jsx";
 import OutreachTools from "./OutreachTools.jsx";
 import TeamTasks from "./TeamTasks.jsx";
 import AnalyticsWorkspace from "./AnalyticsWorkspace.jsx";
+import QualityReviewWorkspace from "./QualityReviewWorkspace.jsx";
 
 /**
  * The nationwide ProspectFinder experience is the default authenticated landing page.
@@ -61,20 +62,22 @@ function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
 
 export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onOpenAdmin, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask }) {
   const [tab, setTab] = useState("overview");
+  const [focusedProspectId, setFocusedProspectId] = useState(null);
+  const openQualification = id => { setFocusedProspectId(id); setTab("leads"); };
   const nonprofitCount = useMemo(() => crmData.filter(p => nonprofitPattern.test(text(p.vertical))).length, [crmData]);
   const smallCount = Math.max(0, crmData.length - nonprofitCount);
   const fresh = crmData.filter(p => statusName(p.currentStatus).toUpperCase() === "NEW").length;
   const contacted = crmData.filter(p => /T1 SENT|T2 SENT|T3 SENT|CONTACTED|FOLLOW.UP/i.test(statusName(p.currentStatus))).length;
   const recent = [...crmData].reverse();
   const nav = [
-    ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["leads","▤","Saved Prospects"],["outreach","◷","Outreach & Reports"],["tools","✉","Templates & Activity"],["tasks","☑","Team Tasks"],["analytics","▥","Analytics Dashboard"],["integrations","⚙","API Integrations"],["crm","▦","Classic CRM"]
+    ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["leads","▤","Saved Prospects"],["outreach","◷","Outreach & Reports"],["tools","✉","Templates & Activity"],["tasks","☑","Team Tasks"],["analytics","▥","Analytics Dashboard"],["quality","◇","Quality & Priorities"],["integrations","⚙","API Integrations"],["crm","▦","Classic CRM"]
   ];
   const toTab = id => id==="crm" ? onOpenCRM() : setTab(id);
   const name = text(currentUser?.name || currentUser?.username || "Team Member");
   return <div className="pf-root">
     <style>{css}</style>
     <aside className="pf-side">
-      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · PHASE 6</div></div></div>
+      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · PHASE 7</div></div></div>
       <p className="pf-navhint">WORKSPACE</p>
       <nav aria-label="ProspectFinder navigation">{nav.map(([id,ico,label]) => <button key={id} className={"pf-navbtn " + (tab===id?"active":"")} onClick={()=>toTab(id)}><span className="pf-ico">{ico}</span>{label}</button>)}</nav>
       <div className="pf-side-bottom">
@@ -85,7 +88,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
       </div>
     </aside>
     <main className="pf-main">
-      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {tab==="overview"?"Overview":tab==="discover"?"Find Prospects":tab==="integrations"?"API Integrations":tab==="outreach"?"Outreach & Reports":tab==="tools"?"Templates & Activity":tab==="tasks"?"Team Tasks":tab==="analytics"?"Analytics Dashboard":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
+      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {tab==="overview"?"Overview":tab==="discover"?"Find Prospects":tab==="integrations"?"API Integrations":tab==="outreach"?"Outreach & Reports":tab==="tools"?"Templates & Activity":tab==="tasks"?"Team Tasks":tab==="analytics"?"Analytics Dashboard":tab==="quality"?"Quality & Priorities":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
       <div className="pf-content">
       {tab==="overview" && <>
         <div className="pf-page-kicker">PROSPECTFINDER · NATIONWIDE CRM</div>
@@ -115,6 +118,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
               <button className="pf-action" onClick={()=>setTab("leads")}><span className="pf-action-ico">▤</span><span><strong>Qualify saved leads</strong><small>{fresh} prospects currently marked new</small></span></button>
               <button className="pf-action" onClick={()=>setTab("outreach")}><span className="pf-action-ico">◷</span><span><strong>Manage follow-ups</strong><small>Due dates, manual outreach and pipeline reports</small></span></button>
               <button className="pf-action" onClick={()=>setTab("analytics")}><span className="pf-action-ico">▥</span><span><strong>Review analytics</strong><small>Pipeline performance, contact coverage and tasks</small></span></button>
+              <button className="pf-action" onClick={()=>setTab("quality")}><span className="pf-action-ico">◇</span><span><strong>Review lead quality</strong><small>Duplicate warnings, missing data and priorities</small></span></button>
             </div>
           </section>
           <section className="pf-card">
@@ -134,11 +138,12 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
         <p className="pf-page-description">Add or update optional API keys, see which providers are configured, and review free sources available for prospect discovery.</p>
         <div style={{marginTop:23}}><ApiIntegrations canAdmin={canAdmin} isConnected={dbStatus==="connected"} onLoad={onLoadApiCredentials} onSave={onSaveApiCredential} onOpenAdmin={onOpenAdmin} baseUrl={baseUrl} requestHeaders={requestHeaders}/></div>
       </>}
-      {tab==="leads" && <LeadQualification crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM}/>}
+      {tab==="leads" && <LeadQualification crmData={crmData} initialProspectId={focusedProspectId} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM}/>}
       {tab==="outreach" && <OutreachWorkspace crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM}/>}
       {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM}/>}
       {tab==="tasks" && <TeamTasks crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onGetTaskMembers={onGetTaskMembers} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} onOpenCRM={onOpenCRM}/>}
       {tab==="analytics" && <AnalyticsWorkspace crmData={crmData} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenOutreach={()=>setTab("outreach")} onOpenTasks={()=>setTab("tasks")}/>}
+      {tab==="quality" && <QualityReviewWorkspace crmData={crmData} onOpenProspect={openQualification} onOpenCRM={onOpenCRM}/>}
       </div>
     </main>
   </div>;
