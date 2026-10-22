@@ -3885,6 +3885,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
       <ProspectHome
         crmData={crmData}
         currentUser={currentUser}
+        savedApi={savedApi}
         onOpenCRM={()=>{setView("table");setExperience("classic");}}
         onOpenAdmin={onOpenAdmin}
         onLogout={onLogout}
