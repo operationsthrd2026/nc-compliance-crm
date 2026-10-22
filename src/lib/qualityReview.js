@@ -72,7 +72,13 @@ export function nextReviewAction(p,issues=[],asOf=localDateKey()){
 }
 
 export function qualityRows(leads=[],asOf=localDateKey()){
- const allowed=leads.filter(p=>p&&p.id!=null&&text(p.companyName));
+ // Normalize the explicit public contact fields before reusing CRM dedupe.
+ // A directory page is never considered the organization's domain.
+ const allowed=leads.filter(p=>p&&p.id!=null&&text(p.companyName)).map(p=>{
+  const d=contactDetails(p);
+  return {...p,emailPhone:[d.email,d.phone].filter(Boolean).join(" | "),
+   sourceUrl:d.website||""};
+ });
  const groups=findDuplicateGroups(allowed);
  const dupes=new Map();
  for(const group of groups) for(const p of group.members){
