@@ -58,7 +58,7 @@ function TaskEditor({task,canEdit,onChange,onClose,members,canAdmin,myId}){
   <p style={{fontSize:10,color:"#8A96A8",margin:0,lineHeight:1.6}}>Completing a task updates its task status only. It does not send outreach or modify the prospect's pipeline stage.</p>
  </aside>;
 }
-export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAdmin=false,enabled=false,onGetTasks,onCreateTask,onUpdateTask,onGetTaskMembers,onOpenCRM}){
+export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAdmin=false,enabled=false,onGetTasks,onCreateTask,onUpdateTask,onGetTaskMembers,onOpenCRM,initialTaskDraft=null}){
  const myId=currentUser?.id||"";
  const [tasks,setTasks]=useState([]),[members,setMembers]=useState([]);
  const [loading,setLoading]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
@@ -103,6 +103,19 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
  const show=all.slice(Math.min(page,pages-1)*20,(Math.min(page,pages-1)+1)*20);
  const chosen=tasks.find(t=>t.id===selectedId)||null;
  const canCreate=canEdit&&enabled;
+ useEffect(()=>{
+  // A Phase 8 handoff only PREFILLS the existing create form.
+  // The user still reviews all fields and explicitly saves to the CRM.
+  if(!initialTaskDraft||!canCreate)return;
+  const id=String(initialTaskDraft.prospectId||"");
+  if(!uuid.test(id)||!crmData.some(p=>p.id===id))return;
+  setProspectId(id);setCompanySearch("");
+  setTaskTitle(String(initialTaskDraft.taskTitle||"").slice(0,180));
+  setDescription(String(initialTaskDraft.description||"").slice(0,3000));
+  setPriority(["low","normal","high","urgent"].includes(initialTaskDraft.priority)?initialTaskDraft.priority:"normal");
+  setDueDate("");setCreating(true);setSelectedId("");
+  setError("");setSuccess("");
+ },[initialTaskDraft,canCreate,crmData]);
  const create=async()=>{
   if(!canCreate||saving)return;
   let data;try{data=validateTaskData({task_title:taskTitle,description,due_date:dueDate,priority});}catch(e){setError(e.message);return;}

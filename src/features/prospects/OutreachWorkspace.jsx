@@ -111,10 +111,10 @@ function ActionPanel({item,canEdit,onUpdateProspect,onClose}){
   {!canEdit&&<p style={{fontSize:11,color:muted}}>View-only account. Ask a CRM editor to schedule or record a touch.</p>}
  </aside>;
 }
-function Followups({crmData,canEdit,onUpdateProspect}){
+function Followups({crmData,canEdit,onUpdateProspect,initialProspectId=null}){
  const asOf=localDateKey();
  const queue=useMemo(()=>followupQueue(crmData,asOf),[crmData,asOf]);
- const [view,setView]=useState("All"),[keyword,setKeyword]=useState(""),[selectedId,setSelectedId]=useState(null);
+ const [view,setView]=useState("All"),[keyword,setKeyword]=useState(""),[selectedId,setSelectedId]=useState(initialProspectId);
  const [horizon,setHorizon]=useState("queue");
  const [page,setPage]=useState(0);
  const totals=pipelineSnapshot(crmData,asOf).followups;
@@ -216,7 +216,7 @@ function Reports({crmData}){
   <p className="pf-footnote">Reported outreach counts are based on statuses and flags, not confirmed email delivery or logged phone calls. Reports are snapshots; the CRM does not yet keep a complete historical activity timeline. Exporting generates a local CSV and does not send data externally.</p>
  </>;
 }
-export default function OutreachWorkspace({crmData=[],canEdit=false,onUpdateProspect,onOpenCRM}){
+export default function OutreachWorkspace({crmData=[],canEdit=false,onUpdateProspect,onOpenCRM,initialProspectId=null}){
  const [tab,setTab]=useState("followups");
  return <div>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:18}}>
@@ -229,6 +229,6 @@ export default function OutreachWorkspace({crmData=[],canEdit=false,onUpdatePros
    </div>
    <button className="pf-button outline" onClick={onOpenCRM}>Classic CRM ↗</button>
   </div>
-  {tab==="followups"?<Followups crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect}/>:<Reports crmData={crmData}/>}
+  {tab==="followups"?<Followups crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} initialProspectId={initialProspectId}/>:<Reports crmData={crmData}/>}
  </div>;
 }
