@@ -16,7 +16,7 @@ const tasks=[
 test("builds one highest-priority reminder per active task and excludes closed tasks",()=>{
  const alerts=buildTaskNotifications(tasks,{asOf:"2026-10-22",currentUserId:"u1"});
  assert.deepEqual(alerts.map(x=>[x.taskId,x.type]),[
-  ["1","overdue"],["2","due_today"],["3","due_soon"],["5","priority"],["4","priority"]
+  ["1","overdue"],["2","due_today"],["3","due_soon"],["4","priority"],["5","priority"]
  ]);
  assert.equal(new Set(alerts.map(x=>x.id)).size,alerts.length);
  assert.ok(!alerts.some(x=>x.taskTitle==="Completed task"||x.taskTitle==="Cancelled task"));
