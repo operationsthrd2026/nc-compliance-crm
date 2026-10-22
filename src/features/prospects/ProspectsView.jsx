@@ -49,6 +49,8 @@ export default function ProspectsView({
   const effective = useMemo(() => ({ ...filters, q }), [filters, q]);
   const filtered = useMemo(() => sortList(applyFilters(crmData, effective, scoreOf), sort.key, sort.dir, scoreOf), [crmData, effective, sort, scoreOf]);
   const tagList = useMemo(() => allTags(crmData), [crmData]);
+  // markets actually present in the data (most common first) — nationwide, not a fixed NC list
+  const marketOptions = useMemo(() => { const c = new Map(); for (const p of crmData) if (p.market) c.set(p.market, (c.get(p.market) || 0) + 1); return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([m]) => m); }, [crmData]);
   const viewCounts = useMemo(() => Object.fromEntries(BUILTIN_VIEWS.map(v => [v.id, applyFilters(crmData, withDefaults(v.filters), scoreOf).length])), [crmData, scoreOf]);
 
   const deferred = useDeferredValue(crmData);
@@ -219,7 +221,7 @@ export default function ProspectsView({
           </>
         )}
 
-        {mode === "map" && <TerritoryMap rows={filtered} scoreOf={scoreOf} onOpen={p => setOpenId(p.id)} onPickMarket={m => { setFilters(f => ({ ...f, market: [m] })); setMode("table"); }} />}
+        {mode === "map" && <TerritoryMap rows={filtered} scoreOf={scoreOf} onOpen={p => setOpenId(p.id)} onPickPlace={k => { setFilters(f => ({ ...f, place: [k] })); setMode("table"); }} />}
 
         {mode === "duplicates" && (
           <DuplicatesView groups={dupGroups} manualGroup={manualGroup} onClearManual={() => setManualGroup(null)}
@@ -230,7 +232,7 @@ export default function ProspectsView({
       </div>
 
       {selected.size > 0 && mode === "table" && (
-        <BulkBar count={selected.size} filteredCount={filtered.length} onSelectAllFiltered={selectAllFiltered} onClear={() => setSelected(new Set())}
+        <BulkBar marketOptions={marketOptions} count={selected.size} filteredCount={filtered.length} onSelectAllFiltered={selectAllFiltered} onClear={() => setSelected(new Set())}
           canEdit={canEdit} canDelete={!!role?.canDelete} tagsEnabled={tagsEnabled} tagList={tagList} selectedTags={selectedTags} busy={busy} actions={actions} />
       )}
 

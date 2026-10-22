@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { STATUSES, VERTICALS, MARKETS } from "../../constants.js";
+import { STATUSES, VERTICALS } from "../../constants.js";
 import { Btn, Popover, MenuItem, TagInput, Spinner } from "../../ui/kit.jsx";
 import { cleanTag } from "../../lib/filters.js";
 
-export default function BulkBar({ count, filteredCount, onSelectAllFiltered, onClear, canEdit, canDelete, tagsEnabled, tagList, selectedTags, busy, actions }){
+export default function BulkBar({ marketOptions = [], count, filteredCount, onSelectAllFiltered, onClear, canEdit, canDelete, tagsEnabled, tagList, selectedTags, busy, actions }){
   const [toAdd, setToAdd] = useState([]);
   const allSelected = count >= filteredCount;
   return (
@@ -42,7 +42,11 @@ export default function BulkBar({ count, filteredCount, onSelectAllFiltered, onC
                 <div className="nc-menu-label">Industry</div>
                 {VERTICALS.map(v => <MenuItem key={v} onClick={() => { close(); actions.setField("vertical", v); }}>{v}</MenuItem>)}
                 <div className="nc-menu-sep" /><div className="nc-menu-label">Market</div>
-                {MARKETS.map(m => <MenuItem key={m} onClick={() => { close(); actions.setField("market", m); }}>{m}</MenuItem>)}
+                {marketOptions.map(m => <MenuItem key={m} onClick={() => { close(); actions.setField("market", m); }}>{m}</MenuItem>)}
+                <form style={{ padding: "6px 6px 2px", display: "flex", gap: 6 }} onSubmit={e => { e.preventDefault(); const v = new FormData(e.currentTarget).get("m").toString().trim(); if (v){ close(); actions.setField("market", v); } }}>
+                  <input name="m" className="nc-input" placeholder="Other, e.g. Austin, TX" maxLength={80} aria-label="Type a market" />
+                  <button type="submit" className="nc-btn primary sm">Set</button>
+                </form>
               </div>
             )}
           </Popover>

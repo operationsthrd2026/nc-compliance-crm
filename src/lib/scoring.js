@@ -73,7 +73,7 @@ export function scoreProspect(p, cfg = SCORING){
 
   // 3. HR gap
   const hr = p.hrPersonListed === "No" ? "No" : p.hrPersonListed === "Yes" ? "Yes" : "unknown";
-  add("hrgap", "HR gap", cfg.hrGap[hr], 15, hr === "No" ? "No HR person listed — likely under-served" : hr === "Yes" ? "Already has an HR contact" : "HR staffing unknown (neutral)");
+  add("hrgap", "HR gap", cfg.hrGap[hr], 15, hr === "No" ? "No HR person recorded — confirm before relying on this" : hr === "Yes" ? "Already has an HR contact" : "HR staffing unknown (neutral)");
   if (hr === "unknown") missing.push("HR person listed");
 
   // 4. Reachability

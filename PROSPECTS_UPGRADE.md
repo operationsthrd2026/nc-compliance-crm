@@ -8,7 +8,7 @@
 - **Table** — sortable, show/hide columns, compact/comfortable rows, paging, a **Next step** column (overdue follow-ups in red), duplicate warnings.
 - **Detail drawer** — click any row: contact info, *why* the fit score is what it is, tags, notes, timeline, status, possible duplicates. `Esc` closes.
 - **Bulk actions** — select rows (or "Select all N matching"): change status, add/remove tags, set industry/market, verify emails, Do Not Respond, export, merge, delete (admins).
-- **Map** — dark NC territory map: one bubble per market (size = prospects, colour = average fit); click for the top prospects and "Show in table".
+- **Map** — nationwide U.S. territory map: one bubble per city (or per state when no city is recognised, marked *approximate*); size = prospects, colour = average fit. The state is read from the saved text ("Austin, TX"), so "Durham, NH" is never placed in North Carolina. Click a bubble for the top prospects and "Show in table".
 - **Duplicates** — finds the same organisation by email, phone, website domain or name (ignores Inc/LLC/punctuation). Pick which record to keep, review what will be combined, confirm. **Nothing changes until you confirm.** "Not duplicates" is remembered in your browser.
 
 **Prospect Finder**
@@ -36,7 +36,7 @@ Not a conversion probability — there's no sales history to learn from. It's a 
 |---|---|---|
 | Industry | 25 | Heavier regulation ⇒ higher (home health & childcare 25 … foundations 7) |
 | Organisation size | 20 | Sweet spot 50–99 (20), 10–49 (18), 100–249 (15); tiny or huge scores low |
-| HR gap | 15 | "No HR person listed" 15 · unknown 7 · "has HR" 3 |
+| HR gap | 15 | Recorded "No" 15 (confirm it) · **Unknown 7 (neutral — never assumed to be "No")** · "Yes" 3 |
 | Reachability | 20 | Named contact 5 · personal email 10 / HR mailbox 9 / generic 5 · phone 3 · verified +2 |
 | Online presence & market | 10 | Website 5 · known NC market 5 |
 | Engagement | 10 | Replied 10 · flagged 4 |
@@ -49,6 +49,6 @@ Without any key it checks syntax, disposable/no-reply addresses, typos ("gmial.c
 
 ## Known limits
 - "Not duplicates" decisions and column/density preferences are per-browser.
-- Map pins are placed at the city centre (the CRM stores a market/city, not coordinates).
+- Map pins use a bundled table of ~150 larger U.S. cities (no geocoding service, no cost). Smaller places are shown at their **state** centre and labelled approximate. Prospects with no recognisable U.S. state/city are listed as "can't be placed".
 - Merge/delete are admin-only (matches the database rules); other roles can flag a duplicate for review.
 - Run `npm test` for the logic tests (49).

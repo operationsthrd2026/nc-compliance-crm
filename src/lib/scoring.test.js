@@ -36,6 +36,14 @@ test("scores never leave 0..100", () => {
 import { explainFit } from "./scoring.js";
 test("explainFit gives a short readable reason, and nothing for excluded prospects", () => {
   const s = scoreProspect({ ...base, vertical: "Home Health / Homecare", orgSize: "50-99", hrPersonListed: "No", emailPhone: "j@x.org", contactName: "J" });
-  const t = explainFit(s); assert.match(t, /^Fit \d+\/100 \((Hot|Strong)\)/); assert.match(t, /Home Health/); assert.match(t, /No HR person listed/);
+  const t = explainFit(s); assert.match(t, /^Fit \d+\/100 \((Hot|Strong)\)/); assert.match(t, /Home Health/); assert.match(t, /No HR person recorded/);
   assert.equal(explainFit(scoreProspect({ ...base, doNotRespond: true })), "");
+});
+
+test("Unknown / blank HR status is neutral and asks to be filled in — it is never scored as a proven gap", () => {
+  const hr = x => scoreProspect({ ...base, hrPersonListed: x }).factors.find(f => f.key === "hrgap");
+  assert.equal(hr("Unknown").points, SCORING.hrGap.unknown); assert.equal(hr("").points, SCORING.hrGap.unknown);
+  assert.ok(hr("No").points > hr("Unknown").points && hr("Unknown").points > hr("Yes").points);
+  assert.ok(scoreProspect({ ...base, hrPersonListed: "Unknown" }).missing.includes("HR person listed"));
+  assert.match(hr("No").note, /confirm/i);
 });

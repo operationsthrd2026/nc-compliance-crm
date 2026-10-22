@@ -2,9 +2,10 @@
    Prospect filtering / sorting / saved-view model (pure)
 ════════════════════════════════════════════════════════════════ */
 import { extractEmails } from "./text.js";
+import { placeKey } from "./geo.js";
 
 export const EMPTY_FILTERS = Object.freeze({
-  q: "", status: [], vertical: [], market: [], source: [], tags: [], tier: [], emailStatus: [],
+  q: "", status: [], vertical: [], market: [], place: [], source: [], tags: [], tier: [], emailStatus: [],
   hasEmail: "any",   // any | yes | no
   hrListed: "any",   // any | Yes | No
   replied: "any",    // any | yes | no
@@ -13,7 +14,7 @@ export const EMPTY_FILTERS = Object.freeze({
 
 export const withDefaults = f => ({ ...EMPTY_FILTERS, ...(f || {}) });
 
-const ARRAY_KEYS = ["status", "vertical", "market", "source", "tags", "tier", "emailStatus"];
+const ARRAY_KEYS = ["status", "vertical", "market", "place", "source", "tags", "tier", "emailStatus"];
 
 export function countActive(f){
   const x = withDefaults(f); let n = 0;
@@ -44,12 +45,14 @@ export function applyFilters(list, filters, scoreOf){
     if (f.status.length && !f.status.includes(p.currentStatus)) return false;
     if (f.vertical.length && !f.vertical.includes(p.vertical)) return false;
     if (f.market.length && !f.market.includes(p.market)) return false;
+    if (f.place.length){ const k = placeKey(p); if (!k || !f.place.includes(k)) return false; }
     if (f.source.length && !f.source.includes(p.sourceType)) return false;
     if (f.tags.length && !f.tags.some(t => (p.tags || []).includes(t))) return false;
     if (f.emailStatus.length && !f.emailStatus.includes(p.emailStatus || "")) return false;
     if (f.hasEmail === "yes" && !hasEmailOf(p)) return false;
     if (f.hasEmail === "no" && hasEmailOf(p)) return false;
-    if (f.hrListed !== "any" && p.hrPersonListed !== f.hrListed) return false;
+    if (f.hrListed === "Unknown"){ if (p.hrPersonListed === "Yes" || p.hrPersonListed === "No") return false; }
+    else if (f.hrListed !== "any" && p.hrPersonListed !== f.hrListed) return false;
     if (f.replied === "yes" && !p.replyReceived) return false;
     if (f.replied === "no" && p.replyReceived) return false;
     if (f.hideDNR && (p.doNotRespond || p.currentStatus === "Do Not Respond")) return false;
