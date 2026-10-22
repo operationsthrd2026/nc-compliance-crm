@@ -67,7 +67,7 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
  const counts=useMemo(()=>summarizeTaskNotifications(active),[active]);
  const dismissedCount=notifications.filter(item=>dismissedSet.has(item.id)).length;
  const visible=notifications.filter(item=>showDismissed===dismissedSet.has(item.id))
-  .filter(item=>filter==="all"||item.type===filter);
+  .filter(item=>filter==="all"||(filter==="priority"?["high","urgent"].includes(item.priority):item.type===filter));
  const storeDismissed=next=>{
   const safe=[...new Set(next)].slice(-500);
   setDismissed(safe);
@@ -100,7 +100,7 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
       ["Overdue",counts.overdue,"#B44343"],
       ["Due today",counts.dueToday,"#A66D1D"],
       ["Due soon",counts.dueSoon,"#3E60A8"],
-      ["High / urgent",counts.priority,"#5D4DB9"]
+      ["High / urgent",counts.highOrUrgent,"#5D4DB9"]
      ].map(([label,value,color])=><div key={label} style={{border:"1px solid #E8ECF4",borderRadius:11,padding:12,background:"#FBFCFE"}}>
       <div style={{fontSize:10,fontWeight:750,color:"#75839A"}}>{label}</div>
       <div style={{fontSize:23,fontWeight:850,color,marginTop:5}}>{value.toLocaleString()}</div>
@@ -112,7 +112,7 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
       {filters.map(option=>{
-       const count=option.type===null?counts.all:option.type==="overdue"?counts.overdue:option.type==="due_today"?counts.dueToday:option.type==="due_soon"?counts.dueSoon:counts.priority;
+       const count=option.type===null?counts.all:option.type==="overdue"?counts.overdue:option.type==="due_today"?counts.dueToday:option.type==="due_soon"?counts.dueSoon:counts.highOrUrgent;
        return <button key={option.value} type="button" aria-pressed={filter===option.value} onClick={()=>setFilter(option.value)} style={{...secondary,background:filter===option.value?"#EEEAFE":"#F6F7FC",borderColor:filter===option.value?"#C9C1FC":"#DEE3EF"}}>{option.label} ({count})</button>;
       })}
      </div>
