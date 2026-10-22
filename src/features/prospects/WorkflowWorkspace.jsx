@@ -1,5 +1,6 @@
-import React,{useMemo,useState} from "react";
+import React,{useEffect,useMemo,useState} from "react";
 import {useSavedSearches,localSavedApi} from "../useSavedSearches.js";
+import {groupVisibleTasks,visibleTaskSummary,canDeleteSharedView} from "../../lib/taskCoordination.js";
 import {buildWorkflowQueue,filterWorkflowQueue,workflowCounts,workflowCsv,normalizeWorkflowView,
  WORKFLOW_CATEGORIES,WORKFLOW_BUCKETS,validatePresetName} from "../../lib/workflowPlanning.js";
 import {localDateKey} from "../../lib/outreachPlanning.js";
@@ -24,19 +25,50 @@ function saveCsv(items,asOf){
  document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(href);
 }
 export default function WorkflowWorkspace({
- crmData=[],currentUser={},canEdit=false,tasksEnabled=false,
+ crmData=[],currentUser={},canEdit=false,canAdmin=false,tasksEnabled=false,
+ savedApi=localSavedApi,onGetTasks,onOpenTask,
  onOpenProspect,onOpenQuality,onOpenOutreach,onPrepareTask
 }){
  const [query,setQuery]=useState(""),[category,setCategory]=useState("All organizations"),
   [bucket,setBucket]=useState("All actions"),[sort,setSort]=useState("urgency");
  const [presetName,setPresetName]=useState(""),[selectedPresetId,setSelectedPresetId]=useState("");
+ const [sharePreset,setSharePreset]=useState(false);
+ const [visibleTasks,setVisibleTasks]=useState(null),[tasksLoading,setTasksLoading]=useState(false),[taskError,setTaskError]=useState("");
+ const [tasksLoadedAt,setTasksLoadedAt]=useState("");
  const [error,setError]=useState(""),[success,setSuccess]=useState("");
  const [page,setPage]=useState(0);
- // Per-CRM-user browser-only preferences: no permission, schema, or API changes.
- const scope="phase8-workflow-"+String(currentUser?.id||currentUser?.username||"guest");
- const saved=useSavedSearches(scope,localSavedApi,{currentUser});
+ // Connected accounts save workflow views in the same RLS-protected team
+ // store as the classic CRM. Demo mode keeps scoped browser-only views.
+ const activeApi=savedApi||localSavedApi;
+ const scope=activeApi.local?"phase9-workflow-"+String(currentUser?.id||currentUser?.username||"guest"):"workflow";
+ const saved=useSavedSearches(scope,activeApi,{currentUser});
+ const canSaveView=canEdit||!!activeApi.local;
+ const selectedView=saved.items.find(item=>item.id===selectedPresetId);
+ const canDeleteView=canSaveView&&canDeleteSharedView(selectedView,currentUser,canAdmin);
+ useEffect(()=>{
+  if(!tasksEnabled||typeof onGetTasks!=="function"){setVisibleTasks(null);return;}
+  let active=true;setTasksLoading(true);setTaskError("");
+  Promise.resolve().then(()=>onGetTasks()).then(rows=>{
+   if(!active)return;
+   if(!Array.isArray(rows))throw new Error("Invalid task response");
+   setVisibleTasks(rows);setTasksLoadedAt(new Date().toLocaleTimeString());
+  }).catch(()=>{if(active){setVisibleTasks(null);setTaskError("Visible tasks could not be loaded. The prospect worklist is still available.");}})
+    .finally(()=>{if(active)setTasksLoading(false);});
+  return ()=>{active=false;};
+ },[tasksEnabled,onGetTasks]);
+ const refreshTasks=async()=>{
+  if(!tasksEnabled||typeof onGetTasks!=="function")return;
+  setTasksLoading(true);setTaskError("");
+  try{
+   const rows=await onGetTasks();if(!Array.isArray(rows))throw new Error("Invalid task response");
+   setVisibleTasks(rows);setTasksLoadedAt(new Date().toLocaleTimeString());
+  }catch{setVisibleTasks(null);setTaskError("Visible tasks could not be loaded. Retry when CRM is connected.");}
+  finally{setTasksLoading(false);}
+ };
  const asOf=localDateKey();
  const actions=useMemo(()=>buildWorkflowQueue(crmData,asOf),[crmData,asOf]);
+ const taskGroups=useMemo(()=>groupVisibleTasks(visibleTasks||[],asOf),[visibleTasks,asOf]);
+ const taskStats=useMemo(()=>visibleTaskSummary(visibleTasks||[],asOf),[visibleTasks,asOf]);
  const counts=useMemo(()=>workflowCounts(actions),[actions]);
  const view={query,category,bucket,sort};
  const visibleActions=useMemo(()=>filterWorkflowQueue(actions,view),[actions,query,category,bucket,sort]);
@@ -51,25 +83,27 @@ export default function WorkflowWorkspace({
   if(!record)return;
   const view=normalizeWorkflowView(record.params);
   setQuery(view.query);setCategory(view.category);setBucket(view.bucket);setSort(view.sort);
-  setSuccess("Applied saved browser filter: "+record.name);
+  setSuccess("Applied saved filter: "+record.name);
  };
  const savePreset=async()=>{
   clearMessages();
   try{
+   if(!canSaveView)throw new Error("Only CRM editors can create saved views.");
    const name=validatePresetName(presetName);
-   if(saved.items.length>=30)throw new Error("Maximum 30 saved filters per browser account. Remove an unused filter first.");
-   const row=await saved.save(name,normalizeWorkflowView(view),false);
+   if(saved.items.length>=30)throw new Error("Maximum 30 visible saved filters. Remove an unused filter first.");
+   const row=await saved.save(name,normalizeWorkflowView(view),!activeApi.local&&sharePreset);
    setSelectedPresetId(row.id);setPresetName("");
-   setSuccess("Filter saved in this browser for your CRM account.");
+   setSuccess(activeApi.local?"Filter saved privately in this browser.":sharePreset?"Shared filter saved to CRM for the team.":"Private filter saved to your CRM account.");
   }catch(e){setError(e?.message||"Unable to save filter.");}
  };
  const deletePreset=async()=>{
   const record=saved.items.find(item=>item.id===selectedPresetId);
   if(!record)return;
   clearMessages();
+  if(!canDeleteView){setError("Only the filter creator or an administrator can delete it.");return;}
   try{
    await saved.remove(record.id);setSelectedPresetId("");
-   setSuccess("Saved browser filter deleted; current queue filters are unchanged.");
+   setSuccess("Saved filter deleted; current queue filters are unchanged.");
   }catch(e){setError(e?.message||"Could not remove filter.");}
  };
  const clearFilters=()=>{
@@ -77,9 +111,9 @@ export default function WorkflowWorkspace({
   setPage(0);setSelectedPresetId("");clearMessages();
  };
  return <div>
-  <div className="pf-page-kicker">PHASE 8 · GUIDED WORKFLOWS</div>
-  <h1 className="pf-page-title">Action queue & saved review filters</h1>
-  <p className="pf-page-description">A suggested daily worklist from existing CRM evidence, follow-up dates and review flags. Choose an item to open its existing workspace or prepare a task draft. Nothing is sent, scheduled or saved automatically.</p>
+  <div className="pf-page-kicker">PHASE 9 · SHARED TEAM WORKFLOWS</div>
+  <h1 className="pf-page-title">Shared action queue & team coordination</h1>
+  <p className="pf-page-description">Prioritize existing CRM records, reuse private or shared review views across devices, and see linked tasks your account can access. All actions still require a team member to review and save them.</p>
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10,margin:"22px 0 20px"}}>
    {presets.map(([name,value])=><button type="button" key={name} onClick={()=>setBucketFilter(value)}
     style={{...card,textAlign:"left",cursor:"pointer",borderColor:bucket===value?"#8575EA":"#E5EAF4",background:bucket===value?"#F7F5FF":"#fff"}}>
@@ -105,23 +139,40 @@ export default function WorkflowWorkspace({
     </select></label>
    </div>
    <div style={{borderTop:"1px solid #EEF1F7",paddingTop:13,display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
-    <label style={{...label,flex:"1 1 175px"}}>Saved browser filters
+    <label style={{...label,flex:"1 1 175px"}}>{activeApi.local?"Saved browser filters":"Private & shared CRM filters"}
      <select style={field} value={selectedPresetId} onChange={e=>choosePreset(e.target.value)}>
       <option value="">Choose a saved filter…</option>
-      {saved.items.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+      {saved.items.map(x=><option key={x.id} value={x.id}>{x.shared?"[Team] ":"[Private] "}{x.name}{x.createdByName?" · "+x.createdByName:""}</option>)}
      </select>
     </label>
-    <button type="button" style={secondary} disabled={!selectedPresetId} onClick={deletePreset}>Delete selected</button>
+    <button type="button" style={secondary} disabled={!selectedPresetId||!canDeleteView} onClick={deletePreset}>Delete selected</button>
     <label style={{...label,flex:"1 1 160px"}}>Name this filter
      <input style={field} value={presetName} maxLength={80} placeholder="e.g. Daily nonprofit review" onChange={e=>setPresetName(e.target.value)}/>
     </label>
-    <button type="button" style={primary} onClick={savePreset}>Save filter</button>
+    {!activeApi.local&&canSaveView&&<label style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:11,color:"#566781",fontWeight:740}}>
+      <input type="checkbox" checked={sharePreset} onChange={e=>setSharePreset(e.target.checked)}/> Share with CRM team
+    </label>}
+    <button type="button" style={primary} disabled={!canSaveView||!presetName.trim()||saved.loading} onClick={savePreset}>Save filter</button>
+    <button type="button" style={secondary} disabled={saved.loading} onClick={()=>saved.reload()}>{saved.loading?"Loading…":"Refresh views"}</button>
     <button type="button" style={secondary} onClick={clearFilters}>Reset</button>
    </div>
-   <div style={{...txt,lineHeight:1.5}}>Filters are saved per CRM user <strong>in this browser only</strong>; they do not sync across devices or change shared CRM records.</div>
+   <div style={{...txt,lineHeight:1.5}}>{activeApi.local
+    ?"Demo mode: filters remain in this browser only. Connect CRM to sync across devices."
+    :"Saved views sync through CRM. Team views can be opened by permitted teammates; private views stay visible only to their creator."}
+    {!canSaveView&&!activeApi.local&&" Your CRM role can use shared views but cannot create or delete them."}</div>
    {saved.error&&<div role="alert" style={{fontSize:11,color:"#AF4444"}}>{saved.error}</div>}
    {error&&<div role="alert" style={{fontSize:11,color:"#AF4444"}}>{error}</div>}
    {success&&<div role="status" style={{fontSize:11,color:"#24795B"}}>{success}</div>}
+  </section>
+  <section style={{...card,marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:13,flexWrap:"wrap"}}>
+   <div>
+    <h2 style={{fontSize:14,color:"#263653",margin:0}}>Task coordination · only tasks visible to you</h2>
+    {visibleTasks!==null?<p style={{...txt,margin:"6px 0 0"}}>{taskStats.active} active linked task(s) · {taskStats.dueNow} due today/overdue · {taskStats.linkedProspects} prospect(s)</p>
+      :<p style={{...txt,margin:"6px 0 0"}}>{tasksLoading?"Loading your visible CRM tasks…":"Task totals unavailable; CRM prospect queue remains usable."}</p>}
+    {tasksLoadedAt&&<div style={{...txt,marginTop:4}}>Last refreshed at {tasksLoadedAt} · Counts are not organization-wide totals.</div>}
+    {taskError&&<div role="alert" style={{...txt,color:"#A83D4D",marginTop:5}}>{taskError}</div>}
+   </div>
+   {tasksEnabled&&<button type="button" style={secondary} disabled={tasksLoading} onClick={refreshTasks}>{tasksLoading?"Refreshing…":"↻ Refresh visible tasks"}</button>}
   </section>
   <section style={{...card,marginBottom:17}}>
    <div style={{display:"flex",justifyContent:"space-between",gap:13,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
@@ -134,7 +185,7 @@ export default function WorkflowWorkspace({
    </div>
    <div style={{overflowX:"auto"}}>
     <table className="pf-recent" style={{width:"100%",minWidth:760}}>
-     <thead><tr><th>ORGANIZATION</th><th>QUEUE</th><th>RECOMMENDED NEXT STEP</th><th>WHEN</th><th>HANDOFF</th></tr></thead>
+     <thead><tr><th>ORGANIZATION</th><th>QUEUE</th><th>RECOMMENDED NEXT STEP</th><th>WHEN</th><th>VISIBLE TASKS</th><th>HANDOFF</th></tr></thead>
      <tbody>{shown.map(item=><tr key={String(item.id)}>
       <td><strong className="pf-name" style={{overflowWrap:"anywhere"}}>{item.prospect.companyName||"Unnamed organization"}</strong>
         <div style={{...txt,marginTop:4}}>{item.category} · {item.prospect.currentStatus||"NEW"}</div></td>
@@ -144,14 +195,22 @@ export default function WorkflowWorkspace({
        <strong style={{color:"#243653"}}>{item.action}</strong>
        <div style={{...txt,marginTop:4}}>{item.why}</div></td>
       <td style={{fontSize:11,color:"#54657E",whiteSpace:"nowrap"}}>{item.dueDate||"—"}</td>
+      <td style={{fontSize:11,color:"#516481",minWidth:145}}>
+       {visibleTasks===null?"Not loaded":(taskGroups.get(String(item.id))||[]).length+" active visible"}
+       {(taskGroups.get(String(item.id))||[]).slice(0,1).map(t=><div key={t.id} style={{marginTop:5}}>
+        <button className="pf-link" onClick={()=>onOpenTask(t.id)} aria-label={"Open linked task for "+(item.prospect.companyName||"prospect")}>Open task ↗</button>
+        <div style={{...txt,marginTop:3}}>{t.due_date||"No due date"} · {t.status}</div>
+       </div>)}
+      </td>
       <td style={{minWidth:180}}>
        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
         <button type="button" className="pf-link"
           onClick={()=>item.route==="outreach"?onOpenOutreach(item.id):item.route==="quality"?onOpenQuality():onOpenProspect(item.id)}>
           Open review →
         </button>
-        {canEdit&&tasksEnabled&&<button type="button" style={{...secondary,padding:"7px 9px",fontSize:10}}
+        {canEdit&&tasksEnabled&&!(taskGroups.get(String(item.id))||[]).length&&<button type="button" style={{...secondary,padding:"7px 9px",fontSize:10}}
           onClick={()=>onPrepareTask(item)}>Draft task</button>}
+        {canEdit&&tasksEnabled&&(taskGroups.get(String(item.id))||[]).length>0&&<span style={{...txt,fontSize:10}}>Review linked task before drafting another</span>}
        </div>
       </td>
      </tr>)}</tbody>
@@ -166,6 +225,6 @@ export default function WorkflowWorkspace({
     </div>
    </div>
   </section>
-  <p className="pf-footnote">This is a rule-based suggestion queue, not a verified compliance assessment or an automated campaign. Blocked and converted prospects are excluded. Task drafts must be reviewed and manually saved in Team Tasks; sending emails, merging duplicates and making status changes remain separate actions.</p>
+  <p className="pf-footnote">This queue is rule-based decision support. Converted and do-not-contact prospects remain excluded. Linked tasks reflect only records visible under your CRM permissions; unlisted tasks may exist. Drafting or opening tasks does not send emails or change prospect status.</p>
  </div>;
 }
