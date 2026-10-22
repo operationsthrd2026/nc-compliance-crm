@@ -26,7 +26,7 @@ test("builds one highest-priority reminder per active task and excludes closed t
 test("admin alerts stay within the supplied rows and summarize by category",()=>{
  const alerts=buildTaskNotifications(tasks,{asOf:"2026-10-22",currentUserId:"u1",canAdmin:true});
  assert.equal(alerts.length,6);
- assert.deepEqual(summarizeTaskNotifications(alerts),{all:6,overdue:2,dueToday:1,dueSoon:1,priority:2});
+ assert.deepEqual(summarizeTaskNotifications(alerts),{all:6,overdue:2,dueToday:1,dueSoon:1,priority:2,highOrUrgent:4});
 });
 test("a non-admin without an identity cannot receive team alerts",()=>{
  assert.deepEqual(buildTaskNotifications(tasks,{asOf:"2026-10-22"}),[]);
