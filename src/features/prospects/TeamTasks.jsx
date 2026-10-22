@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState} from "react";
 import {TASK_PRIORITIES,TASK_STATUSES,filterTasks,summarizeTasks,taskBucket,validateTaskData} from "../../lib/prospectTasks.js";
 import {localDateKey} from "../../lib/outreachPlanning.js";
+import {taskProductivitySnapshot,taskProductivityCsv} from "../../lib/taskProductivity.js";
 
 const box={background:"#fff",border:"1px solid #E6EBF3",borderRadius:15,padding:18};
 const field={border:"1px solid #DCE2EE",padding:"10px 11px",borderRadius:9,fontSize:12,color:"#243652",width:"100%",background:"#fff",minWidth:0};
@@ -13,6 +14,12 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function pretty(s){return String(s||"").replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());}
 function ownerName(members,id,myId){const found=members.find(x=>x.id===id);return found?.name||found?.username||(id===myId?"You":"Assigned CRM user");}
 function niceDate(d){if(!d)return "No due date";const [y,m,day]=d.split("-").map(Number);return new Date(y,m-1,day).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
+function downloadTaskReport(content){
+ const blob=new Blob([content],{type:"text/csv;charset=utf-8"});
+ const url=URL.createObjectURL(blob),link=document.createElement("a");
+ link.href=url;link.download="prospectfinder-task-workload-"+localDateKey()+".csv";
+ document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+}
 function TaskEditor({task,canEdit,onChange,onClose,members,canAdmin,myId}){
  const [title,setTitle]=useState(task.task_title),[description,setDescription]=useState(task.description||"");
  const [priority,setPriority]=useState(task.priority||"normal"),[status,setStatus]=useState(task.status||"open"),[dueDate,setDueDate]=useState(task.due_date||"");
@@ -62,7 +69,7 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
  const myId=currentUser?.id||"";
  const [tasks,setTasks]=useState([]),[members,setMembers]=useState([]);
  const [loading,setLoading]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
- const [keyword,setKeyword]=useState(""),[bucket,setBucket]=useState("All"),[owner,setOwner]=useState("All");
+ const [keyword,setKeyword]=useState(""),[bucket,setBucket]=useState("All"),[owner,setOwner]=useState("All"),[priorityFilter,setPriorityFilter]=useState("All");
  const [selectedId,setSelectedId]=useState(initialTaskId||""),[creating,setCreating]=useState(false);
  const [companySearch,setCompanySearch]=useState(""),[prospectId,setProspectId]=useState("");
  const [taskTitle,setTaskTitle]=useState(""),[description,setDescription]=useState(""),[dueDate,setDueDate]=useState(""),[priority,setPriority]=useState("normal"),[assignee,setAssignee]=useState(myId);
@@ -98,9 +105,11 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
  const companies=useMemo(()=>crmData.filter(p=>String(p.companyName||"").toLowerCase().includes(companySearch.toLowerCase())).slice(0,250),[crmData,companySearch]);
  const names=useMemo(()=>Object.fromEntries(crmData.map(p=>[String(p.id),p.companyName||"Unnamed organization"])),[crmData]);
  const asOf=localDateKey(),counts=useMemo(()=>summarizeTasks(tasks,asOf),[tasks,asOf]);
+ const productivity=useMemo(()=>taskProductivitySnapshot(tasks,members,{asOf,currentUserId:myId,canAdmin}),[tasks,members,asOf,myId,canAdmin]);
  const all=useMemo(()=>filterTasks(tasks,{query:keyword,bucket,assignee:owner,prospectNames:names,asOf}),[tasks,keyword,bucket,owner,names,asOf]);
- const pages=Math.max(1,Math.ceil(all.length/20));
- const show=all.slice(Math.min(page,pages-1)*20,(Math.min(page,pages-1)+1)*20);
+ const matchingTasks=useMemo(()=>priorityFilter==="All"?all:all.filter(t=>t.priority===priorityFilter),[all,priorityFilter]);
+ const pages=Math.max(1,Math.ceil(matchingTasks.length/20));
+ const show=matchingTasks.slice(Math.min(page,pages-1)*20,(Math.min(page,pages-1)+1)*20);
  const chosen=tasks.find(t=>t.id===selectedId)||null;
  const canCreate=canEdit&&enabled;
  useEffect(()=>{
@@ -137,9 +146,9 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
  };
  const setFilter=b=>{setBucket(b);setPage(0);};
  return <div>
-  <div className="pf-page-kicker">PHASE 5 · TEAM COORDINATION</div>
-  <h1 className="pf-page-title">Team tasks & lead ownership</h1>
-  <p className="pf-page-description">Assign research, review and outreach-preparation tasks to saved prospects. Track deadlines and progress without changing the prospect's pipeline status or sending messages.</p>
+  <div className="pf-page-kicker">PHASE 10 · TEAM PRODUCTIVITY</div>
+  <h1 className="pf-page-title">Team productivity & task ownership</h1>
+  <p className="pf-page-description">Review your workload, spot overdue assignments, and report task progress from the records your CRM account can access. Task reporting never sends outreach or changes a prospect pipeline stage.</p>
   {!enabled&&<div role="status" style={{...box,margin:"20px 0",fontSize:12,color:"#985B27",background:"#FFF9EE"}}>Task assignments require a connected CRM database. This feature is not available in demo mode.</div>}
   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap",margin:"19px 0 14px"}}>
    <span style={{fontSize:11,color:"#73819A"}}>{loading?"Loading CRM tasks…":tasks.length+" task(s) visible to your account"} {refreshedAt&&"· Updated "+refreshedAt}</span>
@@ -179,9 +188,51 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
      <strong style={{fontSize:23,color:"#253652",display:"block",marginTop:5}}>{counts[b]||0}</strong>
    </button>)}
   </div>
-  <section style={{...box,display:"flex",flexWrap:"wrap",gap:11,marginBottom:16,alignItems:"end"}}>
+  {enabled&&<section style={{...box,display:"grid",gap:14,marginBottom:17}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+     <div><h2 style={{fontSize:15,color:"#263652",margin:0}}>{canAdmin?"Team workload overview":"Your workload overview"}</h2>
+      <p style={{fontSize:10,color:"#77859A",margin:"5px 0 0"}}>{productivity.scope} · completed in the last {productivity.windowDays} days{loading&&!refreshedAt?" · loading task data":""}</p></div>
+     <button type="button" style={secondary} disabled={loading&&!refreshedAt} onClick={()=>downloadTaskReport(taskProductivityCsv(productivity))}>↓ Export workload CSV</button>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:9}}>
+     {[
+      ["Active",productivity.active,"Open + in progress"],
+      ["Overdue",productivity.overdue,"Needs attention"],
+      ["Due today",productivity.dueToday,"Active tasks"],
+      ["Next 7 days",productivity.dueNext7,"Excludes today"],
+      ["No due date",productivity.unscheduled,"Active tasks"],
+      ["High / urgent",productivity.urgent,"Active tasks"],
+      ["Completed",productivity.completedRecent,"Last 30 days"]
+     ].map(([title,value,note])=><div key={title} style={{border:"1px solid #E8ECF4",borderRadius:11,padding:12,background:"#FBFCFE"}}>
+      <div style={{fontSize:10,fontWeight:750,color:"#75839A"}}>{title}</div>
+      <div style={{fontSize:23,fontWeight:850,color:title==="Overdue"&&value?"#B44A4A":"#263653",margin:"5px 0"}}>{value.toLocaleString()}</div>
+      <div style={{fontSize:9,color:"#8995A8"}}>{note}</div>
+     </div>)}
+    </div>
+    {canAdmin&&<div>
+     <h3 style={{fontSize:13,color:"#283A57",margin:"2px 0 10px"}}>Workload by assignee</h3>
+     <div style={{overflowX:"auto"}}>
+      <table className="pf-recent" style={{width:"100%",minWidth:760}}>
+       <thead><tr><th>ASSIGNEE</th><th>ACTIVE</th><th>OVERDUE</th><th>DUE TODAY</th><th>NEXT 7 DAYS</th><th>UNSCHEDULED</th><th>HIGH / URGENT</th><th>COMPLETED · 30D</th><th>REVIEW</th></tr></thead>
+       <tbody>{productivity.assignees.map(person=><tr key={person.id}>
+        <td><strong className="pf-name">{person.label}</strong><div style={{fontSize:10,color:"#8995A8",marginTop:3}}>{person.total} total visible</div></td>
+        <td>{person.active}</td><td style={{color:person.overdue?"#B44A4A":"#62728B",fontWeight:person.overdue?800:500}}>{person.overdue}</td>
+        <td>{person.dueToday}</td><td>{person.dueNext7}</td><td>{person.unscheduled}</td><td>{person.urgent}</td><td>{person.completedRecent}</td>
+        <td><button type="button" className="pf-link" onClick={()=>{setOwner(person.id);setBucket("All");setPriorityFilter("All");setPage(0);}}>Review tasks →</button></td>
+       </tr>)}</tbody>
+      </table>
+      {!productivity.assignees.length&&<div className="pf-empty">No visible assignments to report.</div>}
+     </div>
+    </div>}
+    <p style={{fontSize:10,color:"#8A96A8",lineHeight:1.55,margin:0}}>Counts are calculated from task rows returned by CRM access controls. Non-admins see only tasks assigned to them; administrators see the assignments available to their account. Completion totals use the task's recorded completed timestamp, not an inferred status change.</p>
+   </section>}
+   <section style={{...box,display:"flex",flexWrap:"wrap",gap:11,marginBottom:16,alignItems:"end"}}>
    <label style={{...name,flex:"1 1 230px"}}>Search tasks<input style={field} value={keyword} onChange={e=>{setKeyword(e.target.value);setPage(0);}} placeholder="Task title, company, description…"/></label>
    <label style={name}>Due group<select style={field} value={bucket} onChange={e=>setFilter(e.target.value)}>{buckets.map(x=><option key={x}>{x}</option>)}</select></label>
+   <label style={name}>Priority<select style={field} value={priorityFilter} onChange={e=>{setPriorityFilter(e.target.value);setPage(0);}}>
+     <option value="All">All priorities</option>
+     {TASK_PRIORITIES.map(p=><option key={p} value={p}>{pretty(p)}</option>)}
+    </select></label>
    {canAdmin&&<label style={name}>Owner<select style={field} value={owner} onChange={e=>{setOwner(e.target.value);setPage(0);}}>
     <option value="All">All assigned staff</option>
     {members.map(m=><option key={m.id} value={m.id}>{m.name||m.username}</option>)}
@@ -190,7 +241,7 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
   <div style={{display:"grid",gridTemplateColumns:chosen?"minmax(0,1.35fr) minmax(300px,.85fr)":"minmax(0,1fr)",gap:15,alignItems:"start"}}>
    <section style={{...box,minWidth:0}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,gap:9,flexWrap:"wrap"}}>
-     <h3 style={{margin:0,fontSize:15,color:"#283A57"}}>{all.length} matching tasks</h3>
+     <h3 style={{margin:0,fontSize:15,color:"#283A57"}}>{matchingTasks.length} matching tasks</h3>
      <button className="pf-link" onClick={onOpenCRM}>Classic CRM ↗</button>
     </div>
     <div style={{overflowX:"auto"}}>
@@ -207,7 +258,7 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
      </table>
      {!show.length&&<div className="pf-empty">No CRM tasks match this view. Create one to assign lead research, reviews or follow-up preparation.</div>}
     </div>
-    {all.length>20&&<div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:9,marginTop:15}}>
+    {matchingTasks.length>20&&<div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:9,marginTop:15}}>
      <button style={secondary} disabled={page===0} onClick={()=>setPage(n=>Math.max(0,n-1))}>Previous</button>
      <span style={{fontSize:11,color:"#768298"}}>Page {Math.min(page,pages-1)+1} of {pages}</span>
      <button style={secondary} disabled={page>=pages-1} onClick={()=>setPage(n=>Math.min(n+1,pages-1))}>Next</button>
@@ -215,6 +266,6 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
    </section>
    {chosen&&<TaskEditor key={chosen.id} task={chosen} canEdit={canEdit} canAdmin={canAdmin} myId={myId} members={members} onChange={update} onClose={()=>setSelectedId("")}/>}
   </div>
-  <p className="pf-footnote">Task ownership uses your CRM access controls. Editing or completing a task does not contact the prospect, change its pipeline status, or create a reminder. Deadlines appear in your work queue when you open this page.</p>
+  <p className="pf-footnote">Task ownership uses CRM access controls. Reports contain aggregate task counts and assignee labels, not descriptions or contact records. Editing or completing a task does not contact the prospect, change its pipeline status, or create a reminder.</p>
  </div>;
 }
