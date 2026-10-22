@@ -22,12 +22,12 @@ const noKey = [
 ];
 const servicePattern = /^[a-z][a-z0-9_-]{0,39}$/;
 const styles = {
-  panel: { background:"#fff", border:"1px solid #E6EAF3", borderRadius:16, padding:22 },
-  note: { color:"#6D7A92",fontSize:12,lineHeight:1.65 },
-  small: { color:"#62718B",fontSize:11,lineHeight:1.55 },
-  control: { border:"1px solid #DAE1ED", background:"#fff",borderRadius:9,padding:"11px 12px",fontSize:13,color:"#1C2944",minWidth:0,width:"100%",boxSizing:"border-box" },
-  primary: { background:"#6454E8",color:"#fff",border:0,borderRadius:9,padding:"11px 16px",fontWeight:750,fontSize:12,cursor:"pointer" },
-  secondary: { background:"#F5F4FE",color:"#5042B8",border:"1px solid #D8D2FB",borderRadius:9,padding:"10px 14px",fontWeight:700,fontSize:12,cursor:"pointer" },
+  panel: { background:"var(--pf-bg-FFFFFF)", border:"1px solid var(--pf-bd-E6EAF3)", borderRadius:16, padding:22 },
+  note: { color:"var(--pf-tx-6D7A92)",fontSize:12,lineHeight:1.65 },
+  small: { color:"var(--pf-tx-62718B)",fontSize:11,lineHeight:1.55 },
+  control: { border:"1px solid var(--pf-bd-DAE1ED)", background:"var(--pf-bg-FFFFFF)",borderRadius:9,padding:"11px 12px",fontSize:13,color:"var(--pf-tx-1C2944)",minWidth:0,width:"100%",boxSizing:"border-box" },
+  primary: { background:"var(--pf-bg-6454E8)",color:"#fff",border:0,borderRadius:9,padding:"11px 16px",fontWeight:750,fontSize:12,cursor:"pointer" },
+  secondary: { background:"var(--pf-bg-F5F4FE)",color:"var(--pf-tx-5042B8)",border:"1px solid var(--pf-bd-D8D2FB)",borderRadius:9,padding:"10px 14px",fontWeight:700,fontSize:12,cursor:"pointer" },
 };
 const recordName = id => builtin.find(p=>p.id===id)?.label || id.replaceAll("_"," ").replaceAll("-"," ");
 
@@ -106,21 +106,21 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
     }finally{setTesting("");}
   };
   const provider = (p) => (
-    <div key={p.id} style={{border:"1px solid #E7EBF4",borderRadius:13,padding:17,marginTop:11,background:"#FBFCFF"}}>
+    <div key={p.id} style={{border:"1px solid var(--pf-bd-E7EBF4)",borderRadius:13,padding:17,marginTop:11,background:"var(--pf-bg-FBFCFF)"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
         <div><div style={{fontWeight:800,fontSize:14}}>{p.label}</div><div style={{...styles.note,marginTop:3}}>{p.kind}</div></div>
-        <span style={{background:configured[p.id]?"#E4F8EF":"#F0F2F7",color:configured[p.id]?"#107E58":"#69748A",borderRadius:40,padding:"6px 11px",fontSize:11,fontWeight:750}}>
+        <span style={{background:configured[p.id]?"var(--pf-bg-E4F8EF)":"var(--pf-bg-F0F2F7)",color:configured[p.id]?"var(--pf-tx-107E58)":"var(--pf-tx-69748A)",borderRadius:40,padding:"6px 11px",fontSize:11,fontWeight:750}}>
           {configured[p.id]?"Key stored":"No key stored"}
         </span>
       </div>
       <div style={{...styles.small,marginTop:10}}>{p.note}</div>
-      {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"#6250CE",marginTop:8}}>Provider documentation ↗</a>}
+      {p.link&&<a href={p.link} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",fontSize:11,color:"var(--pf-tx-6250CE)",marginTop:8}}>Provider documentation ↗</a>}
       {canAdmin&&isConnected&&configured[p.id]&&["apollo","hunter","gemini","groq"].includes(p.id)&&
         <div style={{marginTop:12,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
           <button type="button" disabled={!!testing} style={styles.secondary} onClick={()=>testProvider(p.id)}>
             {testing===p.id?"Checking…":p.id==="gemini"?"Check available Gemini models · free":p.id==="groq"?"Test Groq key · no search":"Test key · no search"}
           </button>
-          {tests[p.id]&&!tests[p.id].busy&&<span role="status" style={{fontSize:11,color:tests[p.id].ok?"#157858":"#B34943"}}>
+          {tests[p.id]&&!tests[p.id].busy&&<span role="status" style={{fontSize:11,color:tests[p.id].ok?"var(--pf-tx-157858)":"var(--pf-tx-B34943)"}}>
             {tests[p.id].ok?"✓ API responding":"✕ Check failed"} — {tests[p.id].text}
           </span>}
         </div>}
@@ -141,24 +141,24 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
           <p style={{...styles.note,margin:"7px 0 0"}}>Add provider keys securely, review their saved status, and manage free directory sources.</p></div>
         <button type="button" onClick={refresh} disabled={loading} style={styles.secondary}>{loading?"Checking…":"Refresh status"}</button>
       </div>
-      {message&&<div role="status" aria-live="polite" style={{marginTop:15,padding:"12px 14px",background:message.error?"#FFF0EE":"#F0F9F4",border:"1px solid "+(message.error?"#EFBEBA":"#B8E2CA"),borderRadius:10,color:message.error?"#9E3E3B":"#236B4F",fontSize:12,lineHeight:1.6}}>{message.text}</div>}
-      {!isConnected&&<div style={{...styles.note,color:"#A15B31",marginTop:14}}>Supabase must be connected to store and manage credentials. Demo mode cannot persist API keys.</div>}
+      {message&&<div role="status" aria-live="polite" style={{marginTop:15,padding:"12px 14px",background:message.error?"var(--pf-bg-FFF0EE)":"var(--pf-bg-F0F9F4)",border:"1px solid "+(message.error?"var(--pf-bd-EFBEBA)":"var(--pf-bd-B8E2CA)"),borderRadius:10,color:message.error?"var(--pf-tx-9E3E3B)":"var(--pf-tx-236B4F)",fontSize:12,lineHeight:1.6}}>{message.text}</div>}
+      {!isConnected&&<div style={{...styles.note,color:"var(--pf-tx-A15B31)",marginTop:14}}>Supabase must be connected to store and manage credentials. Demo mode cannot persist API keys.</div>}
       {!canAdmin&&<div style={{...styles.note,marginTop:14}}>Read-only access: only CRM administrators can add or change provider credentials.</div>}
       <p style={{...styles.small,marginBottom:0,marginTop:14}}>Keys are submitted to the existing admin-authorized Supabase credential function. Previously saved key values are never returned to this page. A stored key is <strong>not</strong> proof that the provider works or is integrated with nationwide search.</p>
     </div>
 
-    <section style={{...styles.panel,background:"#F7F7FF",border:"1px solid #DDD9FA"}}>
+    <section style={{...styles.panel,background:"var(--pf-bg-F7F7FF)",border:"1px solid var(--pf-bd-DDD9FA)"}}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Set up AI search providers</h3>
       <p style={{...styles.note,margin:"8px 0 10px"}}>Have a Groq API key? Under Optional API providers below, find <strong>Groq GPT-OSS Browser Search</strong> and save the key. Groq is a free-tier option with account limits. Do not paste keys into chats or public files.</p>
       <p style={{...styles.note,margin:"0 0 10px"}}>Use <strong>Test key</strong> to validate the credential without making a Google Search request. Then go to Find Prospects, select Gemini and approve one grounded search. Gemini model key checks do not test Google Search. For current Gemini 3.x models, Google Search grounding is unavailable on the API free tier; paid-tier limits and included allowances apply.</p>
-      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Manage Gemini API keys ↗</a>{" · "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#5143C0"}}>Review API usage and quota ↗</a>
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--pf-tx-5143C0)"}}>Manage Gemini API keys ↗</a>{" · "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--pf-tx-5143C0)"}}>Review API usage and quota ↗</a>
     </section>
     <section style={styles.panel}>
       <h3 style={{fontSize:14,fontWeight:820,margin:0}}>Public sources · no API key needed</h3>
       <p style={{...styles.note,margin:"7px 0 11px"}}>These free services power ProspectFinder organization searches without requiring API credentials or AI subscriptions. Coverage varies and they have public usage limits.</p>
-      {noKey.map(p=><div key={p.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,borderBottom:"1px solid #EFF1F7",padding:"11px 0"}}>
+      {noKey.map(p=><div key={p.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,borderBottom:"1px solid var(--pf-bd-EFF1F7)",padding:"11px 0"}}>
         <div><strong style={{fontSize:12}}>{p.label}</strong><div style={styles.small}>{p.detail}</div></div>
-        <span style={{color:"#2B8770",fontSize:11,fontWeight:750,whiteSpace:"nowrap"}}>No key</span>
+        <span style={{color:"var(--pf-tx-2B8770)",fontSize:11,fontWeight:750,whiteSpace:"nowrap"}}>No key</span>
       </div>)}
     </section>
 
@@ -167,9 +167,9 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
       <p style={{...styles.note,margin:"7px 0 12px"}}>Groq GPT-OSS Browser Search is an optional free-tier LLM search subject to your Groq account limits. Gemini remains off by default and can require paid grounding; Hunter may consume credits. Public directories remain keyless.</p>
       {builtin.map(provider)}
       {others.map(id=>provider({id,label:recordName(id),kind:"Custom provider",note:"Credential stored only. This custom provider cannot return search results until an API adapter is implemented."}))}
-      {canAdmin&&isConnected&&<div style={{marginTop:17,borderTop:"1px solid #EDF0F6",paddingTop:17}}>
+      {canAdmin&&isConnected&&<div style={{marginTop:17,borderTop:"1px solid var(--pf-bd-EDF0F6)",paddingTop:17}}>
         <button type="button" onClick={()=>setShowCustom(x=>!x)} style={styles.secondary}>{showCustom?"Cancel custom provider":"+ Add custom API provider"}</button>
-        {showCustom&&<div style={{padding:16,background:"#F7F8FD",borderRadius:12,marginTop:12,display:"grid",gap:11}}>
+        {showCustom&&<div style={{padding:16,background:"var(--pf-bg-F7F8FD)",borderRadius:12,marginTop:12,display:"grid",gap:11}}>
           <label style={{fontSize:12,fontWeight:700}}>Provider identifier
             <input style={{...styles.control,marginTop:5}} placeholder="e.g. google_places" value={customName} onChange={e=>setCustomName(e.target.value.toLowerCase())} autoComplete="off"/>
           </label>
@@ -180,7 +180,7 @@ export default function ApiIntegrations({ canAdmin=false, isConnected=false, onL
           <div><button type="button" onClick={addCustom} disabled={customBusy} style={styles.primary}>{customBusy?"Saving…":"Save provider key"}</button></div>
         </div>}
       </div>}
-      <p style={{...styles.small,marginBottom:0,marginTop:15}}>Need the original CRM plugin settings? <button type="button" style={{border:0,background:"none",fontWeight:800,cursor:"pointer",color:"#5746C9",padding:0}} onClick={onOpenAdmin} disabled={!canAdmin}>Open classic admin settings →</button></p>
+      <p style={{...styles.small,marginBottom:0,marginTop:15}}>Need the original CRM plugin settings? <button type="button" style={{border:0,background:"none",fontWeight:800,cursor:"pointer",color:"var(--pf-tx-5746C9)",padding:0}} onClick={onOpenAdmin} disabled={!canAdmin}>Open classic admin settings →</button></p>
     </section>
   </div>;
 }

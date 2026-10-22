@@ -3,8 +3,8 @@ import {EMPTY_P,VERTICALS} from "../../constants.js";
 import {US_STATES,RADII,locationIssue,locationLabel} from "../../lib/usLocation.js";
 import {safeWebsite,safeOrganizationWebsite,safeEmail,safePhone,publicDetailsFromOsm} from "../../lib/contactDetails.js";
 
-const DARK="#0B1426", PANEL="#152442", EDGE="rgba(240,244,255,.14)", GOLD="#DBA843", MUTED="#B1BED7";
-const inp={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid "+EDGE,background:"#1C2B50",color:"#F0F4FF",borderRadius:8,fontSize:13};
+const DARK="var(--pf-tx-0B1426)", PANEL="var(--pf-tx-152442)", EDGE="rgba(240,244,255,.14)", GOLD="var(--pf-tx-DBA843)", MUTED="var(--pf-tx-B1BED7)";
+const inp={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid "+EDGE,background:"var(--pf-bg-1C2B50)",color:"#F0F4FF",borderRadius:8,fontSize:13};
 const btn={border:0,borderRadius:8,padding:"10px 16px",background:GOLD,color:DARK,cursor:"pointer",fontWeight:750};
 const nonProfitCategories=["Nonprofits & Associations","Faith-Based Organizations","Human Services Nonprofits","Community Development Orgs","Religious & Faith-Based Nonprofits","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Advocacy Organizations","Foundations & Grantmakers","Education & Schools"];
 const categories={
@@ -343,14 +343,14 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   catch(e){setMessage("Could not save: "+(e?.message||"Please try again"));}
   finally{setAdding(false);}
  };
- return <div role={embedded?"region":"dialog"} aria-modal={embedded?undefined:"true"} aria-label="Nationwide ProspectFinder" style={embedded?{position:"relative",background:"transparent",padding:0,color:"#1B2943",width:"100%"}:{position:"fixed",inset:0,zIndex:10000,background:"rgba(5,9,19,.86)",padding:18,overflowY:"auto",color:"#F0F4FF"}}>
-  <div style={embedded?{maxWidth:"none",margin:0,background:"#fff",border:"1px solid #E6EAF2",borderRadius:18,padding:23,boxShadow:"0 8px 32px #15213a08"}:{maxWidth:1160,margin:"20px auto",background:DARK,border:"1px solid "+EDGE,borderRadius:16,padding:22,boxShadow:"0 18px 60px #0008"}}>
+ return <div role={embedded?"region":"dialog"} aria-modal={embedded?undefined:"true"} aria-label="Nationwide ProspectFinder" style={embedded?{position:"relative",background:"transparent",padding:0,color:"var(--pf-tx-1B2943)",width:"100%"}:{position:"fixed",inset:0,zIndex:10000,background:"rgba(5,9,19,.86)",padding:18,overflowY:"auto",color:"#F0F4FF"}}>
+  <div style={embedded?{maxWidth:"none",margin:0,background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E6EAF2)",borderRadius:18,padding:23,boxShadow:"0 8px 32px #15213a08"}:{maxWidth:1160,margin:"20px auto",background:DARK,border:"1px solid "+EDGE,borderRadius:16,padding:22,boxShadow:"0 18px 60px #0008"}}>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
-    <div><h2 style={{margin:"0 0 5px",color:embedded?"#4F42CE":GOLD,fontSize:embedded?19:21}}>{embedded?"U.S. organization search":"ProspectFinder · United States"}</h2>
-    <p style={{margin:0,color:embedded?"#60708A":MUTED,fontSize:12}}>One search searches multiple directories and optional APIs. All results appear below in one table.</p></div>
+    <div><h2 style={{margin:"0 0 5px",color:embedded?"var(--pf-tx-4F42CE)":GOLD,fontSize:embedded?19:21}}>{embedded?"U.S. organization search":"ProspectFinder · United States"}</h2>
+    <p style={{margin:0,color:embedded?"var(--pf-tx-60708A)":MUTED,fontSize:12}}>One search searches multiple directories and optional APIs. All results appear below in one table.</p></div>
     {!embedded&&<button onClick={onClose} style={{...btn,background:PANEL,color:"#F0F4FF"}} aria-label="Close finder">✕</button>}
    </div>
-   <div className={embedded?"pf-native-search":""} style={{background:embedded?"#F6F7FC":PANEL,borderRadius:12,padding:16,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:12,marginBottom:16}}>
+   <div className={embedded?"pf-native-search":""} style={{background:embedded?"var(--pf-bg-F6F7FC)":PANEL,borderRadius:12,padding:16,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:12,marginBottom:16}}>
     {field("Prospect category",<select style={inp} value={type} onChange={e=>setType(e.target.value)}><option value="both">Nonprofits & small businesses</option><option value="nonprofit">Nonprofits only</option><option value="smb">Small businesses only</option></select>)}
     {field("State",<select style={inp} value={state} onChange={e=>setState(e.target.value)}><option value="">All states</option>{US_STATES.map(([code,name])=><option key={code} value={code}>{name}</option>)}</select>)}
     {field("City",<input style={inp} placeholder="e.g. Austin" value={city} onChange={e=>setCity(e.target.value)}/>)}
@@ -358,34 +358,34 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
     {field("Local search radius",<select style={inp} value={radius} onChange={e=>setRadius(Number(e.target.value))}>{RADII.map(n=><option key={n} value={n}>{n} miles</option>)}</select>)}
     {field("Industry (optional)",<select style={inp} value={vertical} onChange={e=>setVertical(e.target.value)}><option value="">All industries</option>{VERTICALS.map(v=><option key={v} value={v}>{v}</option>)}{Object.keys(categories).filter(x=>!VERTICALS.includes(x)).map(v=><option key={v} value={v}>{v}</option>)}</select>)}
     <div style={{gridColumn:"1 / -1"}}>{field("Business or organization keyword",<input style={inp} value={keyword} onChange={e=>setKeyword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!busy)run();}} placeholder="e.g. dental, community center, software, charity"/>)}</div>
-    <div style={{gridColumn:"1 / -1",border:"1px solid "+(embedded?"#DDDFF0":EDGE),borderRadius:12,padding:"15px 16px",background:embedded?"#FFFFFF":"#0C1B32",color:embedded?"#26324C":"#F0F4FF"}}>
+    <div style={{gridColumn:"1 / -1",border:"1px solid "+(embedded?"var(--pf-bd-DDDFF0)":EDGE),borderRadius:12,padding:"15px 16px",background:embedded?"var(--pf-bg-FFFFFF)":"var(--pf-bg-0C1B32)",color:embedded?"var(--pf-tx-26324C)":"#F0F4FF"}}>
      <strong style={{fontSize:13}}>One search · multiple sources</strong>
-     <p style={{margin:"6px 0 12px",fontSize:11,color:embedded?"#64728A":MUTED,lineHeight:1.5}}>Keyless nonprofit, local-business, and Wikidata organization searches are integrated here. Enter a keyword to include Wikidata. Optional Apollo/Hunter services remain below.</p>
+     <p style={{margin:"6px 0 12px",fontSize:11,color:embedded?"var(--pf-tx-64728A)":MUTED,lineHeight:1.5}}>Keyless nonprofit, local-business, and Wikidata organization searches are integrated here. Enter a keyword to include Wikidata. Optional Apollo/Hunter services remain below.</p>
      <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:18}}>
-      <span style={{fontSize:11,color:embedded?"#248067":"#7DE5BF",fontWeight:700}}>✓ ProPublica + OpenStreetMap + Wikidata · no key</span>
+      <span style={{fontSize:11,color:embedded?"var(--pf-tx-248067)":"var(--pf-tx-7DE5BF)",fontWeight:700}}>✓ ProPublica + OpenStreetMap + Wikidata · no key</span>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={apolloEnabled} onChange={e=>setApolloEnabled(e.target.checked)}/> Apollo people · no search credits</label>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={hunterEnabled} disabled={!canAdmin} onChange={e=>{setHunterEnabled(e.target.checked);if(!e.target.checked)setAllowCredits(false);}}/> Hunter emails · may use credits {canAdmin?"":"(admin only)"}</label>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={groqEnabled} disabled={!canAdmin||groqPaused} onChange={e=>{setGroqEnabled(e.target.checked);setGroqConsent(false);}}/> Groq GPT-OSS · Browser Search (free-tier limits) {groqPaused?"(paused after rate limit)":canAdmin?"":"(admin only)"}</label>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:canAdmin?"pointer":"not-allowed",opacity:canAdmin?1:.6}}><input type="checkbox" checked={geminiEnabled} disabled={!canAdmin||geminiPaused} onChange={e=>{setGeminiEnabled(e.target.checked);setGeminiConsent(false);}}/> Gemini + Google Search · optional, may require paid Google Search grounding {geminiPaused?"(paused after quota error)":canAdmin?"":"(admin only)"}</label>
      </div>
-     {geminiPaused&&<div role="status" style={{gridColumn:"1 / -1",fontSize:11,marginTop:10,lineHeight:1.65,color:embedded?"#A45A31":"#FFCE8A"}}>
+     {geminiPaused&&<div role="status" style={{gridColumn:"1 / -1",fontSize:11,marginTop:10,lineHeight:1.65,color:embedded?"var(--pf-tx-A45A31)":"var(--pf-tx-FFCE8A)"}}>
       Google returned a Gemini quota/rate-limit error. Gemini has been paused until this page is refreshed; public directory searches remain available. Check
-      {" "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{color:embedded?"#5143BF":"#FFE3A1"}}>Google AI Studio usage and billing ↗</a>.
+      {" "}<a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer" style={{color:embedded?"var(--pf-tx-5143BF)":"#FFE3A1"}}>Google AI Studio usage and billing ↗</a>.
       Gemini model availability is not proof of Google Search grounding quota.
      </div>}
      {(apolloEnabled||hunterEnabled)&&<div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:13}}>
-      {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"#405271":MUTED}}>Apollo target role
-       <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
+      {apolloEnabled&&<label style={{flex:"1 1 180px",fontSize:11,color:embedded?"var(--pf-tx-405271)":MUTED}}>Apollo target role
+       <input style={{...inp,marginTop:5,...(embedded?{background:"var(--pf-bg-FFFFFF)",color:"var(--pf-tx-253451)",border:"1px solid var(--pf-bd-DBE1EE)"}:{})}} value={contactTitle} onChange={e=>setContactTitle(e.target.value)} placeholder="Human Resources"/>
       </label>}
-      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"#405271":MUTED}}>Hunter company domain (optional)
-       <input style={{...inp,marginTop:5,...(embedded?{background:"#fff",color:"#253451",border:"1px solid #DBE1EE"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
+      {hunterEnabled&&<label style={{flex:"1 1 200px",fontSize:11,color:embedded?"var(--pf-tx-405271)":MUTED}}>Hunter company domain (optional)
+       <input style={{...inp,marginTop:5,...(embedded?{background:"var(--pf-bg-FFFFFF)",color:"var(--pf-tx-253451)",border:"1px solid var(--pf-bd-DBE1EE)"}:{})}} value={domain} onChange={e=>setDomain(e.target.value)} placeholder="organization.org"/>
       </label>}
      </div>}
      {groqEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
        <input type="checkbox" checked={groqConsent} onChange={e=>setGroqConsent(e.target.checked)}/>
        I authorize one Groq GPT-OSS 20B Browser Search request using my account's API limits. Charges may apply on paid plans; source and contact information must be checked.
      </label>}
-     {groqPaused&&<p role="status" style={{fontSize:11,color:embedded?"#A45A31":"#FFCE8A"}}>Groq paused after an account rate limit. Public sources still work. Review <a href="https://console.groq.com/settings/limits" target="_blank" rel="noopener noreferrer">Groq limits ↗</a> before trying again.</p>}
+     {groqPaused&&<p role="status" style={{fontSize:11,color:embedded?"var(--pf-tx-A45A31)":"var(--pf-tx-FFCE8A)"}}>Groq paused after an account rate limit. Public sources still work. Review <a href="https://console.groq.com/settings/limits" target="_blank" rel="noopener noreferrer">Groq limits ↗</a> before trying again.</p>}
      {geminiEnabled&&<label style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:12,fontSize:11,cursor:"pointer"}}>
        <input type="checkbox" checked={geminiConsent} onChange={e=>setGeminiConsent(e.target.checked)}/>
        I approve one Gemini Google Search grounding request using my API quota; provider charges may apply. This approval resets after searching.
@@ -394,50 +394,50 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        <input type="checkbox" checked={allowCredits} onChange={e=>setAllowCredits(e.target.checked)}/>
        I authorize Hunter domain searches that may use up to 3 credits for websites found, or one domain search if I entered a domain.
      </label>}
-     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"#63718C":MUTED}}>Free public directories and Wikidata run without API keys. Groq GPT-OSS 20B offers browser research within its free API limits. Gemini can require paid grounding. Groq/Gemini source listings and contact details require independent verification; Hunter uses credits only with consent.</p>
+     <p style={{margin:"11px 0 0",fontSize:10,color:embedded?"var(--pf-tx-63718C)":MUTED}}>Free public directories and Wikidata run without API keys. Groq GPT-OSS 20B offers browser research within its free API limits. Gemini can require paid grounding. Groq/Gemini source listings and contact details require independent verification; Hunter uses credits only with consent.</p>
     </div>
-    <button style={{...btn,background:embedded?"#6454E8":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
-    <button type="button" style={{...btn,background:embedded?"#E9E9FC":"#253454",color:embedded?"#5246AC":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
+    <button style={{...btn,background:embedded?"var(--pf-bg-6454E8)":GOLD,color:embedded?"#FFFFFF":DARK,opacity:busy?.55:1}} disabled={busy} onClick={()=>run(false)}>{busy?"Searching enabled sources…":"Search Prospects · All enabled sources"}</button>
+    <button type="button" style={{...btn,background:embedded?"var(--pf-bg-E9E9FC)":"var(--pf-bg-253454)",color:embedded?"var(--pf-tx-5246AC)":"#F0F4FF",opacity:checking?.6:1}} disabled={busy||checking} onClick={checkConnections}>{checking?"Checking data sources…":"Check API connections"}</button>
    </div>
-   {diagnostics.length>0&&<div role="status" aria-live="polite" style={{background:embedded?"#F4F5FD":"#182644",padding:13,borderRadius:10,marginBottom:14,fontSize:12,color:embedded?"#33435F":"#F0F4FF"}}>
+   {diagnostics.length>0&&<div role="status" aria-live="polite" style={{background:embedded?"var(--pf-bg-F4F5FD)":"var(--pf-bg-182644)",padding:13,borderRadius:10,marginBottom:14,fontSize:12,color:embedded?"var(--pf-tx-33435F)":"#F0F4FF"}}>
     <strong>Connection diagnostics (Austin, Texas; read-only test)</strong>
-    {diagnostics.map(d=><div key={d.name} style={{marginTop:7}}><span style={{color:d.ok?"#059669":"#dc6458",fontWeight:800}}>{d.ok?"✓":"✕"}</span> {d.name}: {d.detail}</div>)}
+    {diagnostics.map(d=><div key={d.name} style={{marginTop:7}}><span style={{color:d.ok?"var(--pf-tx-059669)":"var(--pf-tx-DC6458)",fontWeight:800}}>{d.ok?"✓":"✕"}</span> {d.name}: {d.detail}</div>)}
    </div>}
-   {message&&<div role="alert" style={{background:embedded?"#FFF5F1":"rgba(255,151,101,.12)",border:"1px solid #F9B4A4",borderRadius:10,padding:"12px 14px",color:embedded?"#9F3E33":"#ffd1c7",fontSize:12,marginBottom:14,lineHeight:1.5}}><strong>{sourceErrors.length?"Search service issue":"Search notice"}:</strong> {message}</div>}
-   {logs.length>0&&<div style={{background:embedded?"#F5F7FD":"#0E1A30",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"#57627A":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
+   {message&&<div role="alert" style={{background:embedded?"var(--pf-bg-FFF5F1)":"rgba(255,151,101,.12)",border:"1px solid var(--pf-bd-F9B4A4)",borderRadius:10,padding:"12px 14px",color:embedded?"var(--pf-tx-9F3E33)":"#ffd1c7",fontSize:12,marginBottom:14,lineHeight:1.5}}><strong>{sourceErrors.length?"Search service issue":"Search notice"}:</strong> {message}</div>}
+   {logs.length>0&&<div style={{background:embedded?"var(--pf-bg-F5F7FD)":"var(--pf-bg-0E1A30)",padding:10,borderRadius:8,marginBottom:14,maxHeight:104,overflowY:"auto",fontSize:11,color:embedded?"var(--pf-tx-57627A)":MUTED}}>{logs.map((s,i)=><div key={i}>{s}</div>)}</div>}
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
     <div><strong>{shown.length} prospects</strong><span style={{color:MUTED,fontSize:12}}> · {selected.length} selected</span></div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-     <button style={{...btn,background:"#253454",color:"#F0F4FF"}} onClick={()=>setSelected(shown.filter(r=>!r.already).map(idFor))}>Select new</button>
-     <button style={{...btn,background:"#253454",color:"#F0F4FF"}} onClick={()=>setSelected([])}>Clear</button>
+     <button style={{...btn,background:"var(--pf-bg-253454)",color:"#F0F4FF"}} onClick={()=>setSelected(shown.filter(r=>!r.already).map(idFor))}>Select new</button>
+     <button style={{...btn,background:"var(--pf-bg-253454)",color:"#F0F4FF"}} onClick={()=>setSelected([])}>Clear</button>
      <button style={btn} disabled={adding||!selected.length} onClick={add}>{adding?"Saving…":"Save selected to CRM"}</button>
     </div>
    </div>
-   <div style={{overflowX:"auto",border:"1px solid "+(embedded?"#E4E8F1":EDGE),borderRadius:10}}>
+   <div style={{overflowX:"auto",border:"1px solid "+(embedded?"var(--pf-bd-E4E8F1)":EDGE),borderRadius:10}}>
     <table style={{width:"100%",minWidth:1180,borderCollapse:"collapse",fontSize:12}}>
-     <thead style={{background:embedded?"#F7F7FC":PANEL,color:embedded?"#4F42CE":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact person","Website","Email","Phone","Source listing","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
+     <thead style={{background:embedded?"var(--pf-bg-F7F7FC)":PANEL,color:embedded?"var(--pf-tx-4F42CE)":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact person","Website","Email","Phone","Source listing","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
      <tbody>{shown.map(r=>{
       const key=idFor(r);return <tr key={key} style={{borderTop:"1px solid "+EDGE,opacity:r.already?.55:1}}>
        <td style={{padding:10}}><input type="checkbox" aria-label={"Select "+r.companyName} disabled={r.already} checked={selected.includes(key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,key]:prev.filter(k=>k!==key))}/></td>
        <td style={{padding:10,fontWeight:650}}>{r.companyName}</td>
-       <td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"#485B80":MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
+       <td style={{padding:10,color:embedded?"var(--pf-tx-485B80)":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"var(--pf-tx-485B80)":MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
        <td style={{padding:10}}>
-        {r.contactName?<div style={{fontWeight:700,color:embedded?"#20324F":"#F0F4FF"}}>{r.contactName}</div>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not listed</span>}
-        {r.title&&<div style={{fontSize:11,color:embedded?"#66758D":MUTED,marginTop:2}}>{r.title}</div>}
+        {r.contactName?<div style={{fontWeight:700,color:embedded?"var(--pf-tx-20324F)":"#F0F4FF"}}>{r.contactName}</div>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not listed</span>}
+        {r.title&&<div style={{fontSize:11,color:embedded?"var(--pf-tx-66758D)":MUTED,marginTop:2}}>{r.title}</div>}
        </td>
-       <td style={{padding:10}}>{r.website?<a href={r.website} target="_blank" rel="noopener noreferrer" style={{color:embedded?"#5143BF":GOLD}}>Visit website ↗</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not available</span>}</td>
-       <td style={{padding:10}}>{r.email?<a href={"mailto:"+r.email} style={{color:embedded?"#5143BF":GOLD,overflowWrap:"anywhere"}}>{r.email}</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not available</span>}</td>
-       <td style={{padding:10}}>{r.phone?<a href={"tel:"+r.phone.replace(/[^\d+]/g,"")} style={{color:embedded?"#5143BF":GOLD}}>{r.phone}</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>Not available</span>}</td>
-       <td style={{padding:10}}>{r.sourceUrl&&safeWebsite(r.sourceUrl)?<a href={safeWebsite(r.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{color:embedded?"#5143BF":GOLD}}>View source ↗</a>:<span style={{fontSize:11,color:embedded?"#71809B":MUTED}}>—</span>}</td>
-       <td style={{padding:10,color:r.already?"#34d399":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
+       <td style={{padding:10}}>{r.website?<a href={r.website} target="_blank" rel="noopener noreferrer" style={{color:embedded?"var(--pf-tx-5143BF)":GOLD}}>Visit website ↗</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not available</span>}</td>
+       <td style={{padding:10}}>{r.email?<a href={"mailto:"+r.email} style={{color:embedded?"var(--pf-tx-5143BF)":GOLD,overflowWrap:"anywhere"}}>{r.email}</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not available</span>}</td>
+       <td style={{padding:10}}>{r.phone?<a href={"tel:"+r.phone.replace(/[^\d+]/g,"")} style={{color:embedded?"var(--pf-tx-5143BF)":GOLD}}>{r.phone}</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not available</span>}</td>
+       <td style={{padding:10}}>{r.sourceUrl&&safeWebsite(r.sourceUrl)?<a href={safeWebsite(r.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{color:embedded?"var(--pf-tx-5143BF)":GOLD}}>View source ↗</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>—</span>}</td>
+       <td style={{padding:10,color:r.already?"var(--pf-tx-34D399)":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
       </tr>;
      })}
-     {!shown.length&&<tr><td colSpan={10} style={{padding:30,textAlign:"center",color:embedded?"#66758D":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
+     {!shown.length&&<tr><td colSpan={10} style={{padding:30,textAlign:"center",color:embedded?"var(--pf-tx-66758D)":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
      </tbody>
     </table>
    </div>
-   {page!=null&&type!=="smb"&&<button onClick={()=>run(true)} disabled={busy} style={{...btn,marginTop:12,background:"#253454",color:"#F0F4FF"}}>Load more nonprofits</button>}
-   <p style={{color:embedded?"#66758D":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Free organization sources: ProPublica Nonprofit Explorer, OpenStreetMap / Overpass and Wikidata. Organization websites, emails and phone numbers are source-reported and not independently verified; some records have no contact fields. Apollo/Hunter require configured third-party access and Hunter can use credits. ZIP filtering is not available in ProPublica nonprofit results.</p>
+   {page!=null&&type!=="smb"&&<button onClick={()=>run(true)} disabled={busy} style={{...btn,marginTop:12,background:"var(--pf-bg-253454)",color:"#F0F4FF"}}>Load more nonprofits</button>}
+   <p style={{color:embedded?"var(--pf-tx-66758D)":MUTED,fontSize:10,marginBottom:0}}>Nonprofit results: ProPublica Nonprofit Explorer (IRS-derived). City/ZIP centroids: Zippopotam.us / GeoNames. Local businesses: © OpenStreetMap contributors (ODbL). Free organization sources: ProPublica Nonprofit Explorer, OpenStreetMap / Overpass and Wikidata. Organization websites, emails and phone numbers are source-reported and not independently verified; some records have no contact fields. Apollo/Hunter require configured third-party access and Hunter can use credits. ZIP filtering is not available in ProPublica nonprofit results.</p>
   </div>
  </div>;
 }

@@ -2,9 +2,9 @@ import React, {useEffect,useMemo,useState} from "react";
 import {safeOrganizationWebsite,safeEmail,safePhone} from "../../lib/contactDetails.js";
 import {LEAD_STAGES,contactDetails,contactReadiness,filterSavedLeads,leadCategory,readinessCounts} from "../../lib/leadQualification.js";
 
-const fLabel={fontSize:11,color:"#63718B",fontWeight:750,display:"grid",gap:6};
-const input={border:"1px solid #DDE3EF",borderRadius:9,padding:"10px 12px",fontSize:12,color:"#1D2B45",width:"100%",background:"#fff",minWidth:0};
-const link={color:"#5C49C7",fontWeight:700,textDecoration:"none"};
+const fLabel={fontSize:11,color:"var(--pf-tx-63718B)",fontWeight:750,display:"grid",gap:6};
+const input={border:"1px solid var(--pf-bd-DDE3EF)",borderRadius:9,padding:"10px 12px",fontSize:12,color:"var(--pf-tx-1D2B45)",width:"100%",background:"var(--pf-bg-FFFFFF)",minWidth:0};
+const link={color:"var(--pf-tx-5C49C7)",fontWeight:700,textDecoration:"none"};
 const PAGE=25;
 const statusName=v=>String(v||"NEW").replaceAll("_"," ");
 function Details({selected,onUpdateProspect,canEdit,onOpenCRM,onClose}) {
@@ -53,12 +53,12 @@ function Details({selected,onUpdateProspect,canEdit,onOpenCRM,onClose}) {
  };
  return <section aria-label={"Qualify "+selected.companyName} className="pf-card" style={{position:"sticky",top:20,alignSelf:"start",display:"grid",gap:13,padding:19,maxHeight:"calc(100vh - 40px)",overflowY:"auto"}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-   <div><div style={{fontSize:10,color:"#7761D8",fontWeight:850,letterSpacing:1}}>LEAD QUALIFICATION</div>
-    <h3 style={{fontSize:18,lineHeight:1.3,margin:"6px 0",color:"#1B2944"}}>{selected.companyName||"Unnamed organization"}</h3>
-    <div style={{fontSize:11,color:"#74829B"}}>{selected.vertical||"Uncategorized"} · {selected.cityMarket||selected.market||"Location unavailable"}</div></div>
-   <button type="button" onClick={onClose} aria-label="Close prospect details" style={{background:"#F0F2F8",border:0,borderRadius:8,padding:"6px 11px",fontSize:16}}>×</button>
+   <div><div style={{fontSize:10,color:"var(--pf-tx-7761D8)",fontWeight:850,letterSpacing:1}}>LEAD QUALIFICATION</div>
+    <h3 style={{fontSize:18,lineHeight:1.3,margin:"6px 0",color:"var(--pf-tx-1B2944)"}}>{selected.companyName||"Unnamed organization"}</h3>
+    <div style={{fontSize:11,color:"var(--pf-tx-74829B)"}}>{selected.vertical||"Uncategorized"} · {selected.cityMarket||selected.market||"Location unavailable"}</div></div>
+   <button type="button" onClick={onClose} aria-label="Close prospect details" style={{background:"var(--pf-bg-F0F2F8)",border:0,borderRadius:8,padding:"6px 11px",fontSize:16}}>×</button>
   </div>
-  <div style={{background:"#F5F3FF",padding:10,borderRadius:10,fontSize:11,color:"#5242AF"}}><strong>Contact readiness:</strong> {readiness}. A listed contact is not necessarily verified.</div>
+  <div style={{background:"var(--pf-bg-F5F3FF)",padding:10,borderRadius:10,fontSize:11,color:"var(--pf-tx-5242AF)"}}><strong>Contact readiness:</strong> {readiness}. A listed contact is not necessarily verified.</div>
   {selected.sourceUrl&&<a href={selected.sourceUrl} rel="noopener noreferrer" target="_blank" style={{...link,fontSize:11,overflowWrap:"anywhere"}}>View original source ↗</a>}
   <label style={fLabel}>Pipeline status
    <select style={input} value={draft.currentStatus||"NEW"} disabled={!canEdit||saving} onChange={e=>change("currentStatus",e.target.value)}>
@@ -77,17 +77,17 @@ function Details({selected,onUpdateProspect,canEdit,onOpenCRM,onClose}) {
   <label style={fLabel}>Verification notes<textarea style={{...input,minHeight:66,resize:"vertical"}} disabled={!canEdit||saving} value={draft.verificationNotes||""} onChange={e=>change("verificationNotes",e.target.value)} placeholder="Record where each contact detail was checked. Do not mark AI/directory contacts as verified without evidence."/></label>
   <label style={fLabel}>Outreach notes<textarea style={{...input,minHeight:78,resize:"vertical"}} disabled={!canEdit||saving} value={draft.outreachNotes||""} onChange={e=>change("outreachNotes",e.target.value)} placeholder="Research findings, next action, contact attempts…"/></label>
   <div style={{display:"flex",gap:15,flexWrap:"wrap"}}>
-   <label style={{fontSize:11,fontWeight:700,color:"#465472",display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" checked={!!draft.doNotRespond||draft.currentStatus==="Do Not Respond"} disabled={!canEdit||saving||draft.currentStatus==="Do Not Respond"} onChange={e=>change("doNotRespond",e.target.checked)}/> Do not contact</label>
-   <label style={{fontSize:11,fontWeight:700,color:"#465472",display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" checked={!!draft.flagToMelissa} disabled={!canEdit||saving} onChange={e=>change("flagToMelissa",e.target.checked)}/> Flag for review</label>
+   <label style={{fontSize:11,fontWeight:700,color:"var(--pf-tx-465472)",display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" checked={!!draft.doNotRespond||draft.currentStatus==="Do Not Respond"} disabled={!canEdit||saving||draft.currentStatus==="Do Not Respond"} onChange={e=>change("doNotRespond",e.target.checked)}/> Do not contact</label>
+   <label style={{fontSize:11,fontWeight:700,color:"var(--pf-tx-465472)",display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" checked={!!draft.flagToMelissa} disabled={!canEdit||saving} onChange={e=>change("flagToMelissa",e.target.checked)}/> Flag for review</label>
   </div>
-  {(selected.t2DueDate||selected.t3DueDate)&&<div style={{fontSize:11,color:"#687895"}}>Follow-up: {selected.t3DueDate||selected.t2DueDate} (managed by existing outreach pipeline)</div>}
-  {error&&<div role="alert" style={{color:"#A33F40",fontSize:11,background:"#FFF2F2",padding:11,borderRadius:8}}>{error}</div>}
-  {success&&<div role="status" style={{color:"#167C5D",fontSize:11,background:"#EDF9F3",padding:11,borderRadius:8}}>{success}</div>}
+  {(selected.t2DueDate||selected.t3DueDate)&&<div style={{fontSize:11,color:"var(--pf-tx-687895)"}}>Follow-up: {selected.t3DueDate||selected.t2DueDate} (managed by existing outreach pipeline)</div>}
+  {error&&<div role="alert" style={{color:"var(--pf-tx-A33F40)",fontSize:11,background:"var(--pf-bg-FFF2F2)",padding:11,borderRadius:8}}>{error}</div>}
+  {success&&<div role="status" style={{color:"var(--pf-tx-167C5D)",fontSize:11,background:"var(--pf-bg-EDF9F3)",padding:11,borderRadius:8}}>{success}</div>}
   <div style={{display:"flex",gap:9,flexWrap:"wrap"}}>
    {canEdit&&<button className="pf-button" disabled={saving} onClick={save}>{saving?"Saving…":"Save qualification"}</button>}
    <button className="pf-button outline" onClick={onOpenCRM}>Open Classic CRM ↗</button>
   </div>
-  {!canEdit&&<p style={{fontSize:11,color:"#74829B",margin:0}}>View-only access. An editor, manager or administrator can save changes.</p>}
+  {!canEdit&&<p style={{fontSize:11,color:"var(--pf-tx-74829B)",margin:0}}>View-only access. An editor, manager or administrator can save changes.</p>}
  </section>;
 }
 export default function LeadQualification({crmData=[],initialProspectId=null,onOpenCRM,onUpdateProspect,canEdit=false}) {
@@ -107,8 +107,8 @@ export default function LeadQualification({crmData=[],initialProspectId=null,onO
   <p className="pf-page-description">Review contact completeness, filter your pipeline, and update qualification notes and statuses. Changes save to your existing CRM; no search API is needed.</p>
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,margin:"23px 0 21px"}}>
    {[["All leads",crmData.length],["Contact listed",counts["Contact listed"]],["Website only",counts["Website only"]],["Needs research",counts["Needs research"]],["Do not contact",counts["Do not contact"]]].map(([label,n])=>
-    <button key={label} type="button" onClick={()=>{setReadiness(label==="All leads"?"all":label);setPage(0);}} style={{background:"#fff",border:"1px solid "+((readiness===label||label==="All leads"&&readiness==="all")?"#8A78EF":"#E8ECF4"),borderRadius:13,padding:14,textAlign:"left",boxShadow:"0 3px 12px #17284907"}}>
-     <span style={{display:"block",fontSize:10,color:"#71809B",fontWeight:750}}>{label}</span><strong style={{fontSize:24,color:"#1B2943",display:"block",marginTop:5}}>{n}</strong>
+    <button key={label} type="button" onClick={()=>{setReadiness(label==="All leads"?"all":label);setPage(0);}} style={{background:"var(--pf-bg-FFFFFF)",border:"1px solid "+((readiness===label||label==="All leads"&&readiness==="all")?"var(--pf-bd-8A78EF)":"var(--pf-bd-E8ECF4)"),borderRadius:13,padding:14,textAlign:"left",boxShadow:"0 3px 12px #17284907"}}>
+     <span style={{display:"block",fontSize:10,color:"var(--pf-tx-71809B)",fontWeight:750}}>{label}</span><strong style={{fontSize:24,color:"var(--pf-tx-1B2943)",display:"block",marginTop:5}}>{n}</strong>
     </button>)}
   </div>
   <section className="pf-card" style={{marginBottom:17}}>
@@ -119,7 +119,7 @@ export default function LeadQualification({crmData=[],initialProspectId=null,onO
     <label style={fLabel}>Category<select style={input} value={category} onChange={e=>update(setCategory)(e.target.value)}><option value="all">All organizations</option><option value="Nonprofit">Nonprofit</option><option value="Business / Other">Business / Other</option></select></label>
    </div>
    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,gap:9,flexWrap:"wrap"}}>
-    <span style={{fontSize:11,color:"#66758D"}}>{sorted.length} matching of {crmData.length} saved records</span>
+    <span style={{fontSize:11,color:"var(--pf-tx-66758D)"}}>{sorted.length} matching of {crmData.length} saved records</span>
     <button className="pf-link" onClick={()=>{setQuery("");setStatus("all");setReadiness("all");setCategory("all");setPage(0);}}>Clear filters</button>
    </div>
   </section>
@@ -131,9 +131,9 @@ export default function LeadQualification({crmData=[],initialProspectId=null,onO
       <thead><tr><th>ORGANIZATION</th><th>CONTACT READINESS</th><th>STATUS</th><th>LOCATION</th><th>REVIEW</th></tr></thead>
       <tbody>{visible.map(p=>{
        const readiness=contactReadiness(p),channels=contactDetails(p);
-       return <tr key={p.id} style={{background:selectedId===p.id?"#F7F5FF":"transparent"}}>
-        <td><strong className="pf-name">{p.companyName||"Unnamed prospect"}</strong><div style={{fontSize:10,color:"#8B97AA",marginTop:3}}>{leadCategory(p)} · {p.vertical||"Uncategorized"}</div>
-         <div style={{fontSize:10,color:"#60708C",marginTop:4}}>{channels.email||channels.phone||""}</div></td>
+       return <tr key={p.id} style={{background:selectedId===p.id?"var(--pf-bg-F7F5FF)":"transparent"}}>
+        <td><strong className="pf-name">{p.companyName||"Unnamed prospect"}</strong><div style={{fontSize:10,color:"var(--pf-tx-8B97AA)",marginTop:3}}>{leadCategory(p)} · {p.vertical||"Uncategorized"}</div>
+         <div style={{fontSize:10,color:"var(--pf-tx-60708C)",marginTop:4}}>{channels.email||channels.phone||""}</div></td>
         <td><span className="pf-tag">{readiness}</span></td>
         <td><span className={"pf-tag "+(/replied|converted/i.test(p.currentStatus||"")?"green":/sent|nurture/i.test(p.currentStatus||"")?"blue":/do not/i.test(p.currentStatus||"")?"red":"")}>{statusName(p.currentStatus)}</span></td>
         <td>{p.cityMarket||p.market||"—"}</td>
@@ -145,7 +145,7 @@ export default function LeadQualification({crmData=[],initialProspectId=null,onO
     </div>
     {sorted.length>PAGE&&<div style={{display:"flex",gap:10,alignItems:"center",justifyContent:"flex-end",marginTop:17}}>
      <button className="pf-button outline" disabled={page===0} onClick={()=>setPage(v=>Math.max(0,v-1))}>Previous</button>
-     <span style={{fontSize:11,color:"#6A7993"}}>Page {Math.min(page,pages-1)+1} of {pages}</span>
+     <span style={{fontSize:11,color:"var(--pf-tx-6A7993)"}}>Page {Math.min(page,pages-1)+1} of {pages}</span>
      <button className="pf-button outline" disabled={page>=pages-1} onClick={()=>setPage(v=>Math.min(pages-1,v+1))}>Next</button>
     </div>}
    </section>

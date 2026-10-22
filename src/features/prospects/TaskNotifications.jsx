@@ -2,9 +2,9 @@ import React,{useEffect,useMemo,useState} from "react";
 import {buildTaskNotifications,summarizeTaskNotifications} from "../../lib/taskNotifications.js";
 import {localDateKey} from "../../lib/outreachPlanning.js";
 
-const panel={background:"#fff",border:"1px solid #E6EBF3",borderRadius:15,padding:18};
-const primary={border:0,borderRadius:9,padding:"9px 12px",background:"#6958DA",color:"#fff",fontWeight:750,fontSize:11,cursor:"pointer"};
-const secondary={border:"1px solid #DEE3EF",borderRadius:9,padding:"9px 12px",background:"#F6F7FC",color:"#4D4A82",fontWeight:750,fontSize:11,cursor:"pointer"};
+const panel={background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E6EBF3)",borderRadius:15,padding:18};
+const primary={border:0,borderRadius:9,padding:"9px 12px",background:"var(--pf-bg-6958DA)",color:"#fff",fontWeight:750,fontSize:11,cursor:"pointer"};
+const secondary={border:"1px solid var(--pf-bd-DEE3EF)",borderRadius:9,padding:"9px 12px",background:"var(--pf-bg-F6F7FC)",color:"var(--pf-tx-4D4A82)",fontWeight:750,fontSize:11,cursor:"pointer"};
 const filters=[
  {value:"all",label:"All alerts",type:null},
  {value:"overdue",label:"Overdue",type:"overdue"},
@@ -13,10 +13,10 @@ const filters=[
  {value:"priority",label:"High priority",type:"priority"}
 ];
 const tones={
- critical:{background:"#FFF0F0",border:"#F1CCCC",color:"#A83D3D"},
- warning:{background:"#FFF7E9",border:"#F1E0BB",color:"#96631B"},
- notice:{background:"#EEF4FF",border:"#D6E2FC",color:"#3D60A8"},
- info:{background:"#F2F4F8",border:"#E0E5EE",color:"#596982"}
+ critical:{background:"var(--pf-bg-FFF0F0)",border:"var(--pf-bd-F1CCCC)",color:"var(--pf-tx-A83D3D)"},
+ warning:{background:"var(--pf-bg-FFF7E9)",border:"var(--pf-bd-F1E0BB)",color:"var(--pf-tx-96631B)"},
+ notice:{background:"var(--pf-bg-EEF4FF)",border:"var(--pf-bd-D6E2FC)",color:"var(--pf-tx-3D60A8)"},
+ info:{background:"var(--pf-bg-F2F4F8)",border:"var(--pf-bd-E0E5EE)",color:"var(--pf-tx-596982)"}
 };
 function readDismissed(key){
  if(!key||typeof window==="undefined")return [];
@@ -80,13 +80,13 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
   <div className="pf-page-kicker">PHASE 11 · IN-APP ALERTS</div>
   <h1 className="pf-page-title">Task reminders & alerts</h1>
   <p className="pf-page-description">A focused inbox for overdue work, deadlines, and high-priority assignments visible to your CRM account. Alerts refresh from current task records; this does not send emails or background messages.</p>
-  {!enabled&&<div role="status" style={{...panel,marginTop:18,background:"#FFF9EE",color:"#985B27",fontSize:12}}>Task reminders require a connected CRM database. They are unavailable in demo mode.</div>}
+  {!enabled&&<div role="status" style={{...panel,marginTop:18,background:"var(--pf-bg-FFF9EE)",color:"var(--pf-tx-985B27)",fontSize:12}}>Task reminders require a connected CRM database. They are unavailable in demo mode.</div>}
   {enabled&&<>
    <section style={{...panel,marginTop:20,display:"grid",gap:15}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-     <div><div style={{fontSize:10,fontWeight:800,color:"#6958DA",letterSpacing:1}}>YOUR TASK ALERTS</div>
-      <h2 style={{fontSize:18,color:"#263652",margin:"5px 0"}}>{counts.all} active alert{counts.all===1?"":"s"}</h2>
-      <p style={{fontSize:11,color:"#77859A",margin:0}}>{loading?"Checking your CRM tasks…":(tasks.length+" task row(s) visible")}{refreshedAt?" · Refreshed "+refreshedAt:""}</p></div>
+     <div><div style={{fontSize:10,fontWeight:800,color:"var(--pf-tx-6958DA)",letterSpacing:1}}>YOUR TASK ALERTS</div>
+      <h2 style={{fontSize:18,color:"var(--pf-tx-263652)",margin:"5px 0"}}>{counts.all} active alert{counts.all===1?"":"s"}</h2>
+      <p style={{fontSize:11,color:"var(--pf-tx-77859A)",margin:0}}>{loading?"Checking your CRM tasks…":(tasks.length+" task row(s) visible")}{refreshedAt?" · Refreshed "+refreshedAt:""}</p></div>
      <button type="button" style={secondary} disabled={loading} onClick={async()=>{
       if(typeof onGetTasks!=="function")return;
       setLoading(true);setError("");
@@ -97,17 +97,17 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:9}}>
      {[
-      ["Overdue",counts.overdue,"#B44343"],
-      ["Due today",counts.dueToday,"#A66D1D"],
-      ["Due soon",counts.dueSoon,"#3E60A8"],
-      ["High / urgent",counts.highOrUrgent,"#5D4DB9"]
-     ].map(([label,value,color])=><div key={label} style={{border:"1px solid #E8ECF4",borderRadius:11,padding:12,background:"#FBFCFE"}}>
-      <div style={{fontSize:10,fontWeight:750,color:"#75839A"}}>{label}</div>
+      ["Overdue",counts.overdue,"var(--pf-tx-B44343)"],
+      ["Due today",counts.dueToday,"var(--pf-tx-A66D1D)"],
+      ["Due soon",counts.dueSoon,"var(--pf-tx-3E60A8)"],
+      ["High / urgent",counts.highOrUrgent,"var(--pf-tx-5D4DB9)"]
+     ].map(([label,value,color])=><div key={label} style={{border:"1px solid var(--pf-bd-E8ECF4)",borderRadius:11,padding:12,background:"var(--pf-bg-FBFCFE)"}}>
+      <div style={{fontSize:10,fontWeight:750,color:"var(--pf-tx-75839A)"}}>{label}</div>
       <div style={{fontSize:23,fontWeight:850,color,marginTop:5}}>{value.toLocaleString()}</div>
      </div>)}
     </div>
    </section>
-   {error&&<p role="alert" style={{...panel,marginTop:12,color:"#A24444",background:"#FFF3F3",fontSize:12}}>{error}</p>}
+   {error&&<p role="alert" style={{...panel,marginTop:12,color:"var(--pf-tx-A24444)",background:"var(--pf-bg-FFF3F3)",fontSize:12}}>{error}</p>}
    <section style={{...panel,marginTop:15,display:"grid",gap:13}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
@@ -123,17 +123,17 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
      <div style={{display:"grid",gap:10}}>
       {visible.map(item=>{
        const tone=tones[item.severity]||tones.info;
-       return <article key={item.id} style={{border:"1px solid "+tone.border,borderRadius:12,padding:14,display:"grid",gap:9,background:"#fff"}}>
+       return <article key={item.id} style={{border:"1px solid "+tone.border,borderRadius:12,padding:14,display:"grid",gap:9,background:"var(--pf-bg-FFFFFF)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",gap:12}}>
          <div style={{minWidth:0}}>
           <span style={{display:"inline-block",fontSize:9,fontWeight:850,letterSpacing:.7,padding:"4px 7px",borderRadius:6,background:tone.background,color:tone.color}}>{typeLabel(item.type)}</span>
-          <h3 style={{fontSize:14,color:"#243550",margin:"8px 0 4px",overflowWrap:"anywhere"}}>{item.taskTitle}</h3>
-          <p style={{fontSize:11,color:"#6E7D94",margin:0}}>{item.title} · {item.message}</p>
+          <h3 style={{fontSize:14,color:"var(--pf-tx-243550)",margin:"8px 0 4px",overflowWrap:"anywhere"}}>{item.taskTitle}</h3>
+          <p style={{fontSize:11,color:"var(--pf-tx-6E7D94)",margin:0}}>{item.title} · {item.message}</p>
          </div>
-         <span style={{flex:"none",fontSize:10,fontWeight:800,color:item.priority==="urgent"?"#B44343":item.priority==="high"?"#A66D1D":"#6D7A91"}}>{String(item.priority).toUpperCase()}</span>
+         <span style={{flex:"none",fontSize:10,fontWeight:800,color:item.priority==="urgent"?"var(--pf-tx-B44343)":item.priority==="high"?"var(--pf-tx-A66D1D)":"var(--pf-tx-6D7A91)"}}>{String(item.priority).toUpperCase()}</span>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-         <span style={{fontSize:10,color:"#8793A8"}}>Due: {dateLabel(item.dueDate)}</span>
+         <span style={{fontSize:10,color:"var(--pf-tx-8793A8)"}}>Due: {dateLabel(item.dueDate)}</span>
          <div style={{display:"flex",gap:7}}>
           {showDismissed?
            <button type="button" style={secondary} onClick={()=>restore(item.id)}>Restore alert</button>:
@@ -144,7 +144,7 @@ export default function TaskNotifications({currentUser={},canAdmin=false,enabled
        </article>;
       })}
      </div>}
-    <p style={{fontSize:10,color:"#8995A8",lineHeight:1.6,margin:0}}>Reminders are calculated from active tasks: overdue, due today, due within three days, or high/urgent priority. Dismissals are saved locally in this browser for this CRM user. No task descriptions or contact details are copied into the alert feed.</p>
+    <p style={{fontSize:10,color:"var(--pf-tx-8995A8)",lineHeight:1.6,margin:0}}>Reminders are calculated from active tasks: overdue, due today, due within three days, or high/urgent priority. Dismissals are saved locally in this browser for this CRM user. No task descriptions or contact details are copied into the alert feed.</p>
    </section>
   </>}
  </div>;

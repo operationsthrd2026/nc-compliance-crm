@@ -13,6 +13,7 @@ import ProspectDrawer from "./ProspectDrawer.jsx";
 import BulkBar from "./BulkBar.jsx";
 import TerritoryMap from "./TerritoryMap.jsx";
 import DuplicatesView from "./DuplicatesView.jsx";
+import LeadQualification from "./LeadQualification.jsx";
 
 const PREF_KEY = "nc_prospect_prefs";
 const DEFAULT_PREFS = { compact: false, pageSize: 50, cols: { contact: true, fit: true, email: true, vertical: true, market: true, next: true, tags: true } };
@@ -24,6 +25,7 @@ const primaryEmail = p => { const e = extractEmails(p.emailPhone); return e.find
 export default function ProspectsView({
   crmData, role, currentUser, canEdit, features, sysSettings, savedApi, hunterVerify, applyStatus,
   onEditProspect, onAddProspect, onOpenFinder, onOpenImport, onExport, onBulkSave, onDeleteMany, onMerge, toast,
+  qualifyRequest, onQualifyUpdate,
 }){
   const tagsEnabled = !!features?.tags;
   const [prefs, setPrefsState] = useState(loadPrefs);
@@ -41,6 +43,9 @@ export default function ProspectsView({
   const [dismissed, setDismissed] = useState(loadDismissed);
   const [manualGroup, setManualGroup] = useState(null);
   const [mergingId, setMergingId] = useState(null);
+  const [qualifyId, setQualifyId] = useState(null);
+  // Other parts of the workspace can ask to open a prospect in Qualification
+  useEffect(() => { if (qualifyRequest){ setQualifyId(qualifyRequest.id || null); setMode("qualify"); } }, [qualifyRequest]);
 
   /* ── derived data ─────────────────────────────────────────── */
   const scoreMap = useMemo(() => { const m = new Map(); for (const p of crmData) m.set(p.id, scoreProspect(p)); return m; }, [crmData]);
@@ -49,6 +54,8 @@ export default function ProspectsView({
   const effective = useMemo(() => ({ ...filters, q }), [filters, q]);
   const filtered = useMemo(() => sortList(applyFilters(crmData, effective, scoreOf), sort.key, sort.dir, scoreOf), [crmData, effective, sort, scoreOf]);
   const tagList = useMemo(() => allTags(crmData), [crmData]);
+  // markets actually present in the data (most common first) — nationwide, not a fixed NC list
+  const marketOptions = useMemo(() => { const c = new Map(); for (const p of crmData) if (p.market) c.set(p.market, (c.get(p.market) || 0) + 1); return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 30).map(([m]) => m); }, [crmData]);
   const viewCounts = useMemo(() => Object.fromEntries(BUILTIN_VIEWS.map(v => [v.id, applyFilters(crmData, withDefaults(v.filters), scoreOf).length])), [crmData, scoreOf]);
 
   const deferred = useDeferredValue(crmData);
@@ -155,6 +162,7 @@ export default function ProspectsView({
           <Segmented label="View" value={mode} onChange={setMode} options={[
             { value: "table", label: "Table", icon: "☰" }, { value: "map", label: "Map", icon: "🗺" },
             { value: "duplicates", label: "Duplicates", icon: "⇄", badge: dupGroups.length, badgeColor: "var(--nc-amber)" },
+            { value: "qualify", label: "Qualification", icon: "✔" },
           ]} />
           <div style={{ flex: 1 }} />
           <Btn variant="gold-ghost" icon="🔍" onClick={onOpenFinder}>Find prospects</Btn>
@@ -162,7 +170,7 @@ export default function ProspectsView({
           <Btn icon="⬇" onClick={exportNow} disabled={!crmData.length}>{selected.size ? `Export ${selected.size}` : "Export"}</Btn>
           {canEdit && <Btn variant="primary" icon="+" onClick={onAddProspect}>Add prospect</Btn>}
         </div>
-        {mode !== "duplicates" && (
+        {(mode === "table" || mode === "map") && (
           <FilterBar filters={filters} setFilters={setFilters} allRows={crmData} tagList={tagList} tagsEnabled={tagsEnabled}
             savedItems={saved.items} canEdit={canEdit} canSaveShared={!saved.isLocal} isLocalSaved={saved.isLocal} savedError={saved.error}
             onSaveView={saveView} onDeleteView={deleteView} onApplyView={applyView} viewCounts={viewCounts}
@@ -219,7 +227,13 @@ export default function ProspectsView({
           </>
         )}
 
-        {mode === "map" && <TerritoryMap rows={filtered} scoreOf={scoreOf} onOpen={p => setOpenId(p.id)} onPickMarket={m => { setFilters(f => ({ ...f, market: [m] })); setMode("table"); }} />}
+        {mode === "map" && <TerritoryMap rows={filtered} scoreOf={scoreOf} onOpen={p => setOpenId(p.id)} onPickPlace={k => { setFilters(f => ({ ...f, place: [k] })); setMode("table"); }} />}
+
+        {mode === "qualify" && (
+          <div className="pf-embed">
+            <LeadQualification crmData={crmData} initialProspectId={qualifyId} canEdit={canEdit} onUpdateProspect={onQualifyUpdate} onOpenCRM={() => setMode("table")} />
+          </div>
+        )}
 
         {mode === "duplicates" && (
           <DuplicatesView groups={dupGroups} manualGroup={manualGroup} onClearManual={() => setManualGroup(null)}
@@ -230,14 +244,14 @@ export default function ProspectsView({
       </div>
 
       {selected.size > 0 && mode === "table" && (
-        <BulkBar count={selected.size} filteredCount={filtered.length} onSelectAllFiltered={selectAllFiltered} onClear={() => setSelected(new Set())}
+        <BulkBar marketOptions={marketOptions} count={selected.size} filteredCount={filtered.length} onSelectAllFiltered={selectAllFiltered} onClear={() => setSelected(new Set())}
           canEdit={canEdit} canDelete={!!role?.canDelete} tagsEnabled={tagsEnabled} tagList={tagList} selectedTags={selectedTags} busy={busy} actions={actions} />
       )}
 
       {openProspect && (
         <ProspectDrawer prospect={openProspect} scoreResult={scoreOf(openProspect)} canEdit={canEdit} tagsEnabled={tagsEnabled} tagList={tagList}
           dupMatches={dupMatches} lastCheck={lastCheck[openProspect.id]} verifying={verifyingId === openProspect.id} hunterOn={!!hunterVerify}
-          onClose={() => setOpenId(null)} onPatch={patch => patchOne(openProspect.id, patch)}
+          onClose={() => setOpenId(null)} onPatch={patch => patchOne(openProspect.id, patch)} onQualify={p => { setOpenId(null); setQualifyId(p.id); setMode("qualify"); }}
           onEdit={p => { setOpenId(null); onEditProspect(p); }} onOpenOther={p => setOpenId(p.id)}
           onVerify={async () => { setVerifyingId(openProspect.id); try { await verifyRows([openProspect]); } finally { setVerifyingId(null); } }} />
       )}

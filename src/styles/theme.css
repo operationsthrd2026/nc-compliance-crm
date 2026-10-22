@@ -1,0 +1,69 @@
+/* ════════════════════════════════════════════════════════════════
+   Theme tokens — ONE source of truth for light and dark.
+   The DARK values are exactly the colours the app used before theming,
+   so dark mode looks the same as it always did. LIGHT is new.
+   The theme is chosen by <html data-theme="light|dark"> (see src/ui/theme.js).
+   Contrast of the text/accent pairs is checked by src/lib/theme.test.js.
+════════════════════════════════════════════════════════════════ */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --k-bg:#0B1426;
+  --k-bg-rgb:11,20,38;
+  --k-surface:#111E38;
+  --k-surface2:#162040;
+  --k-surface3:#1C2B50;
+  --k-text:#F0F4FF;
+  --k-text2:rgba(240,244,255,0.55);
+  --k-text3:rgba(240,244,255,0.42);
+  --k-border:rgba(240,244,255,0.08);
+  --k-border2:rgba(240,244,255,0.15);
+  --k-ink-rgb:240,244,255;
+  --k-white-rgb:255,255,255;
+  --k-gold:#C9963A;
+  --k-gold-l:#DBA843;
+  --k-green:#34d399;
+  --k-amber:#fbbf24;
+  --k-red:#f87171;
+  --k-blue:#60a5fa;
+  --k-purple:#c084fc;
+  --k-pink:#f472b6;
+  --k-pop:#141f3b;
+  --k-thead:#0f1a33;
+  --k-bulk:#17233f;
+  --k-toolbar:rgba(11,20,38,0.9);
+  --k-scrim:rgba(5,10,22,0.55);
+  --k-shadow:rgba(0,0,0,0.45);
+  --k-faint:rgba(240,244,255,0.06);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --k-bg:#F5F7FC;
+  --k-bg-rgb:245,247,252;
+  --k-surface:#FFFFFF;
+  --k-surface2:#EEF1F8;
+  --k-surface3:#E3E8F3;
+  --k-text:#15213A;
+  --k-text2:rgba(21,33,58,0.70);
+  --k-text3:rgba(21,33,58,0.50);
+  --k-border:rgba(21,33,58,0.12);
+  --k-border2:rgba(21,33,58,0.20);
+  --k-ink-rgb:21,33,58;
+  --k-white-rgb:21,33,58;
+  --k-gold:#C9963A;
+  --k-gold-l:#85590C;
+  --k-green:#0B7A53;
+  --k-amber:#965800;
+  --k-red:#B91C1C;
+  --k-blue:#1D4FD6;
+  --k-purple:#7132D8;
+  --k-pink:#B8236F;
+  --k-pop:#FFFFFF;
+  --k-thead:#E9EDF6;
+  --k-bulk:#FFFFFF;
+  --k-toolbar:rgba(245,247,252,0.92);
+  --k-scrim:rgba(21,33,58,0.35);
+  --k-shadow:rgba(21,33,58,0.16);
+  --k-faint:rgba(21,33,58,0.05);
+}
+/* Dark map tiles: invert the (light) OpenStreetMap tiles in dark mode */
+[data-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9); }

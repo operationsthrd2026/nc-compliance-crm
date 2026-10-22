@@ -47,11 +47,11 @@ export function emailKind(email){
 }
 
 export const TIERS = {
-  hot:      { label: "Hot",      color: "#f472b6" },
-  strong:   { label: "Strong",   color: "#34d399" },
-  possible: { label: "Possible", color: "#fbbf24" },
-  low:      { label: "Low",      color: "rgba(240,244,255,0.38)" },
-  excluded: { label: "Excluded", color: "#f87171" },
+  hot:      { label: "Hot",      color: "var(--k-pink)" },
+  strong:   { label: "Strong",   color: "var(--k-green)" },
+  possible: { label: "Possible", color: "var(--k-amber)" },
+  low:      { label: "Low",      color: "var(--k-text3)" },
+  excluded: { label: "Excluded", color: "var(--k-red)" },
 };
 
 export function scoreProspect(p, cfg = SCORING){
@@ -73,7 +73,7 @@ export function scoreProspect(p, cfg = SCORING){
 
   // 3. HR gap
   const hr = p.hrPersonListed === "No" ? "No" : p.hrPersonListed === "Yes" ? "Yes" : "unknown";
-  add("hrgap", "HR gap", cfg.hrGap[hr], 15, hr === "No" ? "No HR person listed — likely under-served" : hr === "Yes" ? "Already has an HR contact" : "HR staffing unknown (neutral)");
+  add("hrgap", "HR gap", cfg.hrGap[hr], 15, hr === "No" ? "No HR person recorded — confirm before relying on this" : hr === "Yes" ? "Already has an HR contact" : "HR staffing unknown (neutral)");
   if (hr === "unknown") missing.push("HR person listed");
 
   // 4. Reachability

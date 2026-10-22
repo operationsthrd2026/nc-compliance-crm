@@ -2,18 +2,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ANALYTICS_CATEGORIES, analyticsCsv, analyticsSnapshot, filterAnalyticsLeads } from "../../lib/analytics.js";
 import { localDateKey } from "../../lib/outreachPlanning.js";
 
-const card={background:"#FFFFFF",border:"1px solid #E5EAF4",borderRadius:16,padding:21,minWidth:0};
-const muted="#71809B";
-const input={padding:"10px 12px",border:"1px solid #DDE4F0",borderRadius:10,fontSize:12,color:"#21314C",background:"white",minWidth:155,maxWidth:"100%"};
-const heading={fontSize:15,fontWeight:800,margin:"0 0 6px",color:"#1B2944"};
+const card={background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E5EAF4)",borderRadius:16,padding:21,minWidth:0};
+const muted="var(--pf-bd-71809B)";
+const input={padding:"10px 12px",border:"1px solid var(--pf-bd-DDE4F0)",borderRadius:10,fontSize:12,color:"var(--pf-tx-21314C)",background:"white",minWidth:155,maxWidth:"100%"};
+const heading={fontSize:15,fontWeight:800,margin:"0 0 6px",color:"var(--pf-tx-1B2944)"};
 const detail={fontSize:11,color:muted,lineHeight:1.55,margin:"0 0 18px"};
-const palette=["#6658DB","#9F8AEC","#37A98E","#6C96D6","#EDA85E","#D7809C"];
+const palette=["var(--pf-tx-6658DB)","var(--pf-tx-9F8AEC)","var(--pf-tx-37A98E)","var(--pf-tx-6C96D6)","var(--pf-tx-EDA85E)","var(--pf-tx-D7809C)"];
 
 function SummaryMetric({label,value,note,accent}) {
  return <div style={{...card,padding:"19px 20px"}}>
   <div style={{fontSize:11,fontWeight:700,color:muted}}>{label}</div>
-  <div style={{fontSize:28,fontWeight:850,letterSpacing:"-1px",margin:"11px 0 5px",color:accent||"#1A2945"}}>{value}</div>
-  <div style={{fontSize:10,color:"#8995AA",lineHeight:1.5}}>{note}</div>
+  <div style={{fontSize:28,fontWeight:850,letterSpacing:"-1px",margin:"11px 0 5px",color:accent||"var(--pf-tx-1A2945)"}}>{value}</div>
+  <div style={{fontSize:10,color:"var(--pf-tx-8995AA)",lineHeight:1.5}}>{note}</div>
  </div>;
 }
 function Breakdown({title,subtitle,rows,total,max=10}) {
@@ -21,10 +21,10 @@ function Breakdown({title,subtitle,rows,total,max=10}) {
  return <section style={card}>
   <h2 style={heading}>{title}</h2><p style={detail}>{subtitle}</p>
   {limited.length?limited.map((item,index)=><div key={item.label} style={{marginBottom:15}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline",marginBottom:6,fontSize:11,color:"#364862"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline",marginBottom:6,fontSize:11,color:"var(--pf-tx-364862)"}}>
      <span style={{overflowWrap:"anywhere"}}>{item.label}</span><strong>{item.count.toLocaleString()} · {total?Math.round(item.count/total*100):0}%</strong>
     </div>
-    <div style={{height:8,background:"#EEF1F8",borderRadius:8,overflow:"hidden"}}>
+    <div style={{height:8,background:"var(--pf-bg-EEF1F8)",borderRadius:8,overflow:"hidden"}}>
      <div style={{height:"100%",background:palette[index%palette.length],width:(total?100*item.count/total:0)+"%",borderRadius:8}}/>
     </div>
    </div>):<p style={{color:muted,fontSize:12}}>No matching CRM records.</p>}
@@ -86,12 +86,12 @@ export default function AnalyticsWorkspace({crmData=[],enabled=false,onGetTasks,
   <h1 className="pf-page-title">Performance & pipeline dashboard</h1>
   <p className="pf-page-description">Understand your saved prospects, outreach stages, contact coverage and deadlines from current CRM records. All figures update when prospect data changes.</p>
   <section style={{...card,margin:"22px 0 17px",display:"flex",gap:12,alignItems:"end",flexWrap:"wrap"}}>
-   <label style={{display:"grid",gap:6,fontSize:11,fontWeight:700,color:"#5B6D88"}}>Organization type
+   <label style={{display:"grid",gap:6,fontSize:11,fontWeight:700,color:"var(--pf-tx-5B6D88)"}}>Organization type
     <select style={input} value={category} onChange={e=>setCategory(e.target.value)}>
      {ANALYTICS_CATEGORIES.map(x=><option key={x} value={x}>{x==="Business / Other"?"Small businesses / Other":x}</option>)}
     </select>
    </label>
-   <label style={{display:"grid",gap:6,fontSize:11,fontWeight:700,color:"#5B6D88"}}>Discovery source
+   <label style={{display:"grid",gap:6,fontSize:11,fontWeight:700,color:"var(--pf-tx-5B6D88)"}}>Discovery source
     <select style={input} value={source} onChange={e=>setSource(e.target.value)}>
      {sources.map(x=><option key={x} value={x}>{x}</option>)}
     </select>
@@ -113,9 +113,9 @@ export default function AnalyticsWorkspace({crmData=[],enabled=false,onGetTasks,
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
    <section style={card}>
     <div style={{display:"flex",justifyContent:"space-between",gap:9,alignItems:"start"}}><div><h2 style={heading}>Upcoming follow-ups</h2><p style={detail}>Sorted by urgency from the existing outreach queue</p></div><button className="pf-link" onClick={onOpenOutreach}>Open outreach →</button></div>
-    {snapshot.queue.length?snapshot.queue.slice(0,6).map((item,index)=><div key={String(item.id||index)} style={{display:"flex",justifyContent:"space-between",gap:12,borderBottom:"1px solid #EFF2F8",padding:"10px 0",fontSize:11}}>
-     <span style={{fontWeight:720,color:"#30415C",overflowWrap:"anywhere"}}>{item.companyName}</span>
-     <span style={{flexShrink:0,color:item.bucket==="Overdue"?"#B34B54":"#7564BE"}}>{item.bucket}{item.dueDate?" · "+item.dueDate:""}</span>
+    {snapshot.queue.length?snapshot.queue.slice(0,6).map((item,index)=><div key={String(item.id||index)} style={{display:"flex",justifyContent:"space-between",gap:12,borderBottom:"1px solid var(--pf-bd-EFF2F8)",padding:"10px 0",fontSize:11}}>
+     <span style={{fontWeight:720,color:"var(--pf-tx-30415C)",overflowWrap:"anywhere"}}>{item.companyName}</span>
+     <span style={{flexShrink:0,color:item.bucket==="Overdue"?"var(--pf-tx-B34B54)":"var(--pf-tx-7564BE)"}}>{item.bucket}{item.dueDate?" · "+item.dueDate:""}</span>
     </div>):<p style={{fontSize:12,color:muted}}>No follow-ups are scheduled in this selection.</p>}
     {snapshot.queue.length>6&&<p style={{...detail,marginTop:12}}>{snapshot.queue.length-6} additional follow-up(s) in Outreach.</p>}
    </section>
@@ -128,7 +128,7 @@ export default function AnalyticsWorkspace({crmData=[],enabled=false,onGetTasks,
        <SummaryMetric label="Due now" value={loading?"…":snapshot.taskDueNow??"—"} note="Due today or overdue"/>
        <SummaryMetric label="Completed" value={loading?"…":snapshot.taskCounts?.Completed??"—"} note="Current completed status"/>
       </div>
-      {error&&<p role="alert" style={{fontSize:11,color:"#B04A54"}}>{error}</p>}
+      {error&&<p role="alert" style={{fontSize:11,color:"var(--pf-tx-B04A54)"}}>{error}</p>}
       {lastLoaded&&!error&&<p style={{fontSize:11,color:muted}}>Last task refresh: {lastLoaded}</p>}
       <button disabled={loading} onClick={refresh} className="pf-button outline">{loading?"Refreshing…":"↻ Refresh tasks"}</button>
      </>}

@@ -7,6 +7,8 @@ import { EMAIL_STATUS } from "../lib/emailCheck.js";
 import { cleanTag } from "../lib/filters.js";
 
 export const cx = (...a) => a.filter(Boolean).join(" ");
+/** A translucent version of any colour — works with CSS variables (unlike hex+"22"). */
+export const alpha = (c, pct) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
 
 export function useDebounced(value, ms = 180){
   const [v, setV] = useState(value);
@@ -25,7 +27,7 @@ function useOutside(ref, onOut, active){
 }
 
 export function Spinner({ size = 16, color = "currentColor" }){
-  return <span aria-hidden style={{ display: "inline-block", width: size, height: size, border: `2px solid ${color}33`, borderTopColor: color, borderRadius: "50%", animation: "nc-spin .7s linear infinite", flexShrink: 0 }} />;
+  return <span aria-hidden style={{ display: "inline-block", width: size, height: size, border: `2px solid ${alpha(color, 20)}`, borderTopColor: color, borderRadius: "50%", animation: "nc-spin .7s linear infinite", flexShrink: 0 }} />;
 }
 
 export function Btn({ variant = "ghost", size, icon, loading, className, children, ...rest }){
@@ -44,7 +46,7 @@ export function Check({ checked, indeterminate, onChange, label, ...rest }){
 }
 
 export function StatusPill({ status }){
-  const s = SC[status] || { bg: "rgba(240,244,255,.06)", c: "rgba(240,244,255,.55)", b: "rgba(240,244,255,.12)" };
+  const s = SC[status] || { bg: "rgba(var(--k-ink-rgb),.06)", c: "rgba(var(--k-ink-rgb),.55)", b: "rgba(var(--k-ink-rgb),.12)" };
   return <span className="nc-pill" style={{ background: s.bg, color: s.c, borderColor: s.b }}>{status || "—"}</span>;
 }
 
@@ -53,8 +55,8 @@ export function ScoreRing({ score, color, size = 34, label }){
   return (
     <span role="img" aria-label={label || `Fit score ${score} out of 100`} style={{ position: "relative", display: "inline-flex", width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(240,244,255,.1)" strokeWidth="3" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} style={{ transition: "stroke-dashoffset .5s" }} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" style={{ stroke: "rgba(var(--k-ink-rgb),.12)" }} strokeWidth="3" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth="3" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} style={{ stroke: color, transition: "stroke-dashoffset .5s" }} />
       </svg>
       <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", font: `800 ${size > 40 ? 15 : 10.5}px var(--nc-font)`, color }}>{score}</span>
     </span>
@@ -99,7 +101,7 @@ export function EmailBadge({ status = "", flags = [], confirmed, compact }){
   return (
     <span title={`${e.label}${confirmed ? " (mailbox confirmed)" : ""}${flags.length ? " · " + flags.join(", ") : ""}`}
       style={{ display: "inline-flex", alignItems: "center", gap: 5, font: "700 10.5px var(--nc-font)", color: e.color }}>
-      <span aria-hidden style={{ width: 15, height: 15, borderRadius: "50%", display: "inline-grid", placeItems: "center", background: `${e.color}22`, border: `1px solid ${e.color}55`, fontSize: 9 }}>{icon}</span>
+      <span aria-hidden style={{ width: 15, height: 15, borderRadius: "50%", display: "inline-grid", placeItems: "center", background: alpha(e.color, 13), border: `1px solid ${alpha(e.color, 33)}`, fontSize: 9 }}>{icon}</span>
       {!compact && <span>{e.label}{confirmed ? " ✓" : ""}</span>}
     </span>
   );
@@ -234,6 +236,22 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = "Add
           {sugg.map(([t, n]) => <button type="button" key={t} className="nc-menu-item" onMouseDown={e => { e.preventDefault(); add(t); }}><span style={{ flex: 1 }}>{t}</span><span style={{ color: "var(--nc-text-3)", fontSize: 11 }}>{n}</span></button>)}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Light / Dark / Auto switch. Pass `onDark` when it sits on an always-dark surface (the sidebar). */
+import { usePreference, setPreference } from "./theme.js";
+export function ThemeToggle({ onDark = false, compact = false }){
+  const pref = usePreference();
+  const opts = [["light", "☀", "Light"], ["dark", "☾", "Dark"], ["system", "◐", "Auto"]];
+  return (
+    <div data-theme={onDark ? "dark" : undefined} role="radiogroup" aria-label="Colour theme" className="nc-seg" style={onDark ? { background: "rgba(255,255,255,.06)", borderColor: "rgba(255,255,255,.1)" } : undefined}>
+      {opts.map(([v, ico, label]) => (
+        <button key={v} type="button" role="radio" aria-checked={pref === v} className={pref === v ? "on" : ""} title={`${label} theme`} onClick={() => setPreference(v)}>
+          <span aria-hidden>{ico}</span>{!compact && label}
+        </button>
+      ))}
     </div>
   );
 }

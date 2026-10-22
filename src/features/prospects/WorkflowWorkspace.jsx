@@ -5,16 +5,16 @@ import {buildWorkflowQueue,filterWorkflowQueue,workflowCounts,workflowCsv,normal
  WORKFLOW_CATEGORIES,WORKFLOW_BUCKETS,validatePresetName} from "../../lib/workflowPlanning.js";
 import {localDateKey} from "../../lib/outreachPlanning.js";
 
-const card={background:"#fff",border:"1px solid #E5EAF4",borderRadius:15,padding:17,minWidth:0};
-const field={width:"100%",border:"1px solid #DEE5F0",borderRadius:9,padding:"10px 11px",fontSize:12,color:"#23324C",background:"#fff"};
-const txt={fontSize:11,color:"#73829C"};
-const secondary={border:"1px solid #DDE4EF",borderRadius:9,padding:"10px 13px",color:"#4E5E7E",background:"#fff",fontWeight:760,fontSize:12,cursor:"pointer"};
-const primary={...secondary,color:"#fff",background:"#6454D9",border:0};
-const label={fontSize:11,color:"#536581",fontWeight:760,display:"grid",gap:5};
+const card={background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E5EAF4)",borderRadius:15,padding:17,minWidth:0};
+const field={width:"100%",border:"1px solid var(--pf-bd-DEE5F0)",borderRadius:9,padding:"10px 11px",fontSize:12,color:"var(--pf-tx-23324C)",background:"var(--pf-bg-FFFFFF)"};
+const txt={fontSize:11,color:"var(--pf-tx-73829C)"};
+const secondary={border:"1px solid var(--pf-bd-DDE4EF)",borderRadius:9,padding:"10px 13px",color:"var(--pf-tx-4E5E7E)",background:"var(--pf-bg-FFFFFF)",fontWeight:760,fontSize:12,cursor:"pointer"};
+const primary={...secondary,color:"#fff",background:"var(--pf-bg-6454D9)",border:0};
+const label={fontSize:11,color:"var(--pf-tx-536581)",fontWeight:760,display:"grid",gap:5};
 const pill=bucket=>({
  display:"inline-block",fontSize:10,fontWeight:800,padding:"5px 9px",borderRadius:20,
- background:bucket==="Immediate review"?"#FFF0F0":bucket==="Overdue"?"#FFF2E4":bucket==="Due today"?"#F0EFFF":"#EAF2FB",
- color:bucket==="Immediate review"?"#AF4251":bucket==="Overdue"?"#A45A2A":bucket==="Due today"?"#6651B7":"#4D6385"
+ background:bucket==="Immediate review"?"var(--pf-bg-FFF0F0)":bucket==="Overdue"?"var(--pf-bg-FFF2E4)":bucket==="Due today"?"var(--pf-bg-F0EFFF)":"var(--pf-bg-EAF2FB)",
+ color:bucket==="Immediate review"?"var(--pf-tx-AF4251)":bucket==="Overdue"?"var(--pf-tx-A45A2A)":bucket==="Due today"?"var(--pf-tx-6651B7)":"var(--pf-tx-4D6385)"
 });
 const presets=[["All actions","All actions"],["Immediate review","Immediate review"],
  ["Overdue","Overdue"],["Due today","Due today"],["Research","Research"],["Upcoming","Upcoming"],["Ready","Ready"]];
@@ -116,9 +116,9 @@ export default function WorkflowWorkspace({
   <p className="pf-page-description">Prioritize existing CRM records, reuse private or shared review views across devices, and see linked tasks your account can access. All actions still require a team member to review and save them.</p>
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10,margin:"22px 0 20px"}}>
    {presets.map(([name,value])=><button type="button" key={name} onClick={()=>setBucketFilter(value)}
-    style={{...card,textAlign:"left",cursor:"pointer",borderColor:bucket===value?"#8575EA":"#E5EAF4",background:bucket===value?"#F7F5FF":"#fff"}}>
-    <div style={{fontSize:11,color:"#78869C",fontWeight:720}}>{name}</div>
-    <div style={{fontSize:25,color:"#243250",fontWeight:840,marginTop:5}}>{(counts[value]||0).toLocaleString()}</div>
+    style={{...card,textAlign:"left",cursor:"pointer",borderColor:bucket===value?"var(--pf-bd-8575EA)":"var(--pf-bd-E5EAF4)",background:bucket===value?"var(--pf-bg-F7F5FF)":"var(--pf-bg-FFFFFF)"}}>
+    <div style={{fontSize:11,color:"var(--pf-tx-78869C)",fontWeight:720}}>{name}</div>
+    <div style={{fontSize:25,color:"var(--pf-tx-243250)",fontWeight:840,marginTop:5}}>{(counts[value]||0).toLocaleString()}</div>
    </button>)}
   </div>
   <section style={{...card,marginBottom:15,display:"grid",gap:13}}>
@@ -138,7 +138,7 @@ export default function WorkflowWorkspace({
       <option value="urgency">Most urgent first</option><option value="fit">Fit rubric first</option>
     </select></label>
    </div>
-   <div style={{borderTop:"1px solid #EEF1F7",paddingTop:13,display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
+   <div style={{borderTop:"1px solid var(--pf-bd-EEF1F7)",paddingTop:13,display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
     <label style={{...label,flex:"1 1 175px"}}>{activeApi.local?"Saved browser filters":"Private & shared CRM filters"}
      <select style={field} value={selectedPresetId} onChange={e=>choosePreset(e.target.value)}>
       <option value="">Choose a saved filter…</option>
@@ -149,7 +149,7 @@ export default function WorkflowWorkspace({
     <label style={{...label,flex:"1 1 160px"}}>Name this filter
      <input style={field} value={presetName} maxLength={80} placeholder="e.g. Daily nonprofit review" onChange={e=>setPresetName(e.target.value)}/>
     </label>
-    {!activeApi.local&&canSaveView&&<label style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:11,color:"#566781",fontWeight:740}}>
+    {!activeApi.local&&canSaveView&&<label style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:11,color:"var(--pf-tx-566781)",fontWeight:740}}>
       <input type="checkbox" checked={sharePreset} onChange={e=>setSharePreset(e.target.checked)}/> Share with CRM team
     </label>}
     <button type="button" style={primary} disabled={!canSaveView||!presetName.trim()||saved.loading} onClick={savePreset}>Save filter</button>
@@ -160,23 +160,23 @@ export default function WorkflowWorkspace({
     ?"Demo mode: filters remain in this browser only. Connect CRM to sync across devices."
     :"Saved views sync through CRM. Team views can be opened by permitted teammates; private views stay visible only to their creator."}
     {!canSaveView&&!activeApi.local&&" Your CRM role can use shared views but cannot create or delete them."}</div>
-   {saved.error&&<div role="alert" style={{fontSize:11,color:"#AF4444"}}>{saved.error}</div>}
-   {error&&<div role="alert" style={{fontSize:11,color:"#AF4444"}}>{error}</div>}
-   {success&&<div role="status" style={{fontSize:11,color:"#24795B"}}>{success}</div>}
+   {saved.error&&<div role="alert" style={{fontSize:11,color:"var(--pf-tx-AF4444)"}}>{saved.error}</div>}
+   {error&&<div role="alert" style={{fontSize:11,color:"var(--pf-tx-AF4444)"}}>{error}</div>}
+   {success&&<div role="status" style={{fontSize:11,color:"var(--pf-tx-24795B)"}}>{success}</div>}
   </section>
   <section style={{...card,marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:13,flexWrap:"wrap"}}>
    <div>
-    <h2 style={{fontSize:14,color:"#263653",margin:0}}>Task coordination · only tasks visible to you</h2>
+    <h2 style={{fontSize:14,color:"var(--pf-tx-263653)",margin:0}}>Task coordination · only tasks visible to you</h2>
     {visibleTasks!==null?<p style={{...txt,margin:"6px 0 0"}}>{taskStats.active} active linked task(s) · {taskStats.dueNow} due today/overdue · {taskStats.linkedProspects} prospect(s)</p>
       :<p style={{...txt,margin:"6px 0 0"}}>{tasksLoading?"Loading your visible CRM tasks…":"Task totals unavailable; CRM prospect queue remains usable."}</p>}
     {tasksLoadedAt&&<div style={{...txt,marginTop:4}}>Last refreshed at {tasksLoadedAt} · Counts are not organization-wide totals.</div>}
-    {taskError&&<div role="alert" style={{...txt,color:"#A83D4D",marginTop:5}}>{taskError}</div>}
+    {taskError&&<div role="alert" style={{...txt,color:"var(--pf-tx-A83D4D)",marginTop:5}}>{taskError}</div>}
    </div>
    {tasksEnabled&&<button type="button" style={secondary} disabled={tasksLoading} onClick={refreshTasks}>{tasksLoading?"Refreshing…":"↻ Refresh visible tasks"}</button>}
   </section>
   <section style={{...card,marginBottom:17}}>
    <div style={{display:"flex",justifyContent:"space-between",gap:13,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
-    <div><h2 style={{margin:0,fontSize:15,color:"#1F2E49"}}>Suggested manual actions</h2>
+    <div><h2 style={{margin:0,fontSize:15,color:"var(--pf-tx-1F2E49)"}}>Suggested manual actions</h2>
       <p style={{...txt,margin:"6px 0 0"}}>{visibleActions.length.toLocaleString()} matching of {actions.length.toLocaleString()} active records · As of {asOf}</p></div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <button type="button" style={secondary} onClick={onOpenQuality}>Review quality issues</button>
@@ -191,11 +191,11 @@ export default function WorkflowWorkspace({
         <div style={{...txt,marginTop:4}}>{item.category} · {item.prospect.currentStatus||"NEW"}</div></td>
       <td><span style={pill(item.bucket)}>{item.bucket}</span>
         <div style={{...txt,marginTop:5}}>{item.kind}</div></td>
-      <td style={{maxWidth:320,fontSize:11,lineHeight:1.6,color:"#475C7A"}}>
-       <strong style={{color:"#243653"}}>{item.action}</strong>
+      <td style={{maxWidth:320,fontSize:11,lineHeight:1.6,color:"var(--pf-tx-475C7A)"}}>
+       <strong style={{color:"var(--pf-tx-243653)"}}>{item.action}</strong>
        <div style={{...txt,marginTop:4}}>{item.why}</div></td>
-      <td style={{fontSize:11,color:"#54657E",whiteSpace:"nowrap"}}>{item.dueDate||"—"}</td>
-      <td style={{fontSize:11,color:"#516481",minWidth:145}}>
+      <td style={{fontSize:11,color:"var(--pf-tx-54657E)",whiteSpace:"nowrap"}}>{item.dueDate||"—"}</td>
+      <td style={{fontSize:11,color:"var(--pf-tx-516481)",minWidth:145}}>
        {visibleTasks===null?"Not loaded":(taskGroups.get(String(item.id))||[]).length+" active visible"}
        {(taskGroups.get(String(item.id))||[]).slice(0,1).map(t=><div key={t.id} style={{marginTop:5}}>
         <button className="pf-link" onClick={()=>onOpenTask(t.id)} aria-label={"Open linked task for "+(item.prospect.companyName||"prospect")}>Open task ↗</button>

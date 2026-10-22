@@ -2,11 +2,11 @@ import React,{useEffect,useMemo,useState} from "react";
 import {contactChecklist,defaultTemplateFor,draftFor,mailtoLink,messageEligibility,OUTREACH_TEMPLATES,verificationActivityDetails} from "../../lib/outreachTemplates.js";
 import {safeWebsite} from "../../lib/contactDetails.js";
 
-const panel={border:"1px solid #E6EAF3",borderRadius:15,padding:20,background:"#fff"};
-const small={fontSize:11,color:"#66758F",lineHeight:1.6};
-const field={border:"1px solid #DCE3EF",borderRadius:9,padding:"10px 11px",fontSize:12,background:"#fff",color:"#1B2943",width:"100%",minWidth:0};
-const action={border:0,borderRadius:9,padding:"10px 14px",fontSize:12,fontWeight:760,background:"#6958DF",color:"#fff",cursor:"pointer"};
-const secondary={...action,background:"#F0F1FA",color:"#4B4C76",border:"1px solid #DFE2EE"};
+const panel={border:"1px solid var(--pf-bd-E6EAF3)",borderRadius:15,padding:20,background:"var(--pf-bg-FFFFFF)"};
+const small={fontSize:11,color:"var(--pf-tx-66758F)",lineHeight:1.6};
+const field={border:"1px solid var(--pf-bd-DCE3EF)",borderRadius:9,padding:"10px 11px",fontSize:12,background:"var(--pf-bg-FFFFFF)",color:"var(--pf-tx-1B2943)",width:"100%",minWidth:0};
+const action={border:0,borderRadius:9,padding:"10px 14px",fontSize:12,fontWeight:760,background:"var(--pf-bg-6958DF)",color:"#fff",cursor:"pointer"};
+const secondary={...action,background:"var(--pf-bg-F0F1FA)",color:"var(--pf-tx-4B4C76)",border:"1px solid var(--pf-bd-DFE2EE)"};
 const types=[
  ["note","Research / general note"],["email_prepared","Email draft prepared"],
  ["email_sent","Email sent externally"],["call","Phone call"],["meeting","Meeting"],
@@ -56,8 +56,8 @@ function ActivityTimeline({prospect,enabled,onGetActivities,onLogActivity,canEdi
     <p style={{...small,margin:0}}>Append-only notes and manually recorded outreach. No automated email tracking.</p></div>
    {enabled&&<button style={secondary} onClick={refresh} disabled={loading}>↻ Refresh</button>}
   </div>
-  {!enabled?<p style={{...small,color:"#975D2F",marginTop:15}}>The activity journal requires a live CRM connection. Templates are still available without it.</p>:null}
-  {canEdit&&enabled&&<div style={{background:"#F7F8FD",borderRadius:11,padding:14,marginTop:17,display:"grid",gap:10}}>
+  {!enabled?<p style={{...small,color:"var(--pf-tx-975D2F)",marginTop:15}}>The activity journal requires a live CRM connection. Templates are still available without it.</p>:null}
+  {canEdit&&enabled&&<div style={{background:"var(--pf-bg-F7F8FD)",borderRadius:11,padding:14,marginTop:17,display:"grid",gap:10}}>
     <label style={small}>Activity type
      <select value={category} onChange={e=>setCategory(e.target.value)} style={{...field,marginTop:4}}>
       {types.map(([id,label])=><option key={id} value={id}>{label}</option>)}
@@ -72,16 +72,16 @@ function ActivityTimeline({prospect,enabled,onGetActivities,onLogActivity,canEdi
     <p style={{...small,margin:0}}>Only record outreach that actually happened. Saving an entry doesn't send emails or change pipeline status.</p>
     <div><button style={action} onClick={submit} disabled={saving||!summary.trim()}>{saving?"Recording…":"Record activity"}</button></div>
    </div>}
-   {notice&&<p role="status" style={{...small,color:"#127B59"}}>{notice}</p>}
-   {error&&<p role="alert" style={{...small,color:"#AB4545"}}>{error}</p>}
+   {notice&&<p role="status" style={{...small,color:"var(--pf-tx-127B59)"}}>{notice}</p>}
+   {error&&<p role="alert" style={{...small,color:"var(--pf-tx-AB4545)"}}>{error}</p>}
    {enabled&&<div style={{marginTop:17,display:"grid",gap:10}}>
-    {loading?<p style={small}>Loading activities…</p>:entries.length?entries.map(row=><article key={row.id} style={{borderLeft:"3px solid #8C7CE7",background:"#FAFBFE",borderRadius:8,padding:"11px 13px"}}>
+    {loading?<p style={small}>Loading activities…</p>:entries.length?entries.map(row=><article key={row.id} style={{borderLeft:"3px solid var(--pf-bd-8C7CE7)",background:"var(--pf-bg-FAFBFE)",borderRadius:8,padding:"11px 13px"}}>
      <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-      <strong style={{fontSize:12,color:"#263754"}}>{row.summary}</strong>
-      <span style={{fontSize:10,color:"#74809A"}}>{niceTime(row.created_at)}</span>
+      <strong style={{fontSize:12,color:"var(--pf-tx-263754)"}}>{row.summary}</strong>
+      <span style={{fontSize:10,color:"var(--pf-tx-74809A)"}}>{niceTime(row.created_at)}</span>
      </div>
-     <div style={{fontSize:10,color:"#6653B2",marginTop:5,fontWeight:760}}>{statusLabel(row.activity_type)}</div>
-     {row.details&&<p style={{fontSize:11,color:"#50607A",whiteSpace:"pre-wrap",overflowWrap:"anywhere",margin:"8px 0 0"}}>{row.details}</p>}
+     <div style={{fontSize:10,color:"var(--pf-tx-6653B2)",marginTop:5,fontWeight:760}}>{statusLabel(row.activity_type)}</div>
+     {row.details&&<p style={{fontSize:11,color:"var(--pf-tx-50607A)",whiteSpace:"pre-wrap",overflowWrap:"anywhere",margin:"8px 0 0"}}>{row.details}</p>}
     </article>):<p style={small}>No recorded activities for this prospect yet.</p>}
    </div>}
  </section>;
@@ -161,7 +161,7 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
     <button className="pf-button outline" onClick={onOpenCRM}>Open Classic CRM ↗</button>
    </div>
   </section>
-  {!prospect?<div style={{...panel,color:"#74819B",fontSize:12}}>Select a saved organization above to prepare a draft, review contact fields or open its activity timeline.</div>:
+  {!prospect?<div style={{...panel,color:"var(--pf-tx-74819B)",fontSize:12}}>Select a saved organization above to prepare a draft, review contact fields or open its activity timeline.</div>:
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:16,alignItems:"start"}}>
    <div style={{display:"grid",gap:16}}>
     <section style={{...panel,display:"grid",gap:13}}>
@@ -172,7 +172,7 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
        {OUTREACH_TEMPLATES.map(t=><option value={t.id} key={t.id}>{t.label}</option>)}
       </select>
      </label>
-     <div style={{background:eligible.blocked?"#FFF0F0":"#F5F7FB",borderRadius:9,padding:11,fontSize:11,color:eligible.blocked?"#A34343":"#596A83"}}>{eligible.warning}</div>
+     <div style={{background:eligible.blocked?"var(--pf-bg-FFF0F0)":"var(--pf-bg-F5F7FB)",borderRadius:9,padding:11,fontSize:11,color:eligible.blocked?"var(--pf-tx-A34343)":"var(--pf-tx-596A83)"}}>{eligible.warning}</div>
      <label style={small}>Subject
       <input value={subject} onChange={e=>setSubject(e.target.value)} disabled={eligible.blocked} style={{...field,marginTop:5}}/>
      </label>
@@ -190,15 +190,15 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
     <section style={{...panel,display:"grid",gap:12}}>
      <div><h3 style={{margin:"0 0 5px",fontSize:15}}>Contact source review</h3>
       <p style={{...small,margin:0}}>Syntax and source presence are different from verified ownership or deliverability.</p></div>
-     {checklist.map(x=><div key={x.key} style={{padding:"10px 12px",border:"1px solid #E8EBF4",borderRadius:9}}>
+     {checklist.map(x=><div key={x.key} style={{padding:"10px 12px",border:"1px solid var(--pf-bd-E8EBF4)",borderRadius:9}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-       <strong style={{fontSize:11,color:"#273957"}}>{x.name}</strong>
-       <span style={{fontSize:10,color:x.value?"#167D5A":"#9B633A"}}>{x.value?"Listed":"Missing"}</span>
+       <strong style={{fontSize:11,color:"var(--pf-tx-273957)"}}>{x.name}</strong>
+       <span style={{fontSize:10,color:x.value?"var(--pf-tx-167D5A)":"var(--pf-tx-9B633A)"}}>{x.value?"Listed":"Missing"}</span>
       </div>
       <div style={{...small,marginTop:5,overflowWrap:"anywhere"}}>{x.value||x.detail}</div>
       {x.value&&<div style={{...small,fontSize:10,marginTop:4}}>{x.detail}</div>}
      </div>)}
-     {safeWebsite(prospect.sourceUrl)&&<a href={safeWebsite(prospect.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6453D0",overflowWrap:"anywhere"}}>View original prospect source ↗</a>}
+     {safeWebsite(prospect.sourceUrl)&&<a href={safeWebsite(prospect.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"var(--pf-tx-6453D0)",overflowWrap:"anywhere"}}>View original prospect source ↗</a>}
      {enabled&&canEdit&&<label style={small}>Source evidence / manual check details
       <textarea rows={3} style={{...field,marginTop:5,resize:"vertical"}} value={evidence} onChange={e=>setEvidence(e.target.value)} placeholder="Source URL, page reviewed, date and what was checked…"/>
      </label>}
@@ -208,7 +208,7 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
    </div>
    <ActivityTimeline key={String(prospect.id)} prospect={prospect} enabled={enabled} onLogActivity={onLogActivity} onGetActivities={onGetActivities} canEdit={canEdit}/>
   </div>}
-  {message&&<p role="status" style={{fontSize:12,color:"#127C5B",background:"#EAF8F1",borderRadius:8,padding:11,marginTop:14}}>{message}</p>}
-  {error&&<p role="alert" style={{fontSize:12,color:"#A54543",background:"#FFF0EE",borderRadius:8,padding:11,marginTop:14}}>{error}</p>}
+  {message&&<p role="status" style={{fontSize:12,color:"var(--pf-tx-127C5B)",background:"var(--pf-bg-EAF8F1)",borderRadius:8,padding:11,marginTop:14}}>{message}</p>}
+  {error&&<p role="alert" style={{fontSize:12,color:"var(--pf-tx-A54543)",background:"var(--pf-bg-FFF0EE)",borderRadius:8,padding:11,marginTop:14}}>{error}</p>}
  </div>;
 }

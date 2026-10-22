@@ -3,13 +3,13 @@ import {TASK_PRIORITIES,TASK_STATUSES,filterTasks,summarizeTasks,taskBucket,vali
 import {localDateKey} from "../../lib/outreachPlanning.js";
 import {taskProductivitySnapshot,taskProductivityCsv} from "../../lib/taskProductivity.js";
 
-const box={background:"#fff",border:"1px solid #E6EBF3",borderRadius:15,padding:18};
-const field={border:"1px solid #DCE2EE",padding:"10px 11px",borderRadius:9,fontSize:12,color:"#243652",width:"100%",background:"#fff",minWidth:0};
-const name={display:"grid",gap:5,fontSize:11,color:"#697993",fontWeight:750};
-const primary={border:0,borderRadius:9,padding:"10px 15px",background:"#6958DA",color:"white",fontWeight:750,fontSize:12,cursor:"pointer"};
-const secondary={...primary,background:"#EEF0FA",color:"#4D4A82",border:"1px solid #DEE1EE"};
+const box={background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E6EBF3)",borderRadius:15,padding:18};
+const field={border:"1px solid var(--pf-bd-DCE2EE)",padding:"10px 11px",borderRadius:9,fontSize:12,color:"var(--pf-tx-243652)",width:"100%",background:"var(--pf-bg-FFFFFF)",minWidth:0};
+const name={display:"grid",gap:5,fontSize:11,color:"var(--pf-tx-697993)",fontWeight:750};
+const primary={border:0,borderRadius:9,padding:"10px 15px",background:"var(--pf-bg-6958DA)",color:"white",fontWeight:750,fontSize:12,cursor:"pointer"};
+const secondary={...primary,background:"var(--pf-bg-EEF0FA)",color:"var(--pf-tx-4D4A82)",border:"1px solid var(--pf-bd-DEE1EE)"};
 const buckets=["All","Overdue","Today","Next 7 days","Later","Unscheduled","Completed","Cancelled"];
-const priorities={urgent:"#B24442",high:"#AF721F",normal:"#5266A0",low:"#688173"};
+const priorities={urgent:"var(--pf-bd-B24442)",high:"var(--pf-tx-AF721F)",normal:"var(--pf-tx-5266A0)",low:"var(--pf-tx-688173)"};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function pretty(s){return String(s||"").replaceAll("_"," ").replace(/\b\w/g,x=>x.toUpperCase());}
 function ownerName(members,id,myId){const found=members.find(x=>x.id===id);return found?.name||found?.username||(id===myId?"You":"Assigned CRM user");}
@@ -39,7 +39,7 @@ function TaskEditor({task,canEdit,onChange,onClose,members,canAdmin,myId}){
  };
  return <aside style={{...box,position:"sticky",top:16,alignSelf:"start",display:"grid",gap:12}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",gap:8}}>
-   <div><div style={{fontSize:10,fontWeight:780,color:"#6755CF"}}>TASK DETAILS</div><h3 style={{margin:"5px 0 0",fontSize:16,color:"#233452"}}>{task.task_title}</h3></div>
+   <div><div style={{fontSize:10,fontWeight:780,color:"var(--pf-tx-6755CF)"}}>TASK DETAILS</div><h3 style={{margin:"5px 0 0",fontSize:16,color:"var(--pf-tx-233452)"}}>{task.task_title}</h3></div>
    <button type="button" onClick={onClose} aria-label="Close task editor" style={{...secondary,padding:"5px 10px",fontSize:17}}>×</button>
   </div>
   <label style={name}>Task title<input style={field} value={title} maxLength={180} disabled={!editable||saving} onChange={e=>setTitle(e.target.value)}/></label>
@@ -56,13 +56,13 @@ function TaskEditor({task,canEdit,onChange,onClose,members,canAdmin,myId}){
   {canAdmin?<label style={name}>Assigned to<select style={field} value={assignee} disabled={saving} onChange={e=>setAssignee(e.target.value)}>
     {members.filter(m=>m.active&&m.role!=="viewer").map(m=><option key={m.id} value={m.id}>{m.name||m.username}</option>)}
     {!members.some(m=>m.id===assignee)&&<option value={assignee}>Existing assigned user</option>}
-   </select></label>:<div style={{fontSize:11,color:"#687794"}}>Assigned to {ownerName(members,assignee,myId)}. An administrator manages reassignment.</div>}
-  {task.completed_at&&<div style={{fontSize:11,color:"#5C718C"}}>Completed {new Date(task.completed_at).toLocaleString()}</div>}
-  {error&&<p role="alert" style={{fontSize:11,color:"#A24545",margin:0}}>{error}</p>}
-  {message&&<p role="status" style={{fontSize:11,color:"#157A58",margin:0}}>{message}</p>}
+   </select></label>:<div style={{fontSize:11,color:"var(--pf-tx-687794)"}}>Assigned to {ownerName(members,assignee,myId)}. An administrator manages reassignment.</div>}
+  {task.completed_at&&<div style={{fontSize:11,color:"var(--pf-tx-5C718C)"}}>Completed {new Date(task.completed_at).toLocaleString()}</div>}
+  {error&&<p role="alert" style={{fontSize:11,color:"var(--pf-tx-A24545)",margin:0}}>{error}</p>}
+  {message&&<p role="status" style={{fontSize:11,color:"var(--pf-tx-157A58)",margin:0}}>{message}</p>}
   {editable&&<button style={primary} disabled={saving} onClick={save}>{saving?"Saving…":"Save task changes"}</button>}
-  {!editable&&<p style={{fontSize:11,color:"#748098"}}>View-only. Only the assignee or an administrator can edit this task.</p>}
-  <p style={{fontSize:10,color:"#8A96A8",margin:0,lineHeight:1.6}}>Completing a task updates its task status only. It does not send outreach or modify the prospect's pipeline stage.</p>
+  {!editable&&<p style={{fontSize:11,color:"var(--pf-tx-748098)"}}>View-only. Only the assignee or an administrator can edit this task.</p>}
+  <p style={{fontSize:10,color:"var(--pf-tx-8A96A8)",margin:0,lineHeight:1.6}}>Completing a task updates its task status only. It does not send outreach or modify the prospect's pipeline stage.</p>
  </aside>;
 }
 export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAdmin=false,enabled=false,onGetTasks,onCreateTask,onUpdateTask,onGetTaskMembers,onOpenCRM,initialTaskDraft=null,initialTaskId=null}){
@@ -149,18 +149,18 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
   <div className="pf-page-kicker">PHASE 10 · TEAM PRODUCTIVITY</div>
   <h1 className="pf-page-title">Team productivity & task ownership</h1>
   <p className="pf-page-description">Review your workload, spot overdue assignments, and report task progress from the records your CRM account can access. Task reporting never sends outreach or changes a prospect pipeline stage.</p>
-  {!enabled&&<div role="status" style={{...box,margin:"20px 0",fontSize:12,color:"#985B27",background:"#FFF9EE"}}>Task assignments require a connected CRM database. This feature is not available in demo mode.</div>}
+  {!enabled&&<div role="status" style={{...box,margin:"20px 0",fontSize:12,color:"var(--pf-tx-985B27)",background:"var(--pf-bg-FFF9EE)"}}>Task assignments require a connected CRM database. This feature is not available in demo mode.</div>}
   <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap",margin:"19px 0 14px"}}>
-   <span style={{fontSize:11,color:"#73819A"}}>{loading?"Loading CRM tasks…":tasks.length+" task(s) visible to your account"} {refreshedAt&&"· Updated "+refreshedAt}</span>
+   <span style={{fontSize:11,color:"var(--pf-tx-73819A)"}}>{loading?"Loading CRM tasks…":tasks.length+" task(s) visible to your account"} {refreshedAt&&"· Updated "+refreshedAt}</span>
    <div style={{display:"flex",gap:9}}>
     <button style={secondary} disabled={!enabled||loading} onClick={load}>↻ Refresh</button>
     {canCreate&&<button style={primary} onClick={()=>{setCreating(x=>!x);setError("");setSuccess("");}}>+ New task</button>}
    </div>
   </div>
-  {error&&<p role="alert" style={{...box,fontSize:12,color:"#A24444",background:"#FFF3F3",marginBottom:14}}>{error}</p>}
-  {success&&<p role="status" style={{...box,fontSize:12,color:"#167C59",background:"#EFFAF4",marginBottom:14}}>{success}</p>}
+  {error&&<p role="alert" style={{...box,fontSize:12,color:"var(--pf-tx-A24444)",background:"var(--pf-bg-FFF3F3)",marginBottom:14}}>{error}</p>}
+  {success&&<p role="status" style={{...box,fontSize:12,color:"var(--pf-tx-167C59)",background:"var(--pf-bg-EFFAF4)",marginBottom:14}}>{success}</p>}
   {creating&&canCreate&&<section style={{...box,display:"grid",gap:13,marginBottom:18}}>
-   <h3 style={{margin:0,color:"#293954",fontSize:15}}>Create prospect task</h3>
+   <h3 style={{margin:0,color:"var(--pf-tx-293954)",fontSize:15}}>Create prospect task</h3>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
     <label style={name}>Find prospect<input style={field} value={companySearch} onChange={e=>setCompanySearch(e.target.value)} placeholder="Search saved organization…"/></label>
     <label style={name}>Link to prospect<select style={field} value={prospectId} onChange={e=>setProspectId(e.target.value)}>
@@ -183,15 +183,15 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
    </div>
   </section>}
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:9,marginBottom:17}}>
-   {["All","Overdue","Today","Next 7 days","Unscheduled","Completed"].map(b=><button type="button" key={b} onClick={()=>setFilter(b)} style={{...box,padding:13,textAlign:"left",cursor:"pointer",borderColor:bucket===b?"#7665DD":"#E6EBF3"}}>
-     <div style={{fontSize:10,color:"#77869B",fontWeight:740}}>{b}</div>
-     <strong style={{fontSize:23,color:"#253652",display:"block",marginTop:5}}>{counts[b]||0}</strong>
+   {["All","Overdue","Today","Next 7 days","Unscheduled","Completed"].map(b=><button type="button" key={b} onClick={()=>setFilter(b)} style={{...box,padding:13,textAlign:"left",cursor:"pointer",borderColor:bucket===b?"var(--pf-bd-7665DD)":"var(--pf-bd-E6EBF3)"}}>
+     <div style={{fontSize:10,color:"var(--pf-tx-77869B)",fontWeight:740}}>{b}</div>
+     <strong style={{fontSize:23,color:"var(--pf-tx-253652)",display:"block",marginTop:5}}>{counts[b]||0}</strong>
    </button>)}
   </div>
   {enabled&&<section style={{...box,display:"grid",gap:14,marginBottom:17}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-     <div><h2 style={{fontSize:15,color:"#263652",margin:0}}>{canAdmin?"Team workload overview":"Your workload overview"}</h2>
-      <p style={{fontSize:10,color:"#77859A",margin:"5px 0 0"}}>{productivity.scope} · completed in the last {productivity.windowDays} days{loading&&!refreshedAt?" · loading task data":""}</p></div>
+     <div><h2 style={{fontSize:15,color:"var(--pf-tx-263652)",margin:0}}>{canAdmin?"Team workload overview":"Your workload overview"}</h2>
+      <p style={{fontSize:10,color:"var(--pf-tx-77859A)",margin:"5px 0 0"}}>{productivity.scope} · completed in the last {productivity.windowDays} days{loading&&!refreshedAt?" · loading task data":""}</p></div>
      <button type="button" style={secondary} disabled={loading&&!refreshedAt} onClick={()=>downloadTaskReport(taskProductivityCsv(productivity))}>↓ Export workload CSV</button>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:9}}>
@@ -203,20 +203,20 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
       ["No due date",productivity.unscheduled,"Active tasks"],
       ["High / urgent",productivity.urgent,"Active tasks"],
       ["Completed",productivity.completedRecent,"Last 30 days"]
-     ].map(([title,value,note])=><div key={title} style={{border:"1px solid #E8ECF4",borderRadius:11,padding:12,background:"#FBFCFE"}}>
-      <div style={{fontSize:10,fontWeight:750,color:"#75839A"}}>{title}</div>
-      <div style={{fontSize:23,fontWeight:850,color:title==="Overdue"&&value?"#B44A4A":"#263653",margin:"5px 0"}}>{value.toLocaleString()}</div>
-      <div style={{fontSize:9,color:"#8995A8"}}>{note}</div>
+     ].map(([title,value,note])=><div key={title} style={{border:"1px solid var(--pf-bd-E8ECF4)",borderRadius:11,padding:12,background:"var(--pf-bg-FBFCFE)"}}>
+      <div style={{fontSize:10,fontWeight:750,color:"var(--pf-tx-75839A)"}}>{title}</div>
+      <div style={{fontSize:23,fontWeight:850,color:title==="Overdue"&&value?"var(--pf-tx-B44A4A)":"var(--pf-tx-263653)",margin:"5px 0"}}>{value.toLocaleString()}</div>
+      <div style={{fontSize:9,color:"var(--pf-tx-8995A8)"}}>{note}</div>
      </div>)}
     </div>
     {canAdmin&&<div>
-     <h3 style={{fontSize:13,color:"#283A57",margin:"2px 0 10px"}}>Workload by assignee</h3>
+     <h3 style={{fontSize:13,color:"var(--pf-tx-283A57)",margin:"2px 0 10px"}}>Workload by assignee</h3>
      <div style={{overflowX:"auto"}}>
       <table className="pf-recent" style={{width:"100%",minWidth:760}}>
        <thead><tr><th>ASSIGNEE</th><th>ACTIVE</th><th>OVERDUE</th><th>DUE TODAY</th><th>NEXT 7 DAYS</th><th>UNSCHEDULED</th><th>HIGH / URGENT</th><th>COMPLETED · 30D</th><th>REVIEW</th></tr></thead>
        <tbody>{productivity.assignees.map(person=><tr key={person.id}>
-        <td><strong className="pf-name">{person.label}</strong><div style={{fontSize:10,color:"#8995A8",marginTop:3}}>{person.total} total visible</div></td>
-        <td>{person.active}</td><td style={{color:person.overdue?"#B44A4A":"#62728B",fontWeight:person.overdue?800:500}}>{person.overdue}</td>
+        <td><strong className="pf-name">{person.label}</strong><div style={{fontSize:10,color:"var(--pf-tx-8995A8)",marginTop:3}}>{person.total} total visible</div></td>
+        <td>{person.active}</td><td style={{color:person.overdue?"var(--pf-tx-B44A4A)":"var(--pf-tx-62728B)",fontWeight:person.overdue?800:500}}>{person.overdue}</td>
         <td>{person.dueToday}</td><td>{person.dueNext7}</td><td>{person.unscheduled}</td><td>{person.urgent}</td><td>{person.completedRecent}</td>
         <td><button type="button" className="pf-link" onClick={()=>{setOwner(person.id);setBucket("All");setPriorityFilter("All");setPage(0);}}>Review tasks →</button></td>
        </tr>)}</tbody>
@@ -224,7 +224,7 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
       {!productivity.assignees.length&&<div className="pf-empty">No visible assignments to report.</div>}
      </div>
     </div>}
-    <p style={{fontSize:10,color:"#8A96A8",lineHeight:1.55,margin:0}}>Counts are calculated from task rows returned by CRM access controls. Non-admins see only tasks assigned to them; administrators see the assignments available to their account. Completion totals use the task's recorded completed timestamp, not an inferred status change.</p>
+    <p style={{fontSize:10,color:"var(--pf-tx-8A96A8)",lineHeight:1.55,margin:0}}>Counts are calculated from task rows returned by CRM access controls. Non-admins see only tasks assigned to them; administrators see the assignments available to their account. Completion totals use the task's recorded completed timestamp, not an inferred status change.</p>
    </section>}
    <section style={{...box,display:"flex",flexWrap:"wrap",gap:11,marginBottom:16,alignItems:"end"}}>
    <label style={{...name,flex:"1 1 230px"}}>Search tasks<input style={field} value={keyword} onChange={e=>{setKeyword(e.target.value);setPage(0);}} placeholder="Task title, company, description…"/></label>
@@ -241,17 +241,17 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
   <div style={{display:"grid",gridTemplateColumns:chosen?"minmax(0,1.35fr) minmax(300px,.85fr)":"minmax(0,1fr)",gap:15,alignItems:"start"}}>
    <section style={{...box,minWidth:0}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,gap:9,flexWrap:"wrap"}}>
-     <h3 style={{margin:0,fontSize:15,color:"#283A57"}}>{matchingTasks.length} matching tasks</h3>
+     <h3 style={{margin:0,fontSize:15,color:"var(--pf-tx-283A57)"}}>{matchingTasks.length} matching tasks</h3>
      <button className="pf-link" onClick={onOpenCRM}>Classic CRM ↗</button>
     </div>
     <div style={{overflowX:"auto"}}>
      <table className="pf-recent" style={{minWidth:680}}>
       <thead><tr><th>TASK / PROSPECT</th><th>ASSIGNEE</th><th>DUE</th><th>PRIORITY</th><th>STATUS</th><th>ACTION</th></tr></thead>
-      <tbody>{show.map(t=><tr key={t.id} style={{background:selectedId===t.id?"#F8F7FF":""}}>
-       <td><span className="pf-name">{t.task_title}</span><div style={{fontSize:10,color:"#8B97A9",marginTop:4}}>{names[t.prospect_id]||"Prospect unavailable"}</div></td>
+      <tbody>{show.map(t=><tr key={t.id} style={{background:selectedId===t.id?"var(--pf-bg-F8F7FF)":""}}>
+       <td><span className="pf-name">{t.task_title}</span><div style={{fontSize:10,color:"var(--pf-tx-8B97A9)",marginTop:4}}>{names[t.prospect_id]||"Prospect unavailable"}</div></td>
        <td style={{fontSize:11}}>{ownerName(members,t.assigned_to,myId)}</td>
-       <td style={{fontSize:11}}>{niceDate(t.due_date)}<div style={{fontSize:10,color:"#77839A"}}>{taskBucket(t,asOf)}</div></td>
-       <td><span style={{fontSize:10,color:priorities[t.priority]||"#66758C",fontWeight:770}}>{pretty(t.priority)}</span></td>
+       <td style={{fontSize:11}}>{niceDate(t.due_date)}<div style={{fontSize:10,color:"var(--pf-tx-77839A)"}}>{taskBucket(t,asOf)}</div></td>
+       <td><span style={{fontSize:10,color:priorities[t.priority]||"var(--pf-tx-66758C)",fontWeight:770}}>{pretty(t.priority)}</span></td>
        <td><span className="pf-tag">{pretty(t.status)}</span></td>
        <td><button className="pf-link" onClick={()=>setSelectedId(t.id)}>Review →</button></td>
       </tr>)}</tbody>
@@ -260,7 +260,7 @@ export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAd
     </div>
     {matchingTasks.length>20&&<div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:9,marginTop:15}}>
      <button style={secondary} disabled={page===0} onClick={()=>setPage(n=>Math.max(0,n-1))}>Previous</button>
-     <span style={{fontSize:11,color:"#768298"}}>Page {Math.min(page,pages-1)+1} of {pages}</span>
+     <span style={{fontSize:11,color:"var(--pf-tx-768298)"}}>Page {Math.min(page,pages-1)+1} of {pages}</span>
      <button style={secondary} disabled={page>=pages-1} onClick={()=>setPage(n=>Math.min(n+1,pages-1))}>Next</button>
     </div>}
    </section>

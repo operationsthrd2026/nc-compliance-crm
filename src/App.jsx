@@ -6,6 +6,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { cleanTag } from "./lib/filters.js";
+import { ThemeToggle } from "./ui/kit.jsx";
+import { hrFromTitle } from "./lib/hrSignals.js";
 import { mapPool } from "./lib/emailCheck.js";
 import ProspectsView from "./features/prospects/ProspectsView.jsx";
 import NationwideFinder from "./features/prospects/NationwideFinder.jsx";
@@ -156,7 +158,7 @@ function dbToProspect(r) {
     market: r.market || "", sourceUrl: r.source_url || "", sourceType: r.source_type || "",
     website: r.website || "", email: r.email || "", phone: r.phone || "",
     verificationNotes: r.verification_notes || "", whyFit: r.why_fit || "",
-    vertical: r.vertical || "", hrPersonListed: r.hr_person_listed || "No",
+    vertical: r.vertical || "", hrPersonListed: r.hr_person_listed || "Unknown",
     hrPeopleContact: r.hr_people_contact || "", orgSize: r.org_size || "",
     t1SendDate: r.t1_send_date || "", t1DueDate: r.t1_due_date || "",
     t2SendDate: r.t2_send_date || "", t2DueDate: r.t2_due_date || "",
@@ -641,11 +643,11 @@ const exportToExcel=(crmData,fn="NC_CRM_Export")=>{const rows=crmData.map(p=({"C
    ATOMS
 ════════════════════════════════════════════════════════════════ */
 function Spin({s=18,c=W}){return <span style={{display:"inline-block",width:s,height:s,border:`2px solid ${c}33`,borderTopColor:c,borderRadius:"50%",animation:"spin 0.65s linear infinite",flexShrink:0}}/>;}
-function SBadge({status,sm}){const s=SC[status]||{bg:"rgba(255,255,255,0.06)",c:WM,b:BR};return <span style={{background:s.bg,color:s.c,border:`1px solid ${s.b}`,borderRadius:20,padding:sm?"2px 8px":"3px 11px",fontSize:sm?9:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{status}</span>;}
+function SBadge({status,sm}){const s=SC[status]||{bg:"rgba(var(--k-white-rgb),0.06)",c:WM,b:BR};return <span style={{background:s.bg,color:s.c,border:`1px solid ${s.b}`,borderRadius:20,padding:sm?"2px 8px":"3px 11px",fontSize:sm?9:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{status}</span>;}
 function RPill({role}){const r=ROLES[role]||ROLES.user;return <span style={{background:r.bg,color:r.color,border:`1px solid ${r.color}44`,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{r.icon} {r.label}</span>;}
-function Tgl({on,onChange,danger}){return <div onClick={()=>onChange(!on)} style={{width:40,height:22,borderRadius:11,background:on?(danger?"#ef4444":G):"rgba(255,255,255,0.12)",position:"relative",cursor:"pointer",flexShrink:0,transition:"background 0.2s"}}><div style={{position:"absolute",top:2,left:on?20:2,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/></div>;}
+function Tgl({on,onChange,danger}){return <div onClick={()=>onChange(!on)} style={{width:40,height:22,borderRadius:11,background:on?(danger?"#ef4444":G):"rgba(var(--k-white-rgb),0.12)",position:"relative",cursor:"pointer",flexShrink:0,transition:"background 0.2s"}}><div style={{position:"absolute",top:2,left:on?20:2,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/></div>;}
 function FG({label,children,span}){return <div style={span?{gridColumn:"1/-1"}:{}}><label style={LBL}>{label}</label>{children}</div>;}
-function Toast({msg,type}){const ok=type!=="err";return <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,padding:"12px 20px",borderRadius:12,fontSize:13,fontWeight:600,background:ok?"rgba(52,211,153,0.15)":"rgba(239,68,68,0.15)",border:`1px solid ${ok?"rgba(52,211,153,0.4)":"rgba(239,68,68,0.4)"}`,color:ok?"#34d399":"#f87171",animation:"slideUp 0.2s ease",backdropFilter:"blur(12px)",boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{ok?"✅ ":"⚠️ "}{msg}</div>;}
+function Toast({msg,type}){const ok=type!=="err";return <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,padding:"12px 20px",borderRadius:12,fontSize:13,fontWeight:600,background:ok?"rgba(52,211,153,0.15)":"rgba(239,68,68,0.15)",border:`1px solid ${ok?"rgba(52,211,153,0.4)":"rgba(239,68,68,0.4)"}`,color:ok?"var(--k-green)":"var(--k-red)",animation:"slideUp 0.2s ease",backdropFilter:"blur(12px)",boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>{ok?"✅ ":"⚠️ "}{msg}</div>;}
 
 function DW({onClose,title,width=580,children}){
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(6px)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -659,15 +661,32 @@ function DW({onClose,title,width=580,children}){
   </div>;
 }
 
+/* The classic screens (Pipeline, Calendar, Email Hub…) rely on a few global helpers that only the old shell loaded
+   (hover effects, spinner / toast animations, gold input focus). In the unified workspace those helpers apply
+   ONLY inside the classic screens and their dialogs, so the new screens keep their own look. */
+function ClassicStyles(){return <style>{`
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  .pf-classic .rh:hover,.pf-classic-modals .rh:hover{background:rgba(var(--k-white-rgb),0.025)!important}
+  .pf-classic .bh:hover,.pf-classic-modals .bh:hover{opacity:0.82!important;transform:translateY(-1px)}
+  .pf-classic input:focus,.pf-classic select:focus,.pf-classic textarea:focus,
+  .pf-classic-modals input:focus,.pf-classic-modals select:focus,.pf-classic-modals textarea:focus{border-color:${G}!important;outline:none}
+  .pf-classic textarea,.pf-classic-modals textarea{resize:vertical}
+  .pf-classic .drop-z-active,.pf-classic-modals .drop-z-active{border-color:${G}!important;background:rgba(201,150,58,0.06)!important}
+  .pf-classic-modals{display:contents}
+`}</style>;}
+
 function GS(){return <style>{`
   *{box-sizing:border-box}body,html{margin:0;padding:0}
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
   @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-  ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:rgba(255,255,255,0.02)}::-webkit-scrollbar-thumb{background:rgba(201,150,58,0.3);border-radius:4px}
-  select option{background:#111E38;color:#F0F4FF}
-  .rh:hover{background:rgba(255,255,255,0.025)!important}
+  ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:rgba(var(--k-white-rgb),0.02)}::-webkit-scrollbar-thumb{background:rgba(201,150,58,0.3);border-radius:4px}
+  select option{background:var(--k-surface);color:var(--k-text)}
+  .rh:hover{background:rgba(var(--k-white-rgb),0.025)!important}
   .bh:hover{opacity:0.82!important;transform:translateY(-1px)}
   input:focus,select:focus,textarea:focus{border-color:${G}!important;outline:none}
   textarea{resize:vertical}
@@ -771,7 +790,7 @@ function LoginScreen({users,onLogin}){
             </FG>
           </div>
 
-          {err&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:9,padding:"10px 14px",fontSize:12,color:"#f87171",marginBottom:14,display:"flex",gap:8,alignItems:"flex-start"}}>⚠️ <span>{err}</span></div>}
+          {err&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:9,padding:"10px 14px",fontSize:12,color:"var(--k-red)",marginBottom:14,display:"flex",gap:8,alignItems:"flex-start"}}>⚠️ <span>{err}</span></div>}
 
           <button onClick={()=>attempt()} disabled={loading||!un||!pw} className="bh" style={{...B.gold,width:"100%",padding:"13px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:(!un||!pw)?0.45:1,marginBottom:12}}>
             {loading?<><Spin s={16} c="#0B1426"/> Signing in…</>:"Sign In →"}
@@ -805,8 +824,8 @@ function LoginScreen({users,onLogin}){
 const AI_SOURCES=[
   {id:"hunter",   label:"Hunter.io",        icon:"🎯", color:"#f59e0b", desc:"Real contacts + verified emails by company domain. Requires a free Hunter.io API key (Admin → Plugins)."},
   {id:"apollo",   label:"Apollo.io",        icon:"🚀", color:"#7c3aed", desc:"Real B2B contacts (name, title, company). Requires an Apollo.io API key + the apollo-search proxy deployed. Apollo's API doesn't include email/phone on this endpoint."},
-  {id:"guidestar",label:"GuideStar",        icon:"🏛️", color:"#60a5fa", desc:"Real NC nonprofit data via ProPublica's free Nonprofit Explorer API (IRS Form 990 filings). No API key needed — always LIVE once the guidestar-search proxy is deployed."},
-  {id:"nppes",    label:"NPI Registry",     icon:"🩺", color:"#34d399", desc:"Real NC healthcare organizations (clinics, home health agencies, group practices) via the federal CMS NPI Registry. No API key needed — always LIVE once the nppes-search proxy is deployed."},
+  {id:"guidestar",label:"GuideStar",        icon:"🏛️", color:"var(--k-blue)", desc:"Real NC nonprofit data via ProPublica's free Nonprofit Explorer API (IRS Form 990 filings). No API key needed — always LIVE once the guidestar-search proxy is deployed."},
+  {id:"nppes",    label:"NPI Registry",     icon:"🩺", color:"var(--k-green)", desc:"Real NC healthcare organizations (clinics, home health agencies, group practices) via the federal CMS NPI Registry. No API key needed — always LIVE once the nppes-search proxy is deployed."},
   {id:"osm",      label:"Local Business Directory", icon:"🗺️", color:"#84cc16", desc:"Real local businesses (construction, manufacturing, childcare, general SMB) via OpenStreetMap's free, no-key Overpass API. Coverage varies by area — community-mapped data, not a complete census."},
 ];
 
@@ -924,7 +943,7 @@ function hunterEmailToProspect(domainData, emailEntry, vertical, market){
       : "Found via Hunter.io domain search",
     whyFit: `Found via Hunter.io for domain ${domainData.domain || "unknown"}${title?`. Role: ${title}.`:""}`,
     vertical: vertical || "",
-    hrPersonListed: /hr|human resources|people|talent/i.test(title) ? "Yes" : "No",
+    hrPersonListed: hrFromTitle(title),
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1036,7 +1055,7 @@ async function apolloSearch(query, apiKey, vertical, market, log){
           : "Found via Apollo.io — email/phone not included by this endpoint. Use Apollo Enrichment or search this contact's domain in Hunter.io to find their email.",
         whyFit: `Found via Apollo.io for "${query}". Title: ${p.title||"—"}.`,
         vertical: vertical || "",
-        hrPersonListed: /hr|human resources|people|talent/i.test(p.title||"") ? "Yes" : "No",
+        hrPersonListed: hrFromTitle(p.title),
         hrPeopleContact: "",
         orgSize: p.organization?.estimated_num_employees ? String(p.organization.estimated_num_employees) : "",
         leadPainPoint: "",
@@ -1096,7 +1115,7 @@ function proPublicaOrgToProspect(org, vertical, market){
     verificationNotes: `IRS-registered 501(c)(${org.subseccd||"3"}) nonprofit, EIN ${org.strein||org.ein||"—"}. Email/phone not in IRS data — find a contact via Hunter.io or the organization's website.`,
     whyFit: `Found via ProPublica Nonprofit Explorer (IRS Form 990 data) for "${vertical||"nonprofit"}" in ${cityTitleCase||market||"NC"}.`,
     vertical: vertical || "",
-    hrPersonListed: "No",
+    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1155,7 +1174,7 @@ function nppesOrgToProspect(record, vertical, market){
     verificationNotes: `NPI ${record.number} — ${primaryTaxonomy.desc||"Healthcare provider"}.${phone?` Phone: ${phone}.`:" No phone on file."} Email not available via NPPES — try the organization's website or Hunter.io.`,
     whyFit: `Found via the federal NPI Registry (CMS) for "${vertical}" in ${cityTitleCase||market||"NC"}. Taxonomy: ${primaryTaxonomy.desc||"—"}.`,
     vertical: vertical || "",
-    hrPersonListed: "No",
+    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1282,7 +1301,7 @@ function osmElementToProspect(el, vertical, market){
     verificationNotes: `Community-mapped OSM data (category: ${category}).${addrParts?` Address: ${addrParts}, ${city}.`:""}${phone?` Phone: ${phone}.`:""} Email not available — check the website${website?"":" (not listed)"} or try Hunter.io for this domain.`,
     whyFit: `Found via OpenStreetMap for "${vertical||category}" near ${market||"NC"}.`,
     vertical: vertical || "",
-    hrPersonListed: "No",
+    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1621,7 +1640,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Search Sources</p>
-            <span style={{fontSize:11,fontWeight:600,color:selectedSources.length===0?"#f87171":selectedSources.length===AI_SOURCES.length?"#34d399":"#fbbf24"}}>
+            <span style={{fontSize:11,fontWeight:600,color:selectedSources.length===0?"var(--k-red)":selectedSources.length===AI_SOURCES.length?"var(--k-green)":"var(--k-amber)"}}>
               {selectedSources.length===0
                 ? "⚠️ No sources selected"
                 : selectedSources.length===AI_SOURCES.length
@@ -1630,10 +1649,10 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
             </span>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setShowSourcePicker(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showSourcePicker?"rgba(96,165,250,0.4)":BR}`,background:showSourcePicker?"rgba(96,165,250,0.1)":"rgba(255,255,255,0.03)",color:showSourcePicker?"#60a5fa":WM,cursor:"pointer",fontWeight:600}}>
+            <button onClick={()=>setShowSourcePicker(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showSourcePicker?"rgba(96,165,250,0.4)":BR}`,background:showSourcePicker?"rgba(96,165,250,0.1)":"rgba(var(--k-white-rgb),0.03)",color:showSourcePicker?"var(--k-blue)":WM,cursor:"pointer",fontWeight:600}}>
               ⚙️ Customize Sources {showSourcePicker?"▲":"▼"}
             </button>
-            <button onClick={()=>setShowChambers(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showChambers?"rgba(132,204,22,0.4)":BR}`,background:showChambers?"rgba(132,204,22,0.1)":"rgba(255,255,255,0.03)",color:showChambers?"#84cc16":WM,cursor:"pointer",fontWeight:600}}>
+            <button onClick={()=>setShowChambers(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showChambers?"rgba(132,204,22,0.4)":BR}`,background:showChambers?"rgba(132,204,22,0.1)":"rgba(var(--k-white-rgb),0.03)",color:showChambers?"#84cc16":WM,cursor:"pointer",fontWeight:600}}>
               🏛️ NC Chamber Directories {showChambers?"▲":"▼"}
             </button>
           </div>
@@ -1658,14 +1677,14 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
                 const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s.id);
                 return(
                   <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
-                    style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(255,255,255,0.04)",border:`1.5px solid ${active?G:"rgba(255,255,255,0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
+                    style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(var(--k-white-rgb),0.04)",border:`1.5px solid ${active?G:"rgba(var(--k-white-rgb),0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
                     <span style={{fontSize:16}}>{s.icon}</span>
                     <div style={{textAlign:"left"}}>
                       <p style={{margin:0,fontSize:11,fontWeight:700,color:active?GL:WM,display:"flex",alignItems:"center",gap:5}}>
                         {s.label}
-                        {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:800}}>LIVE</span>}
+                        {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"var(--k-green)",fontWeight:800}}>LIVE</span>}
                       </p>
-                      {needsKey&&<p style={{margin:0,fontSize:9,color:"#f87171"}}>API key required</p>}
+                      {needsKey&&<p style={{margin:0,fontSize:9,color:"var(--k-red)"}}>API key required</p>}
                     </div>
                     {active&&<span style={{marginLeft:2,fontSize:10,color:GL}}>✓</span>}
                   </button>
@@ -1682,7 +1701,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
             </p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:6,marginBottom:10}}>
               {NC_CHAMBER_DIRECTORY.map(c=>(
-                <a key={c.market} href={c.directoryUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",padding:"8px 11px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:`1px solid ${BR}`,textDecoration:"none",transition:"all 0.15s"}} className="rh">
+                <a key={c.market} href={c.directoryUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",padding:"8px 11px",borderRadius:8,background:"rgba(var(--k-white-rgb),0.03)",border:`1px solid ${BR}`,textDecoration:"none",transition:"all 0.15s"}} className="rh">
                   <p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>{c.market}</p>
                   <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name} ↗</p>
                   {c.note&&<p style={{margin:"2px 0 0",fontSize:9,color:WD}}>{c.note}</p>}
@@ -1692,7 +1711,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
             <p style={{margin:"0 0 6px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Statewide / Other</p>
             <div style={{display:"flex",flexDirection:"column",gap:5}}>
               {NC_STATEWIDE_DIRECTORIES.map(d=>(
-                <a key={d.name} href={d.url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#60a5fa",textDecoration:"none"}}>
+                <a key={d.name} href={d.url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"var(--k-blue)",textDecoration:"none"}}>
                   {d.name} ↗ <span style={{color:WD,fontWeight:400}}>— {d.note}</span>
                 </a>
               ))}
@@ -1711,7 +1730,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
             {recentSearches.map((s,i)=>(
-              <button key={i} onClick={()=>applyRecentSearch(s)} style={{fontSize:11,padding:"5px 12px",borderRadius:20,border:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)",color:WM,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              <button key={i} onClick={()=>applyRecentSearch(s)} style={{fontSize:11,padding:"5px 12px",borderRadius:20,border:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)",color:WM,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                 🕓 {s.label}
               </button>
             ))}
@@ -1741,13 +1760,13 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
                 <button aria-label={`Delete saved search ${sv.name}`} onClick={()=>saved.remove(sv.id).catch(e=>log(`Couldn't delete: ${e.message}`))}>×</button>
               </span>
             ))}
-            {saved.error&&<span style={{fontSize:11,color:"#fbbf24"}}>Saved searches unavailable: {saved.error}</span>}
+            {saved.error&&<span style={{fontSize:11,color:"var(--k-amber)"}}>Saved searches unavailable: {saved.error}</span>}
           </div>
         </div>
       )}
 
       {/* Search form */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:16,marginBottom:16}}>
+      <div style={{background:"rgba(var(--k-white-rgb),0.03)",border:"1px solid rgba(var(--k-white-rgb),0.08)",borderRadius:12,padding:16,marginBottom:16}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11,marginBottom:11}}>
           <FG label="Keywords / Search Query" span>
             <div style={{position:"relative"}}>
@@ -1755,7 +1774,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
               <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runSearch()} placeholder='e.g. "home health Raleigh" or "nonprofit Charlotte compliance"' style={{...inp(),paddingLeft:32}}/>
             </div>
             {selectedSources.includes("hunter")&&sysSettings.hunterKey&&(
-              <p style={{margin:"6px 0 0",fontSize:10,color:"#fbbf24"}}>🎯 Hunter.io is LIVE — for best results, enter a company name or domain (e.g. "acmehealth" or "acmehealth.com"). Hunter.io will search that domain for contacts.</p>
+              <p style={{margin:"6px 0 0",fontSize:10,color:"var(--k-amber)"}}>🎯 Hunter.io is LIVE — for best results, enter a company name or domain (e.g. "acmehealth" or "acmehealth.com"). Hunter.io will search that domain for contacts.</p>
             )}
           </FG>
           <FG label="Organization Type">
@@ -1809,13 +1828,13 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
               const st=progress[s];
               const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s);
               return(
-                <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(255,255,255,0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(255,255,255,0.08)"}`,borderRadius:20}}>
+                <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(var(--k-white-rgb),0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(var(--k-white-rgb),0.08)"}`,borderRadius:20}}>
                   <span style={{fontSize:13}}>{si?.icon}</span>
-                  <span style={{fontSize:11,fontWeight:600,color:st==="done"?"#34d399":st==="error"?"#f87171":st==="loading"?si?.color:WM}}>{si?.label}</span>
-                  {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:800}}>LIVE</span>}
+                  <span style={{fontSize:11,fontWeight:600,color:st==="done"?"var(--k-green)":st==="error"?"var(--k-red)":st==="loading"?si?.color:WM}}>{si?.label}</span>
+                  {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"var(--k-green)",fontWeight:800}}>LIVE</span>}
                   {st==="loading"&&<Spin s={10} c={si?.color}/>}
-                  {st==="done"&&<span style={{fontSize:10,color:"#34d399"}}>✓</span>}
-                  {st==="error"&&<span style={{fontSize:10,color:"#f87171"}}>⚠️</span>}
+                  {st==="done"&&<span style={{fontSize:10,color:"var(--k-green)"}}>✓</span>}
+                  {st==="error"&&<span style={{fontSize:10,color:"var(--k-red)"}}>⚠️</span>}
                 </div>
               );
             })}
@@ -1833,7 +1852,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
             <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                 <p style={{margin:0,fontSize:13,fontWeight:700,color:W}}>{results.length} prospects found</p>
-                <span style={{fontSize:11,color:"#34d399"}}>{newCount} new</span>
+                <span style={{fontSize:11,color:"var(--k-green)"}}>{newCount} new</span>
                 <span style={{fontSize:11,color:WD}}>·</span>
                 <span style={{fontSize:11,color:WM}}>{verifiedCount} verified</span>
                 <span style={{fontSize:11,color:WD}}>·</span>
@@ -1862,11 +1881,11 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Show:</span>
                 {[["all","All"],["new","New only"],["validemail","Valid email"],["verified","Verified"],["unverified","Unverified"]].map(([k,l])=>(
-                  <button key={k} onClick={()=>setResultFilter(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${resultFilter===k?"rgba(201,150,58,0.4)":BR}`,background:resultFilter===k?"rgba(201,150,58,0.12)":"rgba(255,255,255,0.03)",color:resultFilter===k?GL:WD,cursor:"pointer",fontWeight:resultFilter===k?700:500}}>{l}</button>
+                  <button key={k} onClick={()=>setResultFilter(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${resultFilter===k?"rgba(201,150,58,0.4)":BR}`,background:resultFilter===k?"rgba(201,150,58,0.12)":"rgba(var(--k-white-rgb),0.03)",color:resultFilter===k?GL:WD,cursor:"pointer",fontWeight:resultFilter===k?700:500}}>{l}</button>
                 ))}
                 <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:10}}>Sort:</span>
                 {[["priority","Best fit"],["verified","Verified first"],["name","Company name"]].map(([k,l])=>(
-                  <button key={k} onClick={()=>setSortBy(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${sortBy===k?"rgba(96,165,250,0.4)":BR}`,background:sortBy===k?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.03)",color:sortBy===k?"#60a5fa":WD,cursor:"pointer",fontWeight:sortBy===k?700:500}}>{l}</button>
+                  <button key={k} onClick={()=>setSortBy(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${sortBy===k?"rgba(96,165,250,0.4)":BR}`,background:sortBy===k?"rgba(96,165,250,0.12)":"rgba(var(--k-white-rgb),0.03)",color:sortBy===k?"var(--k-blue)":WD,cursor:"pointer",fontWeight:sortBy===k?700:500}}>{l}</button>
                 ))}
               </div>
               {results.some(r=>r._source==="osm")&&(
@@ -1906,7 +1925,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
                                 {sel?"✓ Selected":"+ Select"}
                               </button>
                             )}
-                            {alreadyIn&&<p style={{margin:"6px 0 0",fontSize:10,color:"#34d399",fontWeight:700}}>Already in CRM</p>}
+                            {alreadyIn&&<p style={{margin:"6px 0 0",fontSize:10,color:"var(--k-green)",fontWeight:700}}>Already in CRM</p>}
                           </div>
                         </Popup>
                       </Marker>
@@ -1932,7 +1951,7 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
             {displayedResults.length>0&&(
               <table style={{width:"100%",borderCollapse:"collapse"}}>
                 <thead>
-                  <tr style={{background:"rgba(255,255,255,0.03)",borderBottom:`1px solid ${BR}`}}>
+                  <tr style={{background:"rgba(var(--k-white-rgb),0.03)",borderBottom:`1px solid ${BR}`}}>
                     <th style={{width:36,padding:"9px 8px"}}>
                       <input type="checkbox" checked={displayedResults.every(r=>selected.has(r._id)||isIn(r))} onChange={()=>{
                         const allSel = displayedResults.every(r=>selected.has(r._id));
@@ -1963,30 +1982,30 @@ function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crm
                     const fit=r._fit||scoreProspect(r);
                     const poss=!alreadyIn&&matchOf.get(r._id)?.level==="medium"?matchOf.get(r._id):null;
                     return(
-                      <tr key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{borderBottom:`1px solid rgba(255,255,255,0.04)`,background:sel?"rgba(201,150,58,0.06)":"transparent",cursor:alreadyIn?"default":"pointer",opacity:alreadyIn?0.5:1}} className={alreadyIn?"":"rh"}>
+                      <tr key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{borderBottom:`1px solid rgba(var(--k-white-rgb),0.04)`,background:sel?"rgba(201,150,58,0.06)":"transparent",cursor:alreadyIn?"default":"pointer",opacity:alreadyIn?0.5:1}} className={alreadyIn?"":"rh"}>
                         <td style={{padding:"10px 8px"}} onClick={e=>e.stopPropagation()}>
                           <input type="checkbox" checked={sel} disabled={alreadyIn} onChange={()=>!alreadyIn&&toggleSel(r._id)} style={{cursor:alreadyIn?"default":"pointer"}}/>
                         </td>
                         <td style={{padding:"10px 8px",maxWidth:240}}>
                           <p style={{margin:0,fontSize:12,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.companyName}</p>
                           <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.contactName?`${r.contactName} · `:""}{r.cityMarket||r.market||"NC"}</p>
-                          {alreadyIn&&<span style={{fontSize:9,color:"#34d399",fontWeight:700}} title={(matchOf.get(r._id)?.reasons||[]).join(" · ")}>Already in CRM · {matchOf.get(r._id)?.prospect.companyName}</span>}
-                          {poss&&<span style={{fontSize:9,color:"#fbbf24",fontWeight:700,display:"block"}} title={poss.reasons.join(" · ")}>⚠ Possible match: {poss.prospect.companyName}</span>}
+                          {alreadyIn&&<span style={{fontSize:9,color:"var(--k-green)",fontWeight:700}} title={(matchOf.get(r._id)?.reasons||[]).join(" · ")}>Already in CRM · {matchOf.get(r._id)?.prospect.companyName}</span>}
+                          {poss&&<span style={{fontSize:9,color:"var(--k-amber)",fontWeight:700,display:"block"}} title={poss.reasons.join(" · ")}>⚠ Possible match: {poss.prospect.companyName}</span>}
                           {r._alsoIn?.length>0&&<span style={{fontSize:9,color:WD,display:"block"}}>Also found via {r._alsoIn.map(id=>AI_SOURCES.find(x=>x.id===id)?.label||id).join(", ")}</span>}
                           {r.emailStatus&&<span style={{display:"block",marginTop:2}}><EmailBadge status={r.emailStatus} confirmed={r._emailConfirmed}/></span>}
                         </td>
                         <td style={{padding:"10px 8px"}}><ScoreBadge result={fit} size={32} showLabel/></td>
                         <td style={{padding:"10px 8px"}}>
                           <div style={{display:"flex",gap:5}}>
-                            <span title={r.sourceUrl?"Has a website":"No website found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.sourceUrl?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.04)",fontSize:10}}>{r.sourceUrl?"🌐":"—"}</span>
-                            <span title={r.emailPhone?"Has contact info":"No contact info found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.emailPhone?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.04)",fontSize:10}}>{r.emailPhone?"☎️":"—"}</span>
+                            <span title={r.sourceUrl?"Has a website":"No website found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.sourceUrl?"rgba(52,211,153,0.15)":"rgba(var(--k-white-rgb),0.04)",fontSize:10}}>{r.sourceUrl?"🌐":"—"}</span>
+                            <span title={r.emailPhone?"Has contact info":"No contact info found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.emailPhone?"rgba(52,211,153,0.15)":"rgba(var(--k-white-rgb),0.04)",fontSize:10}}>{r.emailPhone?"☎️":"—"}</span>
                           </div>
                         </td>
                         <td style={{padding:"10px 8px"}}>
                           <span style={{fontSize:9,color:si?.color,border:`1px solid ${si?.color}44`,borderRadius:20,padding:"2px 9px",whiteSpace:"nowrap"}}>{si?.icon} {si?.label}</span>
                         </td>
                         <td style={{padding:"10px 8px"}}>
-                          <span style={{fontSize:10,color:alreadyIn?"#34d399":WD,fontWeight:600}}>{alreadyIn?"In CRM":"Not added"}</span>
+                          <span style={{fontSize:10,color:alreadyIn?"var(--k-green)":WD,fontWeight:600}}>{alreadyIn?"In CRM":"Not added"}</span>
                         </td>
                         <td style={{padding:"10px 8px",textAlign:"right"}} onClick={e=>e.stopPropagation()}>
                           {alreadyIn?(
@@ -2103,7 +2122,7 @@ function ExcelImportModal({onClose,onImport}){
       <div style={{display:"flex",alignItems:"center",marginBottom:18,gap:0}}>
         {["upload","preview","done"].map((s,i)=>(
           <div key={s} style={{display:"flex",alignItems:"center",flex:1}}>
-            <div style={{width:24,height:24,borderRadius:"50%",background:step===s?G:["upload","preview","done"].indexOf(step)>i?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.06)",border:`2px solid ${step===s?G:["upload","preview","done"].indexOf(step)>i?"rgba(52,211,153,0.5)":BR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:step===s?N:["upload","preview","done"].indexOf(step)>i?"#34d399":WD,flexShrink:0}}>
+            <div style={{width:24,height:24,borderRadius:"50%",background:step===s?G:["upload","preview","done"].indexOf(step)>i?"rgba(52,211,153,0.2)":"rgba(var(--k-white-rgb),0.06)",border:`2px solid ${step===s?G:["upload","preview","done"].indexOf(step)>i?"rgba(52,211,153,0.5)":BR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:step===s?N:["upload","preview","done"].indexOf(step)>i?"var(--k-green)":WD,flexShrink:0}}>
               {["upload","preview","done"].indexOf(step)>i?"✓":i+1}
             </div>
             <span style={{fontSize:11,fontWeight:step===s?700:500,color:step===s?W:WD,marginLeft:7,flex:1}}>{s==="upload"?"1. Upload":s==="preview"?"2. Map & Preview":"3. Done"}</span>
@@ -2114,7 +2133,7 @@ function ExcelImportModal({onClose,onImport}){
 
       {step==="upload"&&(
         <div style={{animation:"fadeUp 0.2s ease"}}>
-          {err&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#f87171",marginBottom:14}}>⚠️ {err}</div>}
+          {err&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"var(--k-red)",marginBottom:14}}>⚠️ {err}</div>}
           <div ref={dropRef} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onClick={()=>document.getElementById("xlsIn").click()}
             style={{border:"2px dashed rgba(201,150,58,0.35)",borderRadius:14,padding:"40px 24px",textAlign:"center",cursor:"pointer",transition:"all 0.2s",background:"rgba(201,150,58,0.03)",marginBottom:16}}>
             <div style={{fontSize:52,marginBottom:10}}>📊</div>
@@ -2123,12 +2142,12 @@ function ExcelImportModal({onClose,onImport}){
             {loading?<Spin s={28} c={G}/>:<button className="bh" style={{...B.gold,fontSize:12}}>Browse Files</button>}
             <input id="xlsIn" type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>{processFile(e.target.files[0]);e.target.value="";}}/>
           </div>
-          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:16,marginBottom:14}}>
+          <div style={{background:"rgba(var(--k-white-rgb),0.03)",border:"1px solid rgba(var(--k-white-rgb),0.07)",borderRadius:12,padding:16,marginBottom:14}}>
             <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:W}}>📥 Download Import Template</p>
             <p style={{margin:"0 0 10px",fontSize:11,color:WM}}>Pre-formatted Excel with all column headers ready to fill.</p>
             <button onClick={downloadTemplate} className="bh" style={{...B.green,fontSize:11}}>⬇️ Download Template (.xlsx)</button>
           </div>
-          <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:12}}>
+          <div style={{background:"rgba(var(--k-white-rgb),0.02)",border:"1px solid rgba(var(--k-white-rgb),0.06)",borderRadius:10,padding:12}}>
             <p style={{margin:"0 0 8px",fontSize:9,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.07em"}}>Accepted Column Headers (auto-detected)</p>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
               {["Company Name","Contact Name","Title","Email/Phone","Market","Vertical","Org Size","Status","Priority Score","T1 Send Date","T2 Send Date","T3 Send Date","Why Fit","Outreach Notes"].map(h=>(
@@ -2151,12 +2170,12 @@ function ExcelImportModal({onClose,onImport}){
               </select>
             </div>
           </div>
-          <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,marginBottom:14,overflow:"hidden"}}>
-            <div style={{padding:"9px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)",background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Column Mapping — correct if needed</p></div>
+          <div style={{background:"rgba(var(--k-white-rgb),0.02)",border:"1px solid rgba(var(--k-white-rgb),0.07)",borderRadius:10,marginBottom:14,overflow:"hidden"}}>
+            <div style={{padding:"9px 14px",borderBottom:"1px solid rgba(var(--k-white-rgb),0.07)",background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Column Mapping — correct if needed</p></div>
             <div style={{padding:"12px 14px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:7}}>
               {headers.map(h=>(
-                <div key={h} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 9px",background:colMap[h]?"rgba(52,211,153,0.05)":"rgba(255,255,255,0.02)",border:`1px solid ${colMap[h]?"rgba(52,211,153,0.2)":BR}`,borderRadius:7}}>
-                  <span style={{fontSize:11,color:colMap[h]?"#34d399":WD,flex:"0 0 120px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={h}>{h}</span>
+                <div key={h} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 9px",background:colMap[h]?"rgba(52,211,153,0.05)":"rgba(var(--k-white-rgb),0.02)",border:`1px solid ${colMap[h]?"rgba(52,211,153,0.2)":BR}`,borderRadius:7}}>
+                  <span style={{fontSize:11,color:colMap[h]?"var(--k-green)":WD,flex:"0 0 120px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={h}>{h}</span>
                   <span style={{color:WD,fontSize:11}}>→</span>
                   <select value={colMap[h]||""} onChange={e=>setColMap(m=>({...m,[h]:e.target.value}))} style={{...inp(),fontSize:10,padding:"3px 7px",flex:1,cursor:"pointer"}}>
                     <option value="">(skip)</option>
@@ -2166,16 +2185,16 @@ function ExcelImportModal({onClose,onImport}){
               ))}
             </div>
           </div>
-          <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,overflow:"hidden",marginBottom:14}}>
-            <div style={{padding:"9px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)",background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Preview — first {Math.min(4,rows.length)} rows</p></div>
+          <div style={{background:"rgba(var(--k-white-rgb),0.02)",border:"1px solid rgba(var(--k-white-rgb),0.07)",borderRadius:10,overflow:"hidden",marginBottom:14}}>
+            <div style={{padding:"9px 14px",borderBottom:"1px solid rgba(var(--k-white-rgb),0.07)",background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Preview — first {Math.min(4,rows.length)} rows</p></div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",minWidth:560,fontSize:11}}>
-                <thead><tr style={{background:"rgba(255,255,255,0.03)"}}>
+                <thead><tr style={{background:"rgba(var(--k-white-rgb),0.03)"}}>
                   {["Company","Contact","Email/Phone","Market","Vertical","Status"].map(h=><th key={h} style={{textAlign:"left",padding:"7px 12px",color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",fontSize:9,whiteSpace:"nowrap"}}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {previewP.map((p,i)=>(
-                    <tr key={i} style={{borderTop:`1px solid ${BR}`,background:i%2?"rgba(255,255,255,0.015)":"transparent"}}>
+                    <tr key={i} style={{borderTop:`1px solid ${BR}`,background:i%2?"rgba(var(--k-white-rgb),0.015)":"transparent"}}>
                       <td style={{padding:"7px 12px",color:W,fontWeight:600}}>{p.companyName||<span style={{color:WD}}>—</span>}</td>
                       <td style={{padding:"7px 12px",color:WM}}>{p.contactName||"—"}</td>
                       <td style={{padding:"7px 12px",color:WM}}>{p.emailPhone||"—"}</td>
@@ -2188,7 +2207,7 @@ function ExcelImportModal({onClose,onImport}){
               </table>
             </div>
           </div>
-          {mode==="replace"&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#f87171",marginBottom:14}}>⚠️ <strong>Replace mode:</strong> All existing records will be deleted.</div>}
+          {mode==="replace"&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"var(--k-red)",marginBottom:14}}>⚠️ <strong>Replace mode:</strong> All existing records will be deleted.</div>}
           <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
             <button onClick={()=>{setStep("upload");setRows([]);setFileName("");setErr("");}} className="bh" style={B.ghost}>← Back</button>
             <button onClick={doImport} className="bh" style={{...B.gold,display:"flex",gap:8,alignItems:"center"}}>Import {rows.length} Records →</button>
@@ -2221,7 +2240,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
 
   return(
     <DW onClose={onClose} title={isNew?"➕ Add Prospect":`✏️ ${prospect?.companyName||"Edit Prospect"}`} width={630}>
-      <div style={{display:"flex",gap:3,background:"rgba(255,255,255,0.04)",borderRadius:9,padding:3,marginBottom:16}}>
+      <div style={{display:"flex",gap:3,background:"rgba(var(--k-white-rgb),0.04)",borderRadius:9,padding:3,marginBottom:16}}>
         {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:tab===t.id?"rgba(201,150,58,0.14)":"transparent",color:tab===t.id?GL:WM,border:`1px solid ${tab===t.id?"rgba(201,150,58,0.3)":"transparent"}`,borderRadius:7,padding:"7px",fontSize:11,fontWeight:tab===t.id?700:500,cursor:"pointer",transition:"all 0.15s"}}>{t.l}</button>)}
       </div>
 
@@ -2232,7 +2251,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
           <FG label="Title"><input value={fv("title")} onChange={e=>sf("title",e.target.value)} style={inp()}/></FG>
           <FG label="Email / Phone"><input value={fv("emailPhone")} onChange={e=>sf("emailPhone",e.target.value)} style={inp()}/></FG>
           <FG label="City / Market"><input value={fv("cityMarket")} onChange={e=>sf("cityMarket",e.target.value)} style={inp()}/></FG>
-          <FG label="Market"><select value={fv("market")} onChange={e=>sf("market",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{MARKETS.map(m=><option key={m}>{m}</option>)}</select></FG>
+          <FG label="Market"><input value={fv("market")} onChange={e=>sf("market",e.target.value)} list="nc-market-suggestions" placeholder="e.g. Austin, TX" maxLength={80} style={inp()}/><datalist id="nc-market-suggestions">{MARKETS.map(m=><option key={m} value={m}/>)}</datalist></FG>
           <FG label="Vertical"><select value={fv("vertical")} onChange={e=>sf("vertical",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select></FG>
           <FG label="Org Size"><select value={fv("orgSize")} onChange={e=>sf("orgSize",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{ORG_SIZES.map(s=><option key={s}>{s}</option>)}</select></FG>
           <FG label="Source Type"><select value={fv("sourceType")} onChange={e=>sf("sourceType",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{SRC_TYPES.map(s=><option key={s}>{s}</option>)}</select></FG>
@@ -2250,7 +2269,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
           <FG label="Outreach Notes"><textarea value={fv("outreachNotes")} onChange={e=>sf("outreachNotes",e.target.value)} rows={3} style={{...inp(),resize:"vertical"}}/></FG>
           <FG label="Melissa Review Notes"><input value={fv("melissaReview")} onChange={e=>sf("melissaReview",e.target.value)} style={inp()}/></FG>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <FG label="HR Person Listed?"><select value={fv("hrPersonListed")} onChange={e=>sf("hrPersonListed",e.target.value)} style={{...inp(),cursor:"pointer"}}><option>No</option><option>Yes</option></select></FG>
+            <FG label="HR Person Listed?"><select value={fv("hrPersonListed")} onChange={e=>sf("hrPersonListed",e.target.value)} style={{...inp(),cursor:"pointer"}}><option>Unknown</option><option>No</option><option>Yes</option></select></FG>
             <FG label="HR People Contact"><input value={fv("hrPeopleContact")} onChange={e=>sf("hrPeopleContact",e.target.value)} style={inp()}/></FG>
           </div>
           <FG label="Remarks"><input value={fv("remarks")} onChange={e=>sf("remarks",e.target.value)} style={inp()}/></FG>
@@ -2259,9 +2278,9 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
 
       {tab==="dates"&&(
         <div style={{display:"flex",flexDirection:"column",gap:11,animation:"fadeUp 0.2s ease"}}>
-          {[{label:"Touch 1",c:"rgba(96,165,250,0.06)",bc:"rgba(96,165,250,0.2)",tc:"#60a5fa",send:"t1SendDate",due:"t1DueDate"},
+          {[{label:"Touch 1",c:"rgba(96,165,250,0.06)",bc:"rgba(96,165,250,0.2)",tc:"var(--k-blue)",send:"t1SendDate",due:"t1DueDate"},
             {label:"Touch 2",c:"rgba(139,92,246,0.06)",bc:"rgba(139,92,246,0.2)",tc:"#a78bfa",send:"t2SendDate",due:"t2DueDate"},
-            {label:"Touch 3",c:"rgba(236,72,153,0.06)",bc:"rgba(236,72,153,0.2)",tc:"#f472b6",send:"t3SendDate",due:"t3DueDate"}].map(t=>(
+            {label:"Touch 3",c:"rgba(236,72,153,0.06)",bc:"rgba(236,72,153,0.2)",tc:"var(--k-pink)",send:"t3SendDate",due:"t3DueDate"}].map(t=>(
             <div key={t.label} style={{background:t.c,border:`1px solid ${t.bc}`,borderRadius:10,padding:14}}>
               <p style={{margin:"0 0 10px",fontSize:11,fontWeight:700,color:t.tc,textTransform:"uppercase",letterSpacing:"0.06em"}}>📧 {t.label}</p>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -2279,7 +2298,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
             {k:"replyReceived",l:"📩 Reply Received",d:"Prospect has replied to an email",danger:false},
             {k:"t3Approved",l:"✓ T3 Approved",d:"Melissa approved Touch 3 send",danger:false},
             {k:"doNotRespond",l:"🚫 Do Not Respond",d:"Mark as DNR — no further contact",danger:true}].map(f=>(
-            <div key={f.k} style={{display:"flex",alignItems:"center",gap:13,padding:"13px 15px",background:fv(f.k)?(f.danger?"rgba(239,68,68,0.06)":"rgba(52,211,153,0.06)"):"rgba(255,255,255,0.03)",border:`1px solid ${fv(f.k)?(f.danger?"rgba(239,68,68,0.22)":"rgba(52,211,153,0.22)"):BR}`,borderRadius:10,transition:"all 0.2s"}}>
+            <div key={f.k} style={{display:"flex",alignItems:"center",gap:13,padding:"13px 15px",background:fv(f.k)?(f.danger?"rgba(239,68,68,0.06)":"rgba(52,211,153,0.06)"):"rgba(var(--k-white-rgb),0.03)",border:`1px solid ${fv(f.k)?(f.danger?"rgba(239,68,68,0.22)":"rgba(52,211,153,0.22)"):BR}`,borderRadius:10,transition:"all 0.2s"}}>
               <Tgl on={!!fv(f.k)} onChange={v=>sf(f.k,v)} danger={f.danger}/>
               <div><p style={{margin:0,fontSize:13,fontWeight:600,color:W}}>{f.l}</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>{f.d}</p></div>
             </div>
@@ -2384,7 +2403,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
         <div style={{width:34,height:34,background:"linear-gradient(135deg,#a855f7,#7c3aed)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>🛡️</div>
         <div style={{flex:1}}><p style={{margin:0,fontSize:13,fontWeight:900,color:W,letterSpacing:"0.04em"}}>ADMIN PANEL</p><p style={{margin:0,fontSize:10,color:"rgba(192,132,252,0.65)"}}>NC Compliance CRM · System Administration</p></div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{padding:"3px 10px 3px 4px",background:"rgba(255,255,255,0.04)",border:`1px solid ${BR}`,borderRadius:24,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{padding:"3px 10px 3px 4px",background:"rgba(var(--k-white-rgb),0.04)",border:`1px solid ${BR}`,borderRadius:24,display:"flex",alignItems:"center",gap:8}}>
             <div style={{width:28,height:28,background:ROLES[currentUser.role]?.bg,border:`1.5px solid ${ROLES[currentUser.role]?.color}55`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:ROLES[currentUser.role]?.color}}>{currentUser.avatar}</div>
             <div><p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>{currentUser.name}</p><RPill role={currentUser.role}/></div>
           </div>
@@ -2400,7 +2419,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
           </div>
           <div style={{padding:"12px",borderTop:`1px solid ${BR}`}}>
             <p style={{margin:"0 0 8px",fontSize:9,fontWeight:800,color:WD,textTransform:"uppercase",letterSpacing:"0.09em"}}>Live Stats</p>
-            {[["Users",users.length,"#c084fc"],["Active",users.filter(u=>u.active).length,"#34d399"],["Prospects",crmData.length,GL],["Converted",crmData.filter(p=>p.currentStatus==="Converted").length,"#60a5fa"]].map(([l,v,c])=>(
+            {[["Users",users.length,"var(--k-purple)"],["Active",users.filter(u=>u.active).length,"var(--k-green)"],["Prospects",crmData.length,GL],["Converted",crmData.filter(p=>p.currentStatus==="Converted").length,"var(--k-blue)"]].map(([l,v,c])=>(
               <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:11,color:WD}}>{l}</span><span style={{fontSize:13,fontWeight:800,color:c}}>{v}</span></div>
             ))}
           </div>
@@ -2412,10 +2431,10 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
             <div style={{animation:"fadeUp 0.3s ease"}}>
               <div style={{marginBottom:20}}><h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>System Overview</h2><p style={{margin:"4px 0 0",fontSize:12,color:WM}}>Live metrics across all modules</p></div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:22}}>
-                {[{l:"Total Users",v:users.length,c:"#c084fc",i:"👥"},{l:"Active Users",v:users.filter(u=>u.active).length,c:"#34d399",i:"✅"},{l:"Prospects",v:crmData.length,c:GL,i:"🏢"},{l:"Converted",v:crmData.filter(p=>p.currentStatus==="Converted").length,c:"#60a5fa",i:"🎯"},{l:"Flagged",v:crmData.filter(p=>p.flagToMelissa).length,c:"#f472b6",i:"🚩"},{l:"DNR",v:crmData.filter(p=>p.doNotRespond).length,c:"#f87171",i:"🚫"}].map(s=>(
+                {[{l:"Total Users",v:users.length,c:"var(--k-purple)",i:"👥"},{l:"Active Users",v:users.filter(u=>u.active).length,c:"var(--k-green)",i:"✅"},{l:"Prospects",v:crmData.length,c:GL,i:"🏢"},{l:"Converted",v:crmData.filter(p=>p.currentStatus==="Converted").length,c:"var(--k-blue)",i:"🎯"},{l:"Flagged",v:crmData.filter(p=>p.flagToMelissa).length,c:"var(--k-pink)",i:"🚩"},{l:"DNR",v:crmData.filter(p=>p.doNotRespond).length,c:"var(--k-red)",i:"🚫"}].map(s=>(
                   <div key={s.l} style={{background:NC,border:`1px solid ${BR}`,borderRadius:12,padding:"14px 14px 12px",position:"relative",overflow:"hidden"}}>
                     <p style={{margin:0,fontSize:9.5,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.l}</p>
-                    <p style={{margin:"6px 0 0",fontSize:28,fontWeight:900,color:s.v>0?s.c:"rgba(255,255,255,0.12)",lineHeight:1}}>{s.v}</p>
+                    <p style={{margin:"6px 0 0",fontSize:28,fontWeight:900,color:s.v>0?s.c:"rgba(var(--k-white-rgb),0.12)",lineHeight:1}}>{s.v}</p>
                     <span style={{position:"absolute",top:11,right:12,fontSize:18,opacity:0.14}}>{s.i}</span>
                     <div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.c},transparent)`,opacity:0.5}}/>
                   </div>
@@ -2425,15 +2444,15 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                 <div style={{background:NC,border:`1px solid rgba(201,150,58,0.2)`,borderRadius:13,overflow:"hidden"}}>
                   <div style={{padding:"10px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(201,150,58,0.07)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.07em"}}>Pipeline</p></div>
                   {STATUSES.map((s,i)=>{const c=crmData.filter(p=>p.currentStatus===s).length;return(
-                    <div key={s} style={{display:"grid",gridTemplateColumns:"1fr auto auto",alignItems:"center",padding:"5px 13px",background:i%2?"rgba(255,255,255,0.016)":"transparent",borderBottom:`1px solid rgba(255,255,255,0.03)`}}>
+                    <div key={s} style={{display:"grid",gridTemplateColumns:"1fr auto auto",alignItems:"center",padding:"5px 13px",background:i%2?"rgba(var(--k-white-rgb),0.016)":"transparent",borderBottom:`1px solid rgba(var(--k-white-rgb),0.03)`}}>
                       <SBadge status={s} sm/><span style={{fontSize:14,fontWeight:800,color:W,textAlign:"center",padding:"0 11px",minWidth:24}}>{c}</span><span style={{fontSize:10,color:WD,minWidth:34,textAlign:"right"}}>{pct(c,crmData.length)}</span>
                     </div>
                   );})}
                 </div>
                 <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
-                  <div style={{padding:"10px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>User Roster</p></div>
+                  <div style={{padding:"10px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>User Roster</p></div>
                   {users.map((u,i)=>(
-                    <div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderBottom:`1px solid rgba(255,255,255,0.03)`,background:i%2?"rgba(255,255,255,0.016)":"transparent"}}>
+                    <div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 13px",borderBottom:`1px solid rgba(var(--k-white-rgb),0.03)`,background:i%2?"rgba(var(--k-white-rgb),0.016)":"transparent"}}>
                       <div style={{width:30,height:30,background:ROLES[u.role]?.bg,border:`1.5px solid ${ROLES[u.role]?.color}55`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:ROLES[u.role]?.color,flexShrink:0}}>{u.avatar}</div>
                       <div style={{flex:1,minWidth:0}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</p><p style={{margin:0,fontSize:10,color:WD}}>@{u.username}</p></div>
                       <RPill role={u.role}/>
@@ -2459,7 +2478,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                         <span style={{fontSize:14,fontWeight:800,color:W}}>{u.name}</span>
                         <RPill role={u.role}/>
                         {u.id===currentUser.id&&<span style={{fontSize:10,color:GL,fontWeight:700}}>(You)</span>}
-                        {!u.active&&<span style={{fontSize:9,color:"#f87171",border:"1px solid rgba(248,113,113,0.3)",borderRadius:20,padding:"1px 8px",fontWeight:700}}>INACTIVE</span>}
+                        {!u.active&&<span style={{fontSize:9,color:"var(--k-red)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:20,padding:"1px 8px",fontWeight:700}}>INACTIVE</span>}
                       </div>
                       <div style={{display:"flex",gap:14,fontSize:11,color:WD,flexWrap:"wrap"}}><span>@{u.username}</span><span>{u.email}</span><span>Since {u.createdAt}</span>{u.lastLogin&&<span>Last: {u.lastLogin}</span>}</div>
                     </div>
@@ -2474,13 +2493,13 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                 ))}
               </div>
               <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
-                <div style={{padding:"10px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>🔐 Role Permissions Matrix</p></div>
+                <div style={{padding:"10px 15px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>🔐 Role Permissions Matrix</p></div>
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                    <thead><tr style={{background:"rgba(255,255,255,0.03)"}}><th style={{textAlign:"left",padding:"8px 14px",color:WD,fontWeight:700}}>Role</th>{["View CRM","Add/Edit","Delete","Manage Users","Admin Panel","System Config"].map(h=><th key={h} style={{textAlign:"center",padding:"8px 10px",color:WD,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                    <thead><tr style={{background:"rgba(var(--k-white-rgb),0.03)"}}><th style={{textAlign:"left",padding:"8px 14px",color:WD,fontWeight:700}}>Role</th>{["View CRM","Add/Edit","Delete","Manage Users","Admin Panel","System Config"].map(h=><th key={h} style={{textAlign:"center",padding:"8px 10px",color:WD,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
                     <tbody>
                       {Object.entries(ROLES).map(([key,r],i)=>(
-                        <tr key={key} style={{borderTop:`1px solid rgba(255,255,255,0.04)`,background:i%2?"rgba(255,255,255,0.015)":"transparent"}}>
+                        <tr key={key} style={{borderTop:`1px solid rgba(var(--k-white-rgb),0.04)`,background:i%2?"rgba(var(--k-white-rgb),0.015)":"transparent"}}>
                           <td style={{padding:"8px 14px"}}><RPill role={key}/></td>
                           {[true,r.canEdit,r.canDelete,r.canManageUsers,r.canAdmin,r.canEditSystem].map((v,j)=><td key={j} style={{textAlign:"center",padding:"8px",fontSize:14}}>{v?"✅":"❌"}</td>)}
                         </tr>
@@ -2511,17 +2530,17 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
               <div style={{background:NC,border:`1px solid rgba(201,150,58,0.18)`,borderRadius:13,overflow:"hidden"}}>
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
-                    <thead><tr style={{background:"rgba(255,255,255,0.04)",borderBottom:`1px solid rgba(255,255,255,0.07)`}}>{["Company","Contact","Vertical","Market","Status","Pri.","Actions"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 13px",fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                    <thead><tr style={{background:"rgba(var(--k-white-rgb),0.04)",borderBottom:`1px solid rgba(var(--k-white-rgb),0.07)`}}>{["Company","Contact","Vertical","Market","Status","Pri.","Actions"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 13px",fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
                     <tbody>
                       {filtP.length===0&&<tr><td colSpan={7} style={{padding:"30px 0",textAlign:"center",color:WD,fontSize:13}}>No records match.</td></tr>}
                       {filtP.map((p,i)=>(
-                        <tr key={p.id} className="rh" style={{borderBottom:`1px solid rgba(255,255,255,0.04)`,background:i%2?"rgba(255,255,255,0.015)":"transparent"}}>
-                          <td style={{padding:"10px 13px"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p><div style={{display:"flex",gap:4,marginTop:1}}>{p.flagToMelissa&&<span style={{fontSize:9,color:"#f472b6"}}>🚩</span>}{p.doNotRespond&&<span style={{fontSize:9,color:"#f87171"}}>🚫</span>}</div></td>
+                        <tr key={p.id} className="rh" style={{borderBottom:`1px solid rgba(var(--k-white-rgb),0.04)`,background:i%2?"rgba(var(--k-white-rgb),0.015)":"transparent"}}>
+                          <td style={{padding:"10px 13px"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p><div style={{display:"flex",gap:4,marginTop:1}}>{p.flagToMelissa&&<span style={{fontSize:9,color:"var(--k-pink)"}}>🚩</span>}{p.doNotRespond&&<span style={{fontSize:9,color:"var(--k-red)"}}>🚫</span>}</div></td>
                           <td style={{padding:"10px 13px"}}><p style={{margin:0,fontSize:12,color:WM}}>{p.contactName||"—"}</p><p style={{margin:0,fontSize:10,color:WD}}>{p.title}</p></td>
                           <td style={{padding:"10px 13px",fontSize:11,color:WD,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.vertical||"—"}</td>
                           <td style={{padding:"10px 13px",fontSize:11,color:WD}}>{p.market||"—"}</td>
                           <td style={{padding:"10px 13px"}}><SBadge status={p.currentStatus} sm/></td>
-                          <td style={{padding:"10px 13px",fontSize:14,fontWeight:800,color:parseInt(p.priorityScore)>=7?"#f472b6":parseInt(p.priorityScore)>=4?GL:"rgba(255,255,255,0.2)"}}>{p.priorityScore||"—"}</td>
+                          <td style={{padding:"10px 13px",fontSize:14,fontWeight:800,color:parseInt(p.priorityScore)>=7?"var(--k-pink)":parseInt(p.priorityScore)>=4?GL:"rgba(var(--k-white-rgb),0.2)"}}>{p.priorityScore||"—"}</td>
                           <td style={{padding:"10px 13px"}}><div style={{display:"flex",gap:6}}><button onClick={()=>setPDlg(p)} className="bh" style={{...B.ghost,fontSize:10,padding:"4px 9px",color:GL,borderColor:"rgba(201,150,58,0.3)"}}>✏️</button>{isAdmin&&<button onClick={()=>setConfirmDel({type:"prospect",item:p})} className="bh" style={{...B.danger,fontSize:10,padding:"4px 9px"}}>🗑</button>}</div></td>
                         </tr>
                       ))}
@@ -2535,24 +2554,24 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
           {tab==="settings"&&(
             <div style={{animation:"fadeUp 0.3s ease",maxWidth:660}}>
               <div style={{marginBottom:20}}><h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>System Settings</h2><p style={{margin:"4px 0 0",fontSize:12,color:WM}}>Global configuration — Admin only</p></div>
-              {!isAdmin?(<div style={{background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:13,padding:"32px 24px",textAlign:"center"}}><span style={{fontSize:40}}>🔒</span><p style={{margin:"12px 0 6px",fontSize:15,fontWeight:700,color:"#f87171"}}>Access Restricted</p><p style={{margin:0,fontSize:13,color:WM}}>Admin privileges required.</p></div>):(
+              {!isAdmin?(<div style={{background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:13,padding:"32px 24px",textAlign:"center"}}><span style={{fontSize:40}}>🔒</span><p style={{margin:"12px 0 6px",fontSize:15,fontWeight:700,color:"var(--k-red)"}}>Access Restricted</p><p style={{margin:0,fontSize:13,color:WM}}>Admin privileges required.</p></div>):(
               <div style={{display:"flex",flexDirection:"column",gap:14}}>
                 {[{title:"CRM Identity",icon:"🏷️",fields:[{k:"siteName",l:"System Name"},{k:"orgName",l:"Organization Name"}]},{title:"Email & Outreach",icon:"📧",fields:[{k:"senderName",l:"Sender Name"},{k:"senderEmail",l:"Sender Email"},{k:"senderTitle",l:"Sender Title"},{k:"honeyLink",l:"Schedule / Honey Link"},{k:"website",l:"Website"}]}].map(sec=>(
                   <div key={sec.title} style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
-                    <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>{sec.icon} {sec.title}</p></div>
+                    <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>{sec.icon} {sec.title}</p></div>
                     <div style={{padding:"15px 17px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{sec.fields.map(f=><FG key={f.k} label={f.l}><input value={settings[f.k]||""} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,[f.k]:e.target.value}));}} style={inp()}/></FG>)}</div>
                   </div>
                 ))}
                 <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
-                  <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>📦 Capacity</p></div>
-                  <div style={{padding:"15px 17px"}}><FG label="Max Prospects"><input type="number" value={settings.maxProspects||1000} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,maxProspects:parseInt(e.target.value)||1000}));}} style={{...inp(),width:200}}/></FG><div style={{marginTop:10,display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:`linear-gradient(90deg,${G},#34d399)`,borderRadius:3,width:Math.min((crmData.length/(settings.maxProspects||1000))*100,100)+"%"}}/></div><span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{crmData.length}/{settings.maxProspects||1000}</span></div></div>
+                  <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>📦 Capacity</p></div>
+                  <div style={{padding:"15px 17px"}}><FG label="Max Prospects"><input type="number" value={settings.maxProspects||1000} onChange={e=>{settingsTouched.current=true;setSettings(s=>({...s,maxProspects:parseInt(e.target.value)||1000}));}} style={{...inp(),width:200}}/></FG><div style={{marginTop:10,display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,height:6,background:"rgba(var(--k-white-rgb),0.06)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:`linear-gradient(90deg,${G},var(--k-green))`,borderRadius:3,width:Math.min((crmData.length/(settings.maxProspects||1000))*100,100)+"%"}}/></div><span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{crmData.length}/{settings.maxProspects||1000}</span></div></div>
                 </div>
                 {isSuper&&(
                   <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
-                    <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>⚙️ Behavior Flags</p></div>
+                    <div style={{padding:"10px 17px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>⚙️ Behavior Flags</p></div>
                     <div style={{padding:"15px 17px",display:"flex",flexDirection:"column",gap:10}}>
                       {[{k:"requireMelissaApproval",l:"Require Melissa approval before Touch 3",d:"Blocks T3 queue until flagged and approved"},{k:"autoArchiveDNR",l:"Auto-archive DNR after 30 days",d:"Removes from active pipeline"},{k:"emailGmailDefault",l:"Use Gmail compose by default",d:"Opens Gmail for outreach emails"}].map(f=>(
-                        <div key={f.k} style={{display:"flex",alignItems:"flex-start",gap:13,padding:"11px 13px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:`1px solid ${BR}`}}>
+                        <div key={f.k} style={{display:"flex",alignItems:"flex-start",gap:13,padding:"11px 13px",background:"rgba(var(--k-white-rgb),0.03)",borderRadius:9,border:`1px solid ${BR}`}}>
                           <Tgl on={!!settings[f.k]} onChange={v=>{settingsTouched.current=true;setSettings(s=>({...s,[f.k]:v}));}}/>
                           <div><p style={{margin:0,fontSize:13,fontWeight:600,color:W}}>{f.l}</p><p style={{margin:"3px 0 0",fontSize:11,color:WM}}>{f.d}</p></div>
                         </div>
@@ -2571,10 +2590,10 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
               <div style={{marginBottom:20}}><h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>🔌 Plugin Integrations</h2><p style={{margin:"4px 0 0",fontSize:12,color:WM}}>Connect external tools for automated prospect discovery</p></div>
               {[{id:"apollo",name:"Apollo.io",icon:"🚀",color:"#7c3aed",desc:"B2B contact & company database with 275M+ profiles. Automates prospect discovery and email finding.",key:"apolloKey",service:"apollo",docs:"https://apolloio.github.io/apollo-api-docs/",features:["Contact search","Email verification","Company firmographics","Bulk export"]},
                 {id:"hunter",name:"Hunter.io",icon:"🎯",color:"#f59e0b",desc:"Email finding and verification tool. Finds professional email addresses from company domains.",key:"hunterKey",service:"hunter",docs:"https://hunter.io/api-documentation/v2",features:["Domain search","Email finder","Email verifier","Bulk tasks"]},
-                {id:"anthropic",name:"Claude AI (Anthropic)",icon:"🤖",color:"#c084fc",desc:"Anthropic Claude API for intelligent prospect research, context analysis, and personalized outreach drafts.",key:"anthropicKey",service:"anthropic",docs:"https://docs.anthropic.com",features:["Prospect research","Outreach drafting","Pain point analysis","Fit scoring"]},
+                {id:"anthropic",name:"Claude AI (Anthropic)",icon:"🤖",color:"var(--k-purple)",desc:"Anthropic Claude API for intelligent prospect research, context analysis, and personalized outreach drafts.",key:"anthropicKey",service:"anthropic",docs:"https://docs.anthropic.com",features:["Prospect research","Outreach drafting","Pain point analysis","Fit scoring"]},
               ].map(p=>(
                 <div key={p.id} style={{background:NC,border:`1px solid ${p.color}33`,borderRadius:13,overflow:"hidden",marginBottom:13}}>
-                  <div style={{padding:"12px 18px",borderBottom:`1px solid ${BR}`,background:`rgba(255,255,255,0.03)`,display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{padding:"12px 18px",borderBottom:`1px solid ${BR}`,background:`rgba(var(--k-white-rgb),0.03)`,display:"flex",alignItems:"center",gap:12}}>
                     <span style={{fontSize:22}}>{p.icon}</span>
                     <div style={{flex:1}}><p style={{margin:0,fontSize:13,fontWeight:800,color:W}}>{p.name}</p><p style={{margin:0,fontSize:11,color:WM}}>{p.desc}</p></div>
                     <a href={p.docs} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:p.color,textDecoration:"none",border:`1px solid ${p.color}44`,borderRadius:7,padding:"4px 10px"}}>Docs ↗</a>
@@ -2611,17 +2630,17 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
                         }} className="bh" style={{...B.gold,fontSize:11,padding:"9px 16px",flexShrink:0}}>Save Key</button>
                       </div>
                     ):(
-                      <div style={{padding:"10px 14px",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,fontSize:12,color:"#f87171"}}>🔒 Admin access required to configure API keys.</div>
+                      <div style={{padding:"10px 14px",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,fontSize:12,color:"var(--k-red)"}}>🔒 Admin access required to configure API keys.</div>
                     )}
                     <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:settings[p.key]?"#34d399":"#94a3b8",flexShrink:0}}/>
-                      <span style={{fontSize:11,color:settings[p.key]?"#34d399":WD}}>{settings[p.key]?"Connected — key configured":"Not connected — enter API key above"}</span>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:settings[p.key]?"var(--k-green)":"#94a3b8",flexShrink:0}}/>
+                      <span style={{fontSize:11,color:settings[p.key]?"var(--k-green)":WD}}>{settings[p.key]?"Connected — key configured":"Not connected — enter API key above"}</span>
                     </div>
                   </div>
                 </div>
               ))}
               <div style={{background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:13,padding:16}}>
-                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:"#60a5fa"}}>💡 How Plugins Work</p>
+                <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:"var(--k-blue)"}}>💡 How Plugins Work</p>
                 <p style={{margin:"0 0 6px",fontSize:12,color:WM}}>Once connected, these plugins are available in the <strong style={{color:W}}>Prospect Finder</strong> search engine. Select the desired source before running a search to pull live results from that platform.</p>
                 <p style={{margin:0,fontSize:11,color:WD}}>Note: Apollo.io and Hunter.io require paid subscription API keys. Claude AI uses your Anthropic API key.</p>
               </div>
@@ -2633,7 +2652,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
               <div style={{marginBottom:20}}><h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>Audit Log</h2><p style={{margin:"4px 0 0",fontSize:12,color:WM}}>All system actions recorded in real time</p></div>
               <div style={{background:NC,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
                 {[...auditLog].reverse().map((log,i)=>(
-                  <div key={i} className="rh" style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",borderBottom:`1px solid rgba(255,255,255,0.04)`,background:i%2?"rgba(255,255,255,0.015)":"transparent"}}>
+                  <div key={i} className="rh" style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",borderBottom:`1px solid rgba(var(--k-white-rgb),0.04)`,background:i%2?"rgba(var(--k-white-rgb),0.015)":"transparent"}}>
                     <span style={{fontSize:11,color:WD,fontFamily:"monospace",whiteSpace:"nowrap",flexShrink:0}}>{log.time}</span>
                     <span style={{fontSize:11,fontWeight:700,color:GL,whiteSpace:"nowrap",flexShrink:0}}>@{log.user}</span>
                     <span style={{fontSize:12,color:WM,flex:1}}>{log.action}</span>
@@ -2677,10 +2696,10 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
             </select>
             <p style={{margin:"5px 0 0",fontSize:11,color:WD}}>{{superadmin:"Full system control.",admin:"Manage users, CRM, settings & plugins.",manager:"Full CRM + approvals.",user:"Add/edit prospects.",viewer:"View-only access."}[uForm.role||"user"]}</p>
           </FG>
-          <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:`1px solid ${BR}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px",background:"rgba(var(--k-white-rgb),0.03)",borderRadius:9,border:`1px solid ${BR}`}}>
             <Tgl on={!!uForm.active} onChange={v=>uf("active",v)}/><span style={{fontSize:13,color:WM}}>Account Active</span>
           </div>
-          {fErr&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#f87171"}}>⚠️ {fErr}</div>}
+          {fErr&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"var(--k-red)"}}>⚠️ {fErr}</div>}
           <div style={{display:"flex",justifyContent:"flex-end",gap:10,paddingTop:4}}>
             <button onClick={()=>setUDlg(null)} className="bh" style={B.ghost}>Cancel</button>
             <button onClick={saveU} className="bh" style={B.gold}>{uDlg==="add"?"Create User":"Save Changes"}</button>
@@ -3008,7 +3027,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
     {id:"templates",l:"📋 Templates"},
   ];
 
-  const sentimentColor=s=>s==="positive"?"#34d399":s==="negative"?"#f87171":"#fbbf24";
+  const sentimentColor=s=>s==="positive"?"var(--k-green)":s==="negative"?"var(--k-red)":"var(--k-amber)";
   const sentimentLabel=s=>s==="positive"?"✅ Positive":s==="negative"?"❌ Negative":"➡️ Neutral";
 
   return(
@@ -3023,9 +3042,9 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
             </button>
           ):(
             <div style={{display:"flex",alignItems:"center",gap:7,padding:"7px 10px",background:usingRealGmail?"rgba(52,211,153,0.08)":"rgba(251,191,36,0.08)",border:`1px solid ${usingRealGmail?"rgba(52,211,153,0.22)":"rgba(251,191,36,0.22)"}`,borderRadius:8}}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:usingRealGmail?"#34d399":"#fbbf24",flexShrink:0}}/>
+              <div style={{width:7,height:7,borderRadius:"50%",background:usingRealGmail?"var(--k-green)":"var(--k-amber)",flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
-                <p style={{margin:0,fontSize:10,fontWeight:700,color:usingRealGmail?"#34d399":"#fbbf24"}}>{usingRealGmail?"Gmail Connected":"Demo Inbox"}</p>
+                <p style={{margin:0,fontSize:10,fontWeight:700,color:usingRealGmail?"var(--k-green)":"var(--k-amber)"}}>{usingRealGmail?"Gmail Connected":"Demo Inbox"}</p>
                 <p style={{margin:0,fontSize:9,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{usingRealGmail?(sessionStorage.getItem("google_email")||currentUser.email):"Sign in with Google for live Gmail"}</p>
               </div>
               <button onClick={()=>{setInboxConnected(false);setUsingRealGmail(false);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:WD,padding:2}}>✕</button>
@@ -3037,14 +3056,14 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
           {ETABS.map(t=>(
             <button key={t.id} onClick={()=>{setEtab(t.id);if(t.id==="compose")setCompose("write");else setCompose(null);}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 10px",background:etab===t.id?"rgba(201,150,58,0.1)":"transparent",border:"none",borderLeft:`3px solid ${etab===t.id?G:"transparent"}`,borderRadius:"0 8px 8px 0",color:etab===t.id?GL:WM,cursor:"pointer",fontSize:12,fontWeight:etab===t.id?700:500,marginBottom:2,textAlign:"left",transition:"all 0.15s"}}>
               <span>{t.l}</span>
-              {t.badge&&<span style={{background:etab===t.id?G:"rgba(255,255,255,0.12)",color:etab===t.id?N:W,borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
+              {t.badge&&<span style={{background:etab===t.id?G:"rgba(var(--k-white-rgb),0.12)",color:etab===t.id?N:W,borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
             </button>
           ))}
         </div>
         {/* Stats */}
         <div style={{padding:"10px 12px",borderTop:`1px solid ${BR}`,fontSize:11}}>
           <p style={{margin:"0 0 6px",fontSize:9,fontWeight:800,color:WD,textTransform:"uppercase",letterSpacing:"0.08em"}}>Email Stats</p>
-          {[["Queued",totalDue,GL],["Unread",unread,"#60a5fa"],["Replies",replies,"#34d399"],["Sent",sent.length,WM]].map(([l,v,c])=>(
+          {[["Queued",totalDue,GL],["Unread",unread,"var(--k-blue)"],["Replies",replies,"var(--k-green)"],["Sent",sent.length,WM]].map(([l,v,c])=>(
             <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <span style={{color:WD}}>{l}</span><span style={{fontWeight:800,color:c}}>{v}</span>
             </div>
@@ -3064,7 +3083,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
             </div>
             {[{touch:"t1",label:"Touch 1",sub:"NEW prospects — first contact",queue:q1,color:GL,bg:"rgba(201,150,58,0.08)",bc:"rgba(201,150,58,0.25)",next:"T1 SENT"},
               {touch:"t2",label:"Touch 2",sub:"Follow-up — T1 sent, no reply",queue:q2,color:"#a78bfa",bg:"rgba(139,92,246,0.08)",bc:"rgba(139,92,246,0.25)",next:"T2 SENT"},
-              {touch:"t3",label:"Touch 3",sub:"Final outreach — approved by Melissa",queue:q3,color:"#f472b6",bg:"rgba(236,72,153,0.08)",bc:"rgba(236,72,153,0.25)",next:"NURTURE/T3 SENT"}].map(({touch,label,sub,queue,color,bg,bc,next})=>(
+              {touch:"t3",label:"Touch 3",sub:"Final outreach — approved by Melissa",queue:q3,color:"var(--k-pink)",bg:"rgba(236,72,153,0.08)",bc:"rgba(236,72,153,0.25)",next:"NURTURE/T3 SENT"}].map(({touch,label,sub,queue,color,bg,bc,next})=>(
               <div key={touch} style={{background:bg,border:`1px solid ${bc}`,borderRadius:13,overflow:"hidden",marginBottom:14}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:`1px solid ${bc}`,flexWrap:"wrap",gap:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -3086,9 +3105,9 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
                             <span style={{fontSize:13,fontWeight:700,color:W}}>{p.companyName}</span>
                             <SBadge status={p.currentStatus} sm/>
-                            {p.priorityScore&&<span style={{fontSize:9,color:parseInt(p.priorityScore)>=7?"#f472b6":GL,border:`1px solid ${parseInt(p.priorityScore)>=7?"rgba(244,114,182,0.3)":"rgba(219,168,67,0.3)"}`,borderRadius:20,padding:"1px 7px",fontWeight:700}}>⭐ P{p.priorityScore}</span>}
+                            {p.priorityScore&&<span style={{fontSize:9,color:parseInt(p.priorityScore)>=7?"var(--k-pink)":GL,border:`1px solid ${parseInt(p.priorityScore)>=7?"rgba(244,114,182,0.3)":"rgba(219,168,67,0.3)"}`,borderRadius:20,padding:"1px 7px",fontWeight:700}}>⭐ P{p.priorityScore}</span>}
                           </div>
-                          <p style={{margin:0,fontSize:11,color:WM}}>{p.contactName} · <span style={{color:"#60a5fa"}}>{p.emailPhone}</span> · {p.market}</p>
+                          <p style={{margin:0,fontSize:11,color:WM}}>{p.contactName} · <span style={{color:"var(--k-blue)"}}>{p.emailPhone}</span> · {p.market}</p>
                           {p.leadPainPoint&&<p style={{margin:"4px 0 0",fontSize:10,color:WD,fontStyle:"italic"}}>📌 {p.leadPainPoint}</p>}
                         </div>
                         {canEdit&&(
@@ -3124,12 +3143,12 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:10}}>
               <div><h2 style={{margin:0,fontSize:16,fontWeight:800,color:W}}>✏️ Compose Email</h2><p style={{margin:"3px 0 0",fontSize:11,color:WM}}>Use a template or write a custom message</p></div>
               {isGmailConnected()?(
-                <span style={{fontSize:11,padding:"5px 12px",background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.25)",borderRadius:20,color:"#34d399",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{width:7,height:7,borderRadius:"50%",background:"#34d399"}}/> Sends via {sessionStorage.getItem("google_email")||"Gmail"}
+                <span style={{fontSize:11,padding:"5px 12px",background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.25)",borderRadius:20,color:"var(--k-green)",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:"var(--k-green)"}}/> Sends via {sessionStorage.getItem("google_email")||"Gmail"}
                 </span>
               ):(
-                <span style={{fontSize:11,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,color:"#fbbf24",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{width:7,height:7,borderRadius:"50%",background:"#fbbf24"}}/> Demo mode — sign in with Google to send for real
+                <span style={{fontSize:11,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,color:"var(--k-amber)",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:"var(--k-amber)"}}/> Demo mode — sign in with Google to send for real
                 </span>
               )}
             </div>
@@ -3143,7 +3162,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                     const prospect=crmData.find(p=>p.emailPhone===composeForm.to)||null;
                     const filled=fillTemplate(t,prospect);
                     setComposeForm(f=>({...f,subject:filled.subject,body:filled.body}));
-                  }} style={{background:selectedTemplate===t.id?"rgba(201,150,58,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${selectedTemplate===t.id?"rgba(201,150,58,0.4)":BR}`,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:selectedTemplate===t.id?700:500,color:selectedTemplate===t.id?GL:WM}}>
+                  }} style={{background:selectedTemplate===t.id?"rgba(201,150,58,0.15)":"rgba(var(--k-white-rgb),0.04)",border:`1px solid ${selectedTemplate===t.id?"rgba(201,150,58,0.4)":BR}`,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:selectedTemplate===t.id?700:500,color:selectedTemplate===t.id?GL:WM}}>
                     <span style={{marginRight:5}}>{t.touch==="T1"?"📧":t.touch==="T2"?"📩":t.touch==="T3"?"📬":"📝"}</span>{t.name}
                   </button>
                 ))}
@@ -3158,7 +3177,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                     const tpl=EMAIL_TEMPLATES.find(t=>t.id===selectedTemplate)||EMAIL_TEMPLATES[0];
                     const filled=fillTemplate(tpl,p);
                     setComposeForm(f=>({...f,to:p.emailPhone,subject:filled.subject,body:filled.body,prospectId:p.id}));
-                  }} style={{background:composeForm.prospectId===p.id?"rgba(201,150,58,0.12)":"rgba(255,255,255,0.03)",border:`1px solid ${composeForm.prospectId===p.id?"rgba(201,150,58,0.35)":BR}`,borderRadius:8,padding:"6px 11px",cursor:"pointer",fontSize:11,color:composeForm.prospectId===p.id?GL:WM}}>
+                  }} style={{background:composeForm.prospectId===p.id?"rgba(201,150,58,0.12)":"rgba(var(--k-white-rgb),0.03)",border:`1px solid ${composeForm.prospectId===p.id?"rgba(201,150,58,0.35)":BR}`,borderRadius:8,padding:"6px 11px",cursor:"pointer",fontSize:11,color:composeForm.prospectId===p.id?GL:WM}}>
                     {p.companyName}
                   </button>
                 ))}
@@ -3204,7 +3223,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
               {/* Inbox header */}
               <div style={{padding:"14px 16px",borderBottom:`1px solid ${BR}`,flexShrink:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <h3 style={{margin:0,fontSize:14,fontWeight:800,color:W,flex:1}}>📥 Inbox {unread>0&&<span style={{background:"#60a5fa",color:N,borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:800,marginLeft:6}}>{unread}</span>}</h3>
+                  <h3 style={{margin:0,fontSize:14,fontWeight:800,color:W,flex:1}}>📥 Inbox {unread>0&&<span style={{background:"var(--k-blue)",color:N,borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:800,marginLeft:6}}>{unread}</span>}</h3>
                   {!inboxConnected&&<button onClick={connectInbox} disabled={connecting} className="bh" style={{...B.blue,fontSize:10,padding:"5px 10px"}}>{connecting?<Spin s={10}/>:"🔗 Connect"}</button>}
                   {inboxConnected&&<button onClick={refreshInbox} style={{...B.ghost,fontSize:10,padding:"5px 10px"}}>↻ Refresh</button>}
                 </div>
@@ -3214,7 +3233,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                 </div>
                 <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                   {[["all","All"],["unread","Unread"],["replies","Replies"],["starred","Starred"],["ooo","Out of Office"]].map(([k,l])=>(
-                    <button key={k} onClick={()=>setInboxFilter(k)} style={{background:inboxFilter===k?"rgba(201,150,58,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${inboxFilter===k?"rgba(201,150,58,0.35)":BR}`,borderRadius:20,padding:"3px 10px",cursor:"pointer",fontSize:10,fontWeight:inboxFilter===k?700:500,color:inboxFilter===k?GL:WD}}>{l}</button>
+                    <button key={k} onClick={()=>setInboxFilter(k)} style={{background:inboxFilter===k?"rgba(201,150,58,0.15)":"rgba(var(--k-white-rgb),0.04)",border:`1px solid ${inboxFilter===k?"rgba(201,150,58,0.35)":BR}`,borderRadius:20,padding:"3px 10px",cursor:"pointer",fontSize:10,fontWeight:inboxFilter===k?700:500,color:inboxFilter===k?GL:WD}}>{l}</button>
                   ))}
                 </div>
               </div>
@@ -3235,11 +3254,11 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                 return(
                   <div key={e.id} onClick={()=>{setSelectedEmail(e);markRead(e.id);}} style={{padding:"12px 14px",borderBottom:`1px solid ${BR}`,cursor:"pointer",background:selectedEmail?.id===e.id?"rgba(201,150,58,0.08)":!e.read?"rgba(96,165,250,0.05)":"transparent",transition:"background 0.15s"}}>
                     <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:!e.read?"#60a5fa":"transparent",flexShrink:0,marginTop:5}}/>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:!e.read?"var(--k-blue)":"transparent",flexShrink:0,marginTop:5}}/>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
                           <span style={{fontSize:12,fontWeight:!e.read?700:600,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{e.from}</span>
-                          {e.starred&&<span style={{fontSize:11,color:"#fbbf24"}}>★</span>}
+                          {e.starred&&<span style={{fontSize:11,color:"var(--k-amber)"}}>★</span>}
                           <span style={{marginLeft:"auto",fontSize:9,color:WD,flexShrink:0,whiteSpace:"nowrap"}}>{e.date.slice(5,16)}</span>
                         </div>
                         <p style={{margin:0,fontSize:11,color:!e.read?WM:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:!e.read?600:400}}>{e.subject}</p>
@@ -3247,7 +3266,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                         <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
                           {prospect&&<span style={{fontSize:9,color:GL,border:"1px solid rgba(219,168,67,0.25)",borderRadius:6,padding:"1px 6px"}}>{prospect.companyName}</span>}
                           <span style={{fontSize:9,color:sentimentColor(e.sentiment),border:`1px solid ${sentimentColor(e.sentiment)}33`,borderRadius:6,padding:"1px 6px"}}>{sentimentLabel(e.sentiment)}</span>
-                          {e.label==="ooo"&&<span style={{fontSize:9,color:"#fbbf24",border:"1px solid rgba(251,191,36,0.25)",borderRadius:6,padding:"1px 6px"}}>🏖 OOO</span>}
+                          {e.label==="ooo"&&<span style={{fontSize:9,color:"var(--k-amber)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:6,padding:"1px 6px"}}>🏖 OOO</span>}
                         </div>
                       </div>
                     </div>
@@ -3264,18 +3283,18 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
               <div style={{flex:1,overflowY:"auto",padding:"18px 22px",minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
                   <button onClick={()=>setSelectedEmail(null)} style={{...B.ghost,fontSize:11,padding:"5px 10px"}}>← Back</button>
-                  <button onClick={()=>markStar(selectedEmail.id)} style={{...B.ghost,fontSize:13,padding:"5px 10px",color:selectedEmail.starred?"#fbbf24":WD}}>{selectedEmail.starred?"★":"☆"}</button>
+                  <button onClick={()=>markStar(selectedEmail.id)} style={{...B.ghost,fontSize:13,padding:"5px 10px",color:selectedEmail.starred?"var(--k-amber)":WD}}>{selectedEmail.starred?"★":"☆"}</button>
                 </div>
                 <h3 style={{margin:"0 0 10px",fontSize:15,fontWeight:800,color:W,lineHeight:1.3}}>{selectedEmail.subject}</h3>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap",padding:"10px 14px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:`1px solid ${BR}`}}>
-                  <div style={{width:36,height:36,borderRadius:10,background:"rgba(96,165,250,0.15)",border:"1.5px solid rgba(96,165,250,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:"#60a5fa",flexShrink:0}}>{selectedEmail.from.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase()}</div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap",padding:"10px 14px",background:"rgba(var(--k-white-rgb),0.03)",borderRadius:10,border:`1px solid ${BR}`}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:"rgba(96,165,250,0.15)",border:"1.5px solid rgba(96,165,250,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:"var(--k-blue)",flexShrink:0}}>{selectedEmail.from.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase()}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{margin:0,fontSize:13,fontWeight:700,color:W}}>{selectedEmail.from}</p>
                     <p style={{margin:0,fontSize:11,color:WD}}>{selectedEmail.fromEmail} · {selectedEmail.date}</p>
                   </div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                     <span style={{fontSize:9,padding:"3px 9px",background:`${sentimentColor(selectedEmail.sentiment)}18`,border:`1px solid ${sentimentColor(selectedEmail.sentiment)}44`,borderRadius:20,color:sentimentColor(selectedEmail.sentiment),fontWeight:700}}>{sentimentLabel(selectedEmail.sentiment)}</span>
-                    {selectedEmail.touch&&<span style={{fontSize:9,padding:"3px 9px",background:"rgba(255,255,255,0.06)",border:`1px solid ${BR}`,borderRadius:20,color:WM}}>Touch {selectedEmail.touch}</span>}
+                    {selectedEmail.touch&&<span style={{fontSize:9,padding:"3px 9px",background:"rgba(var(--k-white-rgb),0.06)",border:`1px solid ${BR}`,borderRadius:20,color:WM}}>Touch {selectedEmail.touch}</span>}
                   </div>
                 </div>
                 {/* Linked prospect */}
@@ -3340,7 +3359,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
             <div style={{background:NL,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",minWidth:660}}>
-                  <thead><tr style={{background:"rgba(255,255,255,0.04)",borderBottom:`1px solid rgba(255,255,255,0.07)`}}>
+                  <thead><tr style={{background:"rgba(var(--k-white-rgb),0.04)",borderBottom:`1px solid rgba(var(--k-white-rgb),0.07)`}}>
                     {["To","Subject","Touch","Sent Via","Date","Status"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 14px",fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}
                   </tr></thead>
                   <tbody>
@@ -3348,16 +3367,16 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                     {sent.map((e,i)=>{
                       const prospect=crmData.find(p=>p.id===e.prospectId);
                       return(
-                        <tr key={e.id} className="rh" style={{borderBottom:`1px solid rgba(255,255,255,0.04)`,background:i%2?"rgba(255,255,255,0.016)":"transparent"}}>
+                        <tr key={e.id} className="rh" style={{borderBottom:`1px solid rgba(var(--k-white-rgb),0.04)`,background:i%2?"rgba(var(--k-white-rgb),0.016)":"transparent"}}>
                           <td style={{padding:"10px 14px"}}>
                             <p style={{margin:0,fontSize:12,fontWeight:600,color:W}}>{e.to}</p>
                             {prospect&&<p style={{margin:0,fontSize:10,color:WD}}>{prospect.companyName}</p>}
                           </td>
                           <td style={{padding:"10px 14px",fontSize:12,color:WM,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</td>
-                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,padding:"2px 8px",background:e.touch==="T1"?"rgba(219,168,67,0.12)":e.touch==="T2"?"rgba(139,92,246,0.12)":"rgba(236,72,153,0.12)",border:`1px solid ${e.touch==="T1"?"rgba(219,168,67,0.3)":e.touch==="T2"?"rgba(139,92,246,0.3)":"rgba(236,72,153,0.3)"}`,borderRadius:6,color:e.touch==="T1"?GL:e.touch==="T2"?"#a78bfa":"#f472b6",fontWeight:700}}>Touch {e.touch}</span></td>
-                          <td style={{padding:"10px 14px"}}>{e.via==="gmail"?<span style={{fontSize:10,color:"#34d399",display:"flex",alignItems:"center",gap:4}}><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg> Gmail</span>:<span style={{fontSize:10,color:WD}}>Demo log</span>}</td>
+                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,padding:"2px 8px",background:e.touch==="T1"?"rgba(219,168,67,0.12)":e.touch==="T2"?"rgba(139,92,246,0.12)":"rgba(236,72,153,0.12)",border:`1px solid ${e.touch==="T1"?"rgba(219,168,67,0.3)":e.touch==="T2"?"rgba(139,92,246,0.3)":"rgba(236,72,153,0.3)"}`,borderRadius:6,color:e.touch==="T1"?GL:e.touch==="T2"?"#a78bfa":"var(--k-pink)",fontWeight:700}}>Touch {e.touch}</span></td>
+                          <td style={{padding:"10px 14px"}}>{e.via==="gmail"?<span style={{fontSize:10,color:"var(--k-green)",display:"flex",alignItems:"center",gap:4}}><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg> Gmail</span>:<span style={{fontSize:10,color:WD}}>Demo log</span>}</td>
                           <td style={{padding:"10px 14px",fontSize:11,color:WD,whiteSpace:"nowrap"}}>{(e.date||"").slice(0,16)}</td>
-                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,color:e.opened?"#34d399":WD,display:"flex",alignItems:"center",gap:4}}>{e.opened?<>✓ Opened</>:<>— Not opened</>}</span></td>
+                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,color:e.opened?"var(--k-green)":WD,display:"flex",alignItems:"center",gap:4}}>{e.opened?<>✓ Opened</>:<>— Not opened</>}</span></td>
                         </tr>
                       );
                     })}
@@ -3375,13 +3394,13 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {EMAIL_TEMPLATES.filter(t=>t.id!=="custom").map(t=>(
                 <div key={t.id} style={{background:NL,border:`1px solid ${BR}`,borderRadius:13,overflow:"hidden"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)"}}>
                     <span style={{fontSize:18}}>{t.touch==="T1"?"📧":t.touch==="T2"?"📩":"📬"}</span>
                     <div style={{flex:1}}>
                       <p style={{margin:0,fontSize:13,fontWeight:700,color:W}}>{t.name}</p>
                       <p style={{margin:0,fontSize:10,color:WD}}>Subject: {t.subject}</p>
                     </div>
-                    <span style={{fontSize:10,padding:"3px 10px",background:t.touch==="T1"?"rgba(219,168,67,0.12)":t.touch==="T2"?"rgba(139,92,246,0.12)":"rgba(236,72,153,0.12)",border:`1px solid ${t.touch==="T1"?"rgba(219,168,67,0.3)":t.touch==="T2"?"rgba(139,92,246,0.3)":"rgba(236,72,153,0.3)"}`,borderRadius:20,color:t.touch==="T1"?GL:t.touch==="T2"?"#a78bfa":"#f472b6",fontWeight:700}}>Touch {t.touch}</span>
+                    <span style={{fontSize:10,padding:"3px 10px",background:t.touch==="T1"?"rgba(219,168,67,0.12)":t.touch==="T2"?"rgba(139,92,246,0.12)":"rgba(236,72,153,0.12)",border:`1px solid ${t.touch==="T1"?"rgba(219,168,67,0.3)":t.touch==="T2"?"rgba(139,92,246,0.3)":"rgba(236,72,153,0.3)"}`,borderRadius:20,color:t.touch==="T1"?GL:t.touch==="T2"?"#a78bfa":"var(--k-pink)",fontWeight:700}}>Touch {t.touch}</span>
                     <button onClick={()=>{
                       setSelectedTemplate(t.id);
                       // If a prospect is already selected in compose, re-fill template with their data
@@ -3419,12 +3438,12 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
    prospect record.
 ════════════════════════════════════════════════════════════════ */
 const CAL_EVENT_TYPES={
-  t1_due:{label:"Touch 1 Due",  color:"#60a5fa", bg:"rgba(96,165,250,0.16)",  bc:"rgba(96,165,250,0.35)",  icon:"📧"},
+  t1_due:{label:"Touch 1 Due",  color:"var(--k-blue)", bg:"rgba(96,165,250,0.16)",  bc:"rgba(96,165,250,0.35)",  icon:"📧"},
   t2_due:{label:"Touch 2 Due",  color:"#a78bfa", bg:"rgba(167,139,250,0.16)", bc:"rgba(167,139,250,0.35)", icon:"📩"},
-  t3_due:{label:"Touch 3 Due",  color:"#f472b6", bg:"rgba(244,114,182,0.16)", bc:"rgba(244,114,182,0.35)", icon:"📬"},
-  t1_sent:{label:"Touch 1 Sent",color:"#34d399", bg:"rgba(52,211,153,0.14)",  bc:"rgba(52,211,153,0.3)",   icon:"✅"},
-  t2_sent:{label:"Touch 2 Sent",color:"#34d399", bg:"rgba(52,211,153,0.14)",  bc:"rgba(52,211,153,0.3)",   icon:"✅"},
-  t3_sent:{label:"Touch 3 Sent",color:"#34d399", bg:"rgba(52,211,153,0.14)",  bc:"rgba(52,211,153,0.3)",   icon:"✅"},
+  t3_due:{label:"Touch 3 Due",  color:"var(--k-pink)", bg:"rgba(244,114,182,0.16)", bc:"rgba(244,114,182,0.35)", icon:"📬"},
+  t1_sent:{label:"Touch 1 Sent",color:"var(--k-green)", bg:"rgba(52,211,153,0.14)",  bc:"rgba(52,211,153,0.3)",   icon:"✅"},
+  t2_sent:{label:"Touch 2 Sent",color:"var(--k-green)", bg:"rgba(52,211,153,0.14)",  bc:"rgba(52,211,153,0.3)",   icon:"✅"},
+  t3_sent:{label:"Touch 3 Sent",color:"var(--k-green)", bg:"rgba(52,211,153,0.14)",  bc:"rgba(52,211,153,0.3)",   icon:"✅"},
 };
 const CAL_WEEKDAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const CAL_WEEKDAYS_MIN=["Su","Mo","Tu","We","Th","Fr","Sa"];
@@ -3563,7 +3582,7 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
                 }} style={{
                   aspectRatio:"1",border:"none",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:isToday?800:600,
                   background:isSelected?G:isToday?"rgba(96,165,250,0.15)":"transparent",
-                  color:isSelected?N:cell.muted?WD:isToday?"#60a5fa":W,
+                  color:isSelected?N:cell.muted?WD:isToday?"var(--k-blue)":W,
                   opacity:cell.muted?0.35:1,position:"relative",
                   display:"flex",alignItems:"center",justifyContent:"center"
                 }}>
@@ -3607,13 +3626,13 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
                 <div key={i} onClick={()=>{
                   const d=new Date(e.date+"T00:00:00");
                   setSelectedDay(e.date);setViewMonth(d.getMonth());setViewYear(d.getFullYear());setPickerMonth(d.getMonth());setPickerYear(d.getFullYear());
-                }} className="rh" style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",borderRadius:8,cursor:"pointer",background:overdue?"rgba(248,113,113,0.07)":"rgba(255,255,255,0.02)",border:`1px solid ${overdue?"rgba(248,113,113,0.22)":BR}`}}>
+                }} className="rh" style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",borderRadius:8,cursor:"pointer",background:overdue?"rgba(248,113,113,0.07)":"rgba(var(--k-white-rgb),0.02)",border:`1px solid ${overdue?"rgba(248,113,113,0.22)":BR}`}}>
                   <span style={{width:8,height:8,borderRadius:3,background:t.color,flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{margin:0,fontSize:11,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.prospect.companyName}</p>
                     <p style={{margin:0,fontSize:9,color:t.color}}>{t.label}</p>
                   </div>
-                  <span style={{fontSize:9,fontWeight:800,color:overdue?"#f87171":WD,flexShrink:0,whiteSpace:"nowrap"}}>{label}</span>
+                  <span style={{fontSize:9,fontWeight:800,color:overdue?"var(--k-red)":WD,flexShrink:0,whiteSpace:"nowrap"}}>{label}</span>
                 </div>
               );
             })}
@@ -3636,7 +3655,7 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button onClick={goToday} className="bh" style={{...B.gold,fontSize:11,padding:"7px 16px",fontWeight:700}}>Today</button>
-            <div style={{display:"flex",background:"rgba(255,255,255,0.03)",border:`1px solid ${BR}`,borderRadius:9,padding:2}}>
+            <div style={{display:"flex",background:"rgba(var(--k-white-rgb),0.03)",border:`1px solid ${BR}`,borderRadius:9,padding:2}}>
               <span style={{fontSize:11,padding:"6px 14px",borderRadius:7,background:G,color:N,fontWeight:800}}>Month</span>
             </div>
           </div>
@@ -3654,7 +3673,7 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
           {gridWeeks.map((week,wi)=>(
             <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:wi<gridWeeks.length-1?`1px solid ${BR}`:"none"}}>
               {week.map((d,di)=>{
-                if(d===null)return <div key={di} style={{minHeight:118,background:"rgba(255,255,255,0.012)",borderRight:di<6?`1px solid ${BR}`:"none"}}/>;
+                if(d===null)return <div key={di} style={{minHeight:118,background:"rgba(var(--k-white-rgb),0.012)",borderRight:di<6?`1px solid ${BR}`:"none"}}/>;
                 const dateStr=fmtCellDate(viewYear,viewMonth,d);
                 const evts=visibleEvents(dateStr);
                 const isToday=dateStr===todayStr;
@@ -3693,10 +3712,10 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
 
         {/* Selected day details strip */}
         <div style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,overflow:"hidden"}}>
-          <div style={{padding:"11px 16px",borderBottom:`1px solid ${BR}`,background:"rgba(255,255,255,0.03)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+          <div style={{padding:"11px 16px",borderBottom:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
             <p style={{margin:0,fontSize:13,fontWeight:800,color:W}}>
               {new Date(selectedDay+"T00:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}
-              {selectedDay===todayStr&&<span style={{marginLeft:8,fontSize:9,padding:"2px 8px",background:"rgba(96,165,250,0.15)",color:"#60a5fa",borderRadius:20,fontWeight:700}}>TODAY</span>}
+              {selectedDay===todayStr&&<span style={{marginLeft:8,fontSize:9,padding:"2px 8px",background:"rgba(96,165,250,0.15)",color:"var(--k-blue)",borderRadius:20,fontWeight:700}}>TODAY</span>}
               <span style={{marginLeft:8,fontSize:11,color:WM,fontWeight:500}}>· {selectedEvents.length} action item{selectedEvents.length!==1?"s":""}</span>
             </p>
             {selectedEvents.some(e=>e.type.endsWith("_due"))&&(
@@ -3759,8 +3778,9 @@ function CalendarView({crmData,onViewProspect,onGoToEmail}){
 ════════════════════════════════════════════════════════════════ */
 const CHECKLIST=["Pull 10 new prospects using approved sources (AI Finder, Apollo, etc.)","Send Touch 1 emails every Monday","Send Touch 2 emails 7 days after T1 if no reply","ANY reply → Flag to Melissa IMMEDIATELY","Flag to Melissa before Touch 3 — wait for approval","After Touch 3 → update status to NURTURE/T3 SENT","Log Call Booked after Melissa handles reply"];
 
-function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,dbStatus,features,addAudit}){
-  const [experience,setExperience]=useState("prospectfinder");
+function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,dbStatus,features,addAudit}){
+  // One unified workspace by default. The old standalone shell stays reachable at ?classic=1 until the new one is accepted.
+  const [experience,setExperience]=useState(()=>{try{return new URLSearchParams(window.location.search).get("classic")==="1"?"classic":"prospectfinder";}catch{return "prospectfinder";}});
   const [view,setView]=useState("dashboard");
   const [search,setSearch]=useState("");
   const [sfilt,setSfilt]=useState("All");
@@ -3771,6 +3791,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const [cl,setCl]=useState(Array(CHECKLIST.length).fill(false));
   const [showImport,setShowImport]=useState(false);
   const [showFinder,setShowFinder]=useState(false);
+  const [qualifyReq,setQualifyReq]=useState(null); // asks the Prospects area to open a prospect in Qualification
   const [sortCol,setSortCol]=useState("companyName");
   // Pipeline (kanban) state. These MUST be top-level hooks: they used to be declared inside the
   // conditional pipeline view, which crashed the app (React error #310) the first time it opened.
@@ -3833,12 +3854,13 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const tot=crmData.length;
   const pipeSumm=STATUSES.map(s=>({s,c:crmData.filter(p=>p.currentStatus===s).length}));
   const vertBreak=VERTICALS.map(v=>({v,c:crmData.filter(p=>p.vertical===v).length})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
-  const mktBreak=MARKETS.map(m=>({m,c:crmData.filter(p=>p.market===m).length})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
-  const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"#c084fc"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"#60a5fa"}];
+  const mktBreak=(()=>{const c=new Map();crmData.forEach(p=>{if(p.market)c.set(p.market,(c.get(p.market)||0)+1);});return [...c.entries()].map(([m,n])=>({m,c:n})).sort((a,b)=>b.c-a.c).slice(0,12);})(); // markets come from the data (nationwide), not a fixed NC list
+  const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"var(--k-purple)"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"var(--k-blue)"}];
 
   const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
   const [sidebarExpanded,setSidebarExpanded]=useState(false);
   const SIDEBAR_W=sidebarExpanded?228:62;
+  const marketChoices=useMemo(()=>[...new Set(crmData.map(p=>p.market).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[crmData]);
 
   /* ── Prospects screen plumbing ───────────────────────────────── */
   // Shared (database) saved searches when the migration exists, else this browser only.
@@ -3880,22 +3902,8 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const exportRows=useCallback((rows,name)=>{exportToExcel(rows,name);t2(`Exported ${rows.length} prospect${rows.length===1?"":"s"}`);},[]);
 
 
-  return(
-    experience==="prospectfinder" ? (
-      <ProspectHome
-        crmData={crmData}
-        currentUser={currentUser}
-        savedApi={savedApi}
-        onOpenCRM={()=>{setView("table");setExperience("classic");}}
-        onOpenAdmin={onOpenAdmin}
-        onLogout={onLogout}
-        onAddProspects={async prospects=>{
-          const saved = await onImportProspects(prospects,"append");
-          t2(saved.length+" prospect"+(saved.length===1?"":"s")+" added to CRM!");
-          return saved;
-        }}
-        canEdit={role.canEdit}
-        onUpdateProspect={async ({id,changes})=>{
+  // Qualification saves (shared by the Prospects area and the workspace shell)
+  const qualifyUpdate=async ({id,changes})=>{
           if(!role.canEdit)throw new Error("Your CRM account has view-only permissions.");
           const original=crmData.find(p=>p.id===id);
           if(!original)throw new Error("This prospect could not be found. Refresh the CRM and retry.");
@@ -3908,7 +3916,404 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           if(addAudit){try{await addAudit(currentUser.username,"Qualified prospect: "+original.companyName);}catch{}}
           t2("Qualification saved to CRM.");
           return saved;
+        };
+
+  // The classic screens as reusable elements: rendered inside the unified workspace
+  // (and by the legacy shell, still reachable with ?classic=1 while the new one is accepted).
+  const classicViews=(<>
+      {view==="dashboard"&&(
+        <div style={{padding:"18px 16px",maxWidth:1400,margin:"0 auto",animation:"fadeUp 0.3s ease"}}>
+          <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:11,padding:"11px 18px",textAlign:"center",marginBottom:14}}>
+            <p style={{margin:0,fontSize:13,fontWeight:800,color:W,letterSpacing:"0.04em"}}>OUTREACH DASHBOARD — {sysSettings.orgName||"HR On Demand"} | SMB & Nonprofit Compliance-Vertical Tracker</p>
+          </div>
+          {(q2.length>0||q3.length>0)&&(
+            <div style={{display:"flex",gap:10,marginBottom:13,flexWrap:"wrap"}}>
+              {q2.length>0&&<div onClick={()=>setView("email")} style={{flex:1,minWidth:170,background:"rgba(139,92,246,0.08)",border:"2px solid rgba(139,92,246,0.35)",borderRadius:11,padding:"11px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:11}}>
+                <span style={{fontSize:22}}>⏰</span><div><p style={{margin:0,fontSize:13,fontWeight:800,color:"#a78bfa"}}>{q2.length} Touch 2 Due</p><p style={{margin:0,fontSize:11,color:"rgba(167,139,250,0.6)"}}>Follow-up overdue</p></div><span style={{marginLeft:"auto",fontSize:26,fontWeight:800,color:"#a78bfa"}}>{q2.length}</span>
+              </div>}
+              {q3.length>0&&<div onClick={()=>setView("email")} style={{flex:1,minWidth:170,background:"rgba(236,72,153,0.08)",border:"2px solid rgba(236,72,153,0.35)",borderRadius:11,padding:"11px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:11}}>
+                <span style={{fontSize:22}}>🔔</span><div><p style={{margin:0,fontSize:13,fontWeight:800,color:"var(--k-pink)"}}>{q3.length} Touch 3 Due</p><p style={{margin:0,fontSize:11,color:"rgba(244,114,182,0.6)"}}>Ready to send</p></div><span style={{marginLeft:"auto",fontSize:26,fontWeight:800,color:"var(--k-pink)"}}>{q3.length}</span>
+              </div>}
+            </div>
+          )}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:9,marginBottom:14}}>
+            {[{l:"Prospects",v:tot,c:W,i:"👥"},{l:"T1 Queue",v:q1.length,c:GL,i:"📤",cl:true},{l:"T2 Overdue",v:q2.length,c:"#a78bfa",i:"⏰",cl:true},{l:"T3 Due",v:q3.length,c:"var(--k-pink)",i:"🔔",cl:true},{l:"Replies",v:crmData.filter(p=>p.replyReceived).length,c:"var(--k-green)",i:"📩"},{l:"Converted",v:crmData.filter(p=>p.currentStatus==="Converted").length,c:"var(--k-blue)",i:"🎯"}].map(s=>(
+              <div key={s.l} onClick={s.cl?()=>setView("email"):undefined} style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,padding:"12px 12px 10px",position:"relative",overflow:"hidden",cursor:s.cl?"pointer":"default"}}>
+                <p style={{margin:0,fontSize:9.5,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.l}</p>
+                <p style={{margin:"5px 0 0",fontSize:26,fontWeight:900,color:s.v>0?s.c:"rgba(var(--k-white-rgb),0.12)",lineHeight:1}}>{s.v}</p>
+                <span style={{position:"absolute",top:10,right:10,fontSize:15,opacity:0.15}}>{s.i}</span>
+                <div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.c},transparent)`,opacity:0.4}}/>
+              </div>
+            ))}
+          </div>
+
+          {/* Org type breakdown */}
+          <div style={{display:"flex",gap:9,marginBottom:14,flexWrap:"wrap"}}>
+            {typeBreak.map(t=>(
+              <div key={t.l} style={{flex:1,minWidth:150,background:NL,border:`1px solid ${BR}`,borderRadius:11,padding:"12px 15px",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:36,height:36,borderRadius:10,background:`${t.col}22`,border:`1.5px solid ${t.col}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                  {t.l.includes("Nonprofit")?"🏛️":"🏢"}
+                </div>
+                <div><p style={{margin:0,fontSize:22,fontWeight:900,color:t.col,lineHeight:1}}>{t.c}</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>{t.l}</p></div>
+                <div style={{flex:1,height:4,background:"rgba(var(--k-white-rgb),0.06)",borderRadius:2,marginLeft:8}}>
+                  <div style={{height:"100%",background:t.col,borderRadius:2,width:tot>0?Math.round((t.c/tot)*100)+"%":"0%",transition:"width 0.5s ease"}}/>
+                </div>
+              </div>
+            ))}
+            <div style={{flex:1,minWidth:150,background:NL,border:`1px solid rgba(201,150,58,0.2)`,borderRadius:11,padding:"12px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onClick={()=>setView("finder")}>
+              <div style={{width:36,height:36,borderRadius:10,background:"rgba(201,150,58,0.15)",border:"1.5px solid rgba(201,150,58,0.4)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔍</div>
+              <div><p style={{margin:0,fontSize:13,fontWeight:700,color:GL}}>Find Prospects</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>AI · Apollo · Hunter · LinkedIn</p></div>
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1.1fr 1fr 0.6fr",gap:13}}>
+            {/* Pipeline + Checklist */}
+            <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:12,overflow:"hidden"}}>
+              <div style={{background:"rgba(201,150,58,0.08)",padding:"8px 13px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.08em"}}>◫ Pipeline Status</p></div>
+              {pipeSumm.map((s,i)=>(
+                <div key={s.s} style={{display:"grid",gridTemplateColumns:"1fr auto auto",alignItems:"center",padding:"5px 12px",background:i%2?"rgba(var(--k-white-rgb),0.018)":"transparent",borderBottom:"1px solid rgba(var(--k-white-rgb),0.03)"}}>
+                  <SBadge status={s.s} sm/><span style={{fontSize:14,fontWeight:800,color:W,textAlign:"center",padding:"0 10px",minWidth:22}}>{s.c}</span><span style={{fontSize:10,color:WD,minWidth:34,textAlign:"right"}}>{pct(s.c,tot)}</span>
+                </div>
+              ))}
+              <div style={{background:"rgba(201,150,58,0.06)",borderTop:"1px solid rgba(201,150,58,0.12)",padding:"7px 12px",marginTop:4}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.07em"}}>⚠️ VA Weekly Checklist</p></div>
+              {CHECKLIST.map((item,i)=>(
+                <div key={i} onClick={()=>{const c=[...cl];c[i]=!c[i];setCl(c);}} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid rgba(var(--k-white-rgb),0.03)"}}>
+                  <div style={{width:13,height:13,borderRadius:4,border:`2px solid ${cl[i]?G:BR}`,background:cl[i]?G:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"all 0.2s"}}>{cl[i]&&<span style={{fontSize:8,color:N,fontWeight:900}}>✓</span>}</div>
+                  <span style={{fontSize:11,color:cl[i]?WD:WM,textDecoration:cl[i]?"line-through":"none",lineHeight:1.4}}>{item}</span>
+                </div>
+              ))}
+            </div>
+            {/* Vertical */}
+            <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:12,overflow:"hidden",alignSelf:"start"}}>
+              <div style={{background:"rgba(201,150,58,0.08)",padding:"8px 13px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.08em"}}>📊 Vertical Breakdown</p></div>
+              {vertBreak.length===0&&<p style={{color:WD,fontSize:12,textAlign:"center",padding:18,margin:0}}>No data yet</p>}
+              {vertBreak.slice(0,8).map((r,i)=>(
+                <div key={r.v} style={{padding:"6px 12px",borderBottom:"1px solid rgba(var(--k-white-rgb),0.03)",background:i%2?"rgba(var(--k-white-rgb),0.016)":"transparent"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:10,color:WM,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:8}}>{r.v}</span><span style={{fontSize:13,fontWeight:800,color:W,flexShrink:0}}>{r.c}</span></div>
+                  <div style={{height:2,background:"rgba(var(--k-white-rgb),0.06)",borderRadius:1}}><div style={{height:"100%",background:`linear-gradient(90deg,${G},${GL})`,borderRadius:1,width:pct(r.c,vertBreak[0]?.c||1),transition:"width 0.4s ease"}}/></div>
+                </div>
+              ))}
+            </div>
+            {/* Market */}
+            <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:12,overflow:"hidden",alignSelf:"start"}}>
+              <div style={{background:"rgba(201,150,58,0.08)",padding:"8px 13px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.08em"}}>📍 Market</p></div>
+              {mktBreak.length===0&&<p style={{color:WD,fontSize:12,textAlign:"center",padding:18,margin:0}}>Set markets</p>}
+              {mktBreak.map((r,i)=>(
+                <div key={r.m} style={{padding:"6px 12px",borderBottom:"1px solid rgba(var(--k-white-rgb),0.03)",background:i%2?"rgba(var(--k-white-rgb),0.016)":"transparent"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:WM}}>{r.m}</span><span style={{fontSize:13,fontWeight:800,color:W}}>{r.c}</span></div>
+                  <div style={{height:2,background:"rgba(var(--k-white-rgb),0.06)",borderRadius:1}}><div style={{height:"100%",background:"rgba(96,165,250,0.6)",borderRadius:1,width:Math.round((r.c/(mktBreak[0]?.c||1))*100)+"%",transition:"width 0.4s ease"}}/></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PROSPECT FINDER */}
+      {view==="finder"&&(
+        <div style={{padding:"18px 16px",maxWidth:1100,margin:"0 auto",animation:"fadeUp 0.3s ease"}}>
+          <div style={{background:NL,border:"1px solid rgba(201,150,58,0.2)",borderRadius:13,padding:"18px 20px",marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+              <div style={{flex:1}}>
+                <h2 style={{margin:"0 0 6px",fontSize:18,fontWeight:900,color:W}}>🔍 AI Prospect Finder</h2>
+                <p style={{margin:0,fontSize:12,color:WM}}>Search across multiple AI engines and data sources to discover SMB and nonprofit prospects for HR compliance outreach. Select your sources, enter search criteria, and add results directly to your prospect list.</p>
+              </div>
+              <button onClick={()=>setShowFinder(true)} className="bh" style={{...B.gold,display:"flex",gap:8,alignItems:"center",padding:"11px 20px",fontSize:13,flexShrink:0}}>
+                🔍 Open Search Engine
+              </button>
+            </div>
+          </div>
+
+          {/* Source cards */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:11,marginBottom:18}}>
+            {AI_SOURCES.map(s=>(
+              <div key={s.id} style={{background:NL,border:`1px solid ${s.color}33`,borderRadius:12,padding:"14px 15px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <span style={{fontSize:22}}>{s.icon}</span>
+                  <div><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>{s.label}</p><p style={{margin:0,fontSize:10,color:`${s.color}cc`}}>
+                    {["apollo","hunter"].includes(s.id)?"Requires API key":"Free to use in finder"}
+                  </p></div>
+                </div>
+                <p style={{margin:0,fontSize:11,color:WM,lineHeight:1.4}}>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:12,padding:16}}>
+            <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:"var(--k-blue)"}}>💡 How the Prospect Finder Works</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
+              {[{i:"1️⃣",t:"Select sources",d:"Choose which AI or database tools to search (Claude, ChatGPT, Apollo, etc.)"},
+                {i:"2️⃣",t:"Enter criteria",d:"Type keywords, select vertical, market, org type, and org size filters"},
+                {i:"3️⃣",t:"Review results",d:"Browse prospects with contact info, fit rationale, and pain points"},
+                {i:"4️⃣",t:"Add to CRM",d:"Select any or all results and add them directly to your prospect list"},
+              ].map(s=>(
+                <div key={s.i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{s.i}</span>
+                  <div><p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>{s.t}</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>{s.d}</p></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FILTER BAR */}
+      {view==="pipeline"&&(
+        <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"9px 16px",position:"sticky",top:82,zIndex:50,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{position:"relative",flex:1,minWidth:170}}>
+            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:12,color:WD}}>🔍</span>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, contact, email, notes…" style={{...inp(),paddingLeft:28}}/>
+          </div>
+          <select value={sfilt} onChange={e=>setSfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:130,cursor:"pointer"}}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
+          <select value={vfilt} onChange={e=>setVfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:140,cursor:"pointer"}}><option value="All">All Verticals</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select>
+          <select value={mfilt} onChange={e=>setMfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:110,cursor:"pointer"}}><option value="All">All Markets</option>{marketChoices.map(m=><option key={m}>{m}</option>)}</select>
+          <span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{filtered.length}/{tot}</span>
+          {(search||sfilt!=="All"||vfilt!=="All"||mfilt!=="All")&&<button onClick={()=>{setSearch("");setSfilt("All");setVfilt("All");setMfilt("All");}} style={{...B.ghost,fontSize:10,padding:"5px 9px",color:"var(--k-red)",borderColor:"rgba(248,113,113,0.3)"}}>✕ Clear</button>}
+        </div>
+      )}
+
+      {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
+      {view==="table"&&(
+        <ProspectsView qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
+          sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
+          onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
+          onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
+      )}
+
+      {/* PIPELINE — Bitrix24-style kanban */}
+      {view==="pipeline"&&(()=>{
+        // Pipeline uses only the active outreach stages (not DNR/Converted
+        // which are terminal states better viewed in the table).
+        const PIPE_STAGES=[
+          {s:"NEW",           label:"New & Unassigned",  accent:"#DBA843", bg:"rgba(201,150,58,0.18)"},
+          {s:"T1 SENT",       label:"Touch 1 Sent",      accent:"var(--k-blue)", bg:"rgba(96,165,250,0.18)"},
+          {s:"T2 SENT",       label:"Touch 2 Sent",      accent:"#a78bfa", bg:"rgba(139,92,246,0.18)"},
+          {s:"REVIEW",        label:"Under Review",      accent:"#fde047", bg:"rgba(251,191,36,0.18)"},
+          {s:"TOUCH 3 GATE",  label:"Touch 3 Gate",      accent:"var(--k-pink)", bg:"rgba(236,72,153,0.18)"},
+          {s:"NURTURE/T3 SENT",label:"Nurtured / T3",   accent:"#2dd4bf", bg:"rgba(20,184,166,0.18)"},
+          {s:"Replied",       label:"Replied ✦",         accent:"var(--k-green)", bg:"rgba(52,211,153,0.18)"},
+          {s:"Converted",     label:"Converted 🎉",      accent:"var(--k-purple)", bg:"rgba(168,85,247,0.18)"},
+        ];
+        // (pipeSearch / dragOver / dragging are declared at the top of CRMApp — hooks can't live inside this conditional block)
+
+        const pipeFiltered=filtered.filter(p=>!pipeSearch||(p.companyName+p.contactName+p.vertical+p.cityMarket).toLowerCase().includes(pipeSearch.toLowerCase()));
+
+        const totalProspects=pipeFiltered.length;
+        const totalReplied=pipeFiltered.filter(p=>p.replyReceived).length;
+        const totalFlagged=pipeFiltered.filter(p=>p.flagToMelissa).length;
+
+        const handleDragStart=(e,p)=>{
+          setDragging(p);
+          e.dataTransfer.effectAllowed="move";
+        };
+        const handleDrop=(e,stage)=>{
+          e.preventDefault();
+          if(dragging&&dragging.currentStatus!==stage){
+            onSaveProspect({...dragging,currentStatus:stage});
+          }
+          setDragging(null);setDragOver(null);
+        };
+
+        return(
+          <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 90px)",overflow:"hidden"}}>
+
+            {/* Board toolbar */}
+            <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"10px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0,flexWrap:"wrap"}}>
+              <h2 style={{margin:0,fontSize:15,fontWeight:800,color:W}}>Pipeline</h2>
+              {/* Search */}
+              <div style={{position:"relative",flex:"0 0 260px"}}>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:WD}}>🔍</span>
+                <input value={pipeSearch} onChange={e=>setPipeSearch(e.target.value)} placeholder="Search pipeline…" style={{...inp(),paddingLeft:30,fontSize:11,padding:"6px 10px 6px 30px",height:32}}/>
+              </div>
+              {/* Summary pills */}
+              <div style={{display:"flex",gap:7,alignItems:"center"}}>
+                <span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(201,150,58,0.12)",color:GL,border:"1px solid rgba(201,150,58,0.25)",fontWeight:700}}>{totalProspects} prospects</span>
+                {totalReplied>0&&<span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(52,211,153,0.1)",color:"var(--k-green)",border:"1px solid rgba(52,211,153,0.25)",fontWeight:700}}>📩 {totalReplied} replied</span>}
+                {totalFlagged>0&&<span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(244,114,182,0.1)",color:"var(--k-pink)",border:"1px solid rgba(244,114,182,0.25)",fontWeight:700}}>🚩 {totalFlagged} flagged</span>}
+              </div>
+              <div style={{marginLeft:"auto",display:"flex",gap:7}}>
+                {canEdit&&<button onClick={()=>setPDlg({...EMPTY_P,id:uid()})} className="bh" style={{...B.gold,fontSize:11,padding:"7px 14px",display:"flex",alignItems:"center",gap:5}}>＋ Add Prospect</button>}
+              </div>
+            </div>
+
+            {/* Kanban board */}
+            <div style={{flex:1,overflowX:"auto",overflowY:"hidden",padding:"14px 16px"}}>
+              <div style={{display:"flex",gap:11,height:"100%",minWidth:PIPE_STAGES.length*220}}>
+                {PIPE_STAGES.map(({s,label,accent,bg})=>{
+                  const cards=pipeFiltered.filter(p=>p.currentStatus===s);
+                  const avgPriority=cards.length?Math.round(cards.reduce((a,p)=>a+(parseInt(p.priorityScore)||0),0)/cards.length):0;
+                  const isDragTarget=dragOver===s;
+
+                  return(
+                    <div key={s}
+                      onDragOver={e=>{e.preventDefault();setDragOver(s);}}
+                      onDragLeave={()=>setDragOver(null)}
+                      onDrop={e=>handleDrop(e,s)}
+                      style={{
+                        flex:"0 0 214px",display:"flex",flexDirection:"column",
+                        background:isDragTarget?"rgba(var(--k-white-rgb),0.04)":"rgba(var(--k-white-rgb),0.02)",
+                        border:`1.5px solid ${isDragTarget?accent:"rgba(var(--k-white-rgb),0.06)"}`,
+                        borderRadius:13,overflow:"hidden",
+                        transition:"border-color 0.15s, background 0.15s",
+                      }}>
+
+                      {/* Column header — colored accent bar */}
+                      <div style={{background:bg,borderBottom:`1px solid ${accent}44`,padding:"10px 12px 8px"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                          <span style={{fontSize:10,fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{label}</span>
+                          <span style={{fontSize:12,fontWeight:900,color:W,background:"rgba(0,0,0,0.25)",borderRadius:20,padding:"1px 8px",marginLeft:5,flexShrink:0}}>{cards.length}</span>
+                        </div>
+                        {/* Column metric strip — avg priority + flagged count */}
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{fontSize:9,color:"rgba(var(--k-white-rgb),0.5)"}}>{cards.length} prospect{cards.length!==1?"s":""}</span>
+                          {avgPriority>0&&<span style={{fontSize:9,color:accent,fontWeight:700}}>avg ⭐{avgPriority}</span>}
+                          {cards.filter(p=>p.flagToMelissa).length>0&&<span style={{fontSize:9,color:"var(--k-pink)",fontWeight:700}}>🚩{cards.filter(p=>p.flagToMelissa).length}</span>}
+                        </div>
+                      </div>
+
+                      {/* Cards scroll area */}
+                      <div style={{flex:1,overflowY:"auto",padding:"8px 8px 4px"}}>
+                        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                          {cards.map(p=>{
+                            const sc2=SC[p.currentStatus]||{};
+                            const lastTouchDate=p.t3SendDate||p.t2SendDate||p.t1SendDate||null;
+                            const touchCount=[p.t1SendDate,p.t2SendDate,p.t3SendDate].filter(Boolean).length;
+                            return(
+                              <div key={p.id}
+                                draggable
+                                onDragStart={e=>handleDragStart(e,p)}
+                                onDragEnd={()=>{setDragging(null);setDragOver(null);}}
+                                onClick={()=>setPDlg(p)}
+                                className="rh"
+                                style={{
+                                  background:NL,border:`1px solid rgba(var(--k-white-rgb),0.07)`,
+                                  borderLeft:`3px solid ${accent}`,
+                                  borderRadius:9,padding:"10px 11px",cursor:"pointer",
+                                  opacity:dragging?.id===p.id?0.5:1,
+                                  transition:"opacity 0.15s",
+                                }}>
+
+                                {/* Company name */}
+                                <p style={{margin:"0 0 3px",fontSize:12,fontWeight:800,color:W,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p>
+
+                                {/* Contact + title */}
+                                {p.contactName&&<p style={{margin:"0 0 5px",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>👤 {p.contactName}{p.title?` · ${p.title}`:""}</p>}
+
+                                {/* Vertical + market pills */}
+                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+                                  {p.vertical&&<span style={{fontSize:8,padding:"2px 7px",background:`${accent}15`,color:accent,borderRadius:20,border:`1px solid ${accent}30`,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.vertical}</span>}
+                                  {p.cityMarket&&<span style={{fontSize:8,padding:"2px 7px",background:"rgba(var(--k-white-rgb),0.04)",color:WD,borderRadius:20,border:`1px solid rgba(var(--k-white-rgb),0.08)`}}>{p.cityMarket}</span>}
+                                </div>
+
+                                {/* Dates + touches */}
+                                {lastTouchDate&&(
+                                  <p style={{margin:"0 0 5px",fontSize:9,color:WD}}>Last touch: {lastTouchDate}</p>
+                                )}
+
+                                {/* Bottom row: flags + priority + touch count */}
+                                <div style={{display:"flex",alignItems:"center",gap:5,marginTop:2}}>
+                                  {p.flagToMelissa&&<span style={{fontSize:10}}>🚩</span>}
+                                  {p.replyReceived&&<span style={{fontSize:10}}>📩</span>}
+                                  {p.doNotRespond&&<span style={{fontSize:10}}>🚫</span>}
+                                  {p.t3Approved&&<span style={{fontSize:10}}>✅</span>}
+                                  {touchCount>0&&<span style={{fontSize:8,padding:"1px 6px",background:"rgba(var(--k-white-rgb),0.05)",color:WD,borderRadius:20,border:`1px solid rgba(var(--k-white-rgb),0.08)`}}>T{touchCount}</span>}
+                                  {p.priorityScore&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:800,color:parseInt(p.priorityScore)>=8?"var(--k-pink)":parseInt(p.priorityScore)>=5?GL:WD}}>⭐{p.priorityScore}</span>}
+                                </div>
+
+                                {/* Priority bar */}
+                                {p.priorityScore&&(
+                                  <div style={{marginTop:6,height:2,background:"rgba(var(--k-white-rgb),0.06)",borderRadius:1}}>
+                                    <div style={{height:"100%",background:parseInt(p.priorityScore)>=8?"var(--k-pink)":parseInt(p.priorityScore)>=5?accent:WD,borderRadius:1,width:Math.min(parseInt(p.priorityScore)*10,100)+"%",transition:"width 0.3s"}}/>
+                                  </div>
+                                )}
+
+                                {/* Email + org size footer */}
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,paddingTop:5,borderTop:"1px solid rgba(var(--k-white-rgb),0.05)"}}>
+                                  <span style={{fontSize:9,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{p.emailPhone||"No email"}</span>
+                                  {p.orgSize&&<span style={{fontSize:8,color:WD,flexShrink:0,marginLeft:4}}>{p.orgSize}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Empty state */}
+                          {cards.length===0&&(
+                            <div style={{textAlign:"center",padding:"20px 10px",color:WD}}>
+                              <p style={{fontSize:22,margin:"0 0 4px"}}>○</p>
+                              <p style={{fontSize:10,margin:0}}>No prospects</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Add here button */}
+                      {canEdit&&(
+                        <div style={{padding:"6px 8px",borderTop:"1px solid rgba(var(--k-white-rgb),0.04)",flexShrink:0}}>
+                          <button
+                            onClick={()=>setPDlg({...EMPTY_P,id:uid(),currentStatus:s})}
+                            style={{...B.ghost,fontSize:10,padding:"6px",width:"100%",color:WD,borderStyle:"dashed",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                            <span style={{fontSize:14,lineHeight:1}}>+</span> Quick add
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* CALENDAR */}
+      {view==="calendar"&&(
+        <CalendarView crmData={crmData} onViewProspect={p=>setPDlg(p)} onGoToEmail={()=>setView("email")}/>
+      )}
+
+      {/* EMAIL HUB */}
+      {view==="email"&&(
+        <EmailHub
+          crmData={crmData}
+          setCrmData={setCrmData}
+          q1={q1} q2={q2} q3={q3}
+          totalDue={totalDue}
+          qStatus={qStatus}
+          canEdit={canEdit}
+          currentUser={currentUser}
+          sysSettings={sysSettings}
+          onViewProspect={p=>setPDlg(p)}
+          t2={t2}
+        />
+      )}
+  </>);
+  const classicModals=(<>
+      {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
+      {showFinder&&<NationwideFinder baseUrl={SUPABASE_URL} requestHeaders={authHeaders} crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
+      {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
+  </>);
+
+  return(
+    experience==="prospectfinder" ? (
+    <>
+      <ClassicStyles/>
+      <ProspectHome
+        crmData={crmData}
+        classicViews={classicViews}
+        onSelectClassic={setView}
+        renderAdmin={renderAdmin}
+        onOpenQualification={id=>setQualifyReq({id,n:Date.now()})}
+        currentUser={currentUser}
+        savedApi={savedApi}
+        onOpenCRM={()=>setView("table")}
+        onOpenAdmin={onOpenAdmin}
+        onLogout={onLogout}
+        onAddProspects={async prospects=>{
+          const saved = await onImportProspects(prospects,"append");
+          t2(saved.length+" prospect"+(saved.length===1?"":"s")+" added to CRM!");
+          return saved;
         }}
+        canEdit={role.canEdit}
+        onUpdateProspect={qualifyUpdate}
         baseUrl={SUPABASE_URL}
         requestHeaders={authHeaders}
         dbStatus={dbStatus}
@@ -3944,6 +4349,9 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           return row;
         }}
       />
+      {toast&&<Toast msg={toast.msg} type={toast.t}/>}
+      <div className="pf-classic-modals">{classicModals}</div>
+    </>
     ) : (
     <div style={{background:N,minHeight:"100vh",fontFamily:"'Segoe UI',system-ui,sans-serif",color:W,display:"flex"}}>
       <GS/>
@@ -3972,7 +4380,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         {/* Logo */}
         <div style={{
           padding: sidebarExpanded?"14px 14px 12px":"10px 8px",
-          borderBottom:"1px solid rgba(255,255,255,0.06)",
+          borderBottom:"1px solid rgba(var(--k-white-rgb),0.06)",
           display:"flex",alignItems:"center",justifyContent:"center",
           transition:"padding 0.22s",minHeight:88,
         }}>
@@ -4021,15 +4429,15 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
                 }}>
                 <span style={{fontSize:17,width:22,textAlign:"center",flexShrink:0}}>{n.l}</span>
                 {sidebarExpanded&&<span style={{flex:1,fontSize:12,transition:"opacity 0.15s",opacity:sidebarExpanded?1:0}}>{n.full}</span>}
-                {n.alert&&sidebarExpanded&&<span style={{width:8,height:8,background:"#f472b6",borderRadius:"50%",flexShrink:0}}/>}
-                {n.alert&&!sidebarExpanded&&<span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"#f472b6",borderRadius:"50%",border:"1.5px solid #0B1426"}}/>}
+                {n.alert&&sidebarExpanded&&<span style={{width:8,height:8,background:"var(--k-pink)",borderRadius:"50%",flexShrink:0}}/>}
+                {n.alert&&!sidebarExpanded&&<span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"var(--k-pink)",borderRadius:"50%",border:"1.5px solid #0B1426"}}/>}
               </button>
             );
           })}
         </nav>
 
         {/* Quick actions — show labels only when expanded */}
-        <div style={{padding:"8px",display:"flex",flexDirection:"column",gap:5,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+        <div style={{padding:"8px",display:"flex",flexDirection:"column",gap:5,borderTop:"1px solid rgba(var(--k-white-rgb),0.06)"}}>
           {canEdit&&(
             <button onClick={()=>setShowImport(true)} className="bh"
               title={!sidebarExpanded?"Import":""}
@@ -4052,13 +4460,13 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
         </div>
 
         {/* User account footer */}
-        <div style={{padding:"10px 8px",borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+        <div style={{padding:"10px 8px",borderTop:"1px solid rgba(var(--k-white-rgb),0.06)"}}>
           <div style={{
             display:"flex",alignItems:"center",
             gap: sidebarExpanded?8:0,
             justifyContent: sidebarExpanded?"flex-start":"center",
             padding: sidebarExpanded?"7px 8px":"7px 4px",
-            background:"rgba(255,255,255,0.04)",
+            background:"rgba(var(--k-white-rgb),0.04)",
             border:`1px solid ${BR}`,borderRadius:9,marginBottom:6,
             overflow:"hidden",transition:"all 0.2s",
           }}>
@@ -4100,377 +4508,12 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
 
 
       {/* DASHBOARD */}
-      {view==="dashboard"&&(
-        <div style={{padding:"18px 16px",maxWidth:1400,margin:"0 auto",animation:"fadeUp 0.3s ease"}}>
-          <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:11,padding:"11px 18px",textAlign:"center",marginBottom:14}}>
-            <p style={{margin:0,fontSize:13,fontWeight:800,color:W,letterSpacing:"0.04em"}}>OUTREACH DASHBOARD — {sysSettings.orgName||"HR On Demand"} | SMB & Nonprofit Compliance-Vertical Tracker</p>
-          </div>
-          {(q2.length>0||q3.length>0)&&(
-            <div style={{display:"flex",gap:10,marginBottom:13,flexWrap:"wrap"}}>
-              {q2.length>0&&<div onClick={()=>setView("email")} style={{flex:1,minWidth:170,background:"rgba(139,92,246,0.08)",border:"2px solid rgba(139,92,246,0.35)",borderRadius:11,padding:"11px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:11}}>
-                <span style={{fontSize:22}}>⏰</span><div><p style={{margin:0,fontSize:13,fontWeight:800,color:"#a78bfa"}}>{q2.length} Touch 2 Due</p><p style={{margin:0,fontSize:11,color:"rgba(167,139,250,0.6)"}}>Follow-up overdue</p></div><span style={{marginLeft:"auto",fontSize:26,fontWeight:800,color:"#a78bfa"}}>{q2.length}</span>
-              </div>}
-              {q3.length>0&&<div onClick={()=>setView("email")} style={{flex:1,minWidth:170,background:"rgba(236,72,153,0.08)",border:"2px solid rgba(236,72,153,0.35)",borderRadius:11,padding:"11px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:11}}>
-                <span style={{fontSize:22}}>🔔</span><div><p style={{margin:0,fontSize:13,fontWeight:800,color:"#f472b6"}}>{q3.length} Touch 3 Due</p><p style={{margin:0,fontSize:11,color:"rgba(244,114,182,0.6)"}}>Ready to send</p></div><span style={{marginLeft:"auto",fontSize:26,fontWeight:800,color:"#f472b6"}}>{q3.length}</span>
-              </div>}
-            </div>
-          )}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:9,marginBottom:14}}>
-            {[{l:"Prospects",v:tot,c:W,i:"👥"},{l:"T1 Queue",v:q1.length,c:GL,i:"📤",cl:true},{l:"T2 Overdue",v:q2.length,c:"#a78bfa",i:"⏰",cl:true},{l:"T3 Due",v:q3.length,c:"#f472b6",i:"🔔",cl:true},{l:"Replies",v:crmData.filter(p=>p.replyReceived).length,c:"#34d399",i:"📩"},{l:"Converted",v:crmData.filter(p=>p.currentStatus==="Converted").length,c:"#60a5fa",i:"🎯"}].map(s=>(
-              <div key={s.l} onClick={s.cl?()=>setView("email"):undefined} style={{background:NL,border:`1px solid ${BR}`,borderRadius:11,padding:"12px 12px 10px",position:"relative",overflow:"hidden",cursor:s.cl?"pointer":"default"}}>
-                <p style={{margin:0,fontSize:9.5,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.l}</p>
-                <p style={{margin:"5px 0 0",fontSize:26,fontWeight:900,color:s.v>0?s.c:"rgba(255,255,255,0.12)",lineHeight:1}}>{s.v}</p>
-                <span style={{position:"absolute",top:10,right:10,fontSize:15,opacity:0.15}}>{s.i}</span>
-                <div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${s.c},transparent)`,opacity:0.4}}/>
-              </div>
-            ))}
-          </div>
-
-          {/* Org type breakdown */}
-          <div style={{display:"flex",gap:9,marginBottom:14,flexWrap:"wrap"}}>
-            {typeBreak.map(t=>(
-              <div key={t.l} style={{flex:1,minWidth:150,background:NL,border:`1px solid ${BR}`,borderRadius:11,padding:"12px 15px",display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:36,height:36,borderRadius:10,background:`${t.col}22`,border:`1.5px solid ${t.col}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
-                  {t.l.includes("Nonprofit")?"🏛️":"🏢"}
-                </div>
-                <div><p style={{margin:0,fontSize:22,fontWeight:900,color:t.col,lineHeight:1}}>{t.c}</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>{t.l}</p></div>
-                <div style={{flex:1,height:4,background:"rgba(255,255,255,0.06)",borderRadius:2,marginLeft:8}}>
-                  <div style={{height:"100%",background:t.col,borderRadius:2,width:tot>0?Math.round((t.c/tot)*100)+"%":"0%",transition:"width 0.5s ease"}}/>
-                </div>
-              </div>
-            ))}
-            <div style={{flex:1,minWidth:150,background:NL,border:`1px solid rgba(201,150,58,0.2)`,borderRadius:11,padding:"12px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onClick={()=>setView("finder")}>
-              <div style={{width:36,height:36,borderRadius:10,background:"rgba(201,150,58,0.15)",border:"1.5px solid rgba(201,150,58,0.4)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔍</div>
-              <div><p style={{margin:0,fontSize:13,fontWeight:700,color:GL}}>Find Prospects</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>AI · Apollo · Hunter · LinkedIn</p></div>
-            </div>
-          </div>
-
-          <div style={{display:"grid",gridTemplateColumns:"1.1fr 1fr 0.6fr",gap:13}}>
-            {/* Pipeline + Checklist */}
-            <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:12,overflow:"hidden"}}>
-              <div style={{background:"rgba(201,150,58,0.08)",padding:"8px 13px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.08em"}}>◫ Pipeline Status</p></div>
-              {pipeSumm.map((s,i)=>(
-                <div key={s.s} style={{display:"grid",gridTemplateColumns:"1fr auto auto",alignItems:"center",padding:"5px 12px",background:i%2?"rgba(255,255,255,0.018)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
-                  <SBadge status={s.s} sm/><span style={{fontSize:14,fontWeight:800,color:W,textAlign:"center",padding:"0 10px",minWidth:22}}>{s.c}</span><span style={{fontSize:10,color:WD,minWidth:34,textAlign:"right"}}>{pct(s.c,tot)}</span>
-                </div>
-              ))}
-              <div style={{background:"rgba(201,150,58,0.06)",borderTop:"1px solid rgba(201,150,58,0.12)",padding:"7px 12px",marginTop:4}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.07em"}}>⚠️ VA Weekly Checklist</p></div>
-              {CHECKLIST.map((item,i)=>(
-                <div key={i} onClick={()=>{const c=[...cl];c[i]=!c[i];setCl(c);}} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
-                  <div style={{width:13,height:13,borderRadius:4,border:`2px solid ${cl[i]?G:BR}`,background:cl[i]?G:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"all 0.2s"}}>{cl[i]&&<span style={{fontSize:8,color:N,fontWeight:900}}>✓</span>}</div>
-                  <span style={{fontSize:11,color:cl[i]?WD:WM,textDecoration:cl[i]?"line-through":"none",lineHeight:1.4}}>{item}</span>
-                </div>
-              ))}
-            </div>
-            {/* Vertical */}
-            <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:12,overflow:"hidden",alignSelf:"start"}}>
-              <div style={{background:"rgba(201,150,58,0.08)",padding:"8px 13px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.08em"}}>📊 Vertical Breakdown</p></div>
-              {vertBreak.length===0&&<p style={{color:WD,fontSize:12,textAlign:"center",padding:18,margin:0}}>No data yet</p>}
-              {vertBreak.slice(0,8).map((r,i)=>(
-                <div key={r.v} style={{padding:"6px 12px",borderBottom:"1px solid rgba(255,255,255,0.03)",background:i%2?"rgba(255,255,255,0.016)":"transparent"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:10,color:WM,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:8}}>{r.v}</span><span style={{fontSize:13,fontWeight:800,color:W,flexShrink:0}}>{r.c}</span></div>
-                  <div style={{height:2,background:"rgba(255,255,255,0.06)",borderRadius:1}}><div style={{height:"100%",background:`linear-gradient(90deg,${G},${GL})`,borderRadius:1,width:pct(r.c,vertBreak[0]?.c||1),transition:"width 0.4s ease"}}/></div>
-                </div>
-              ))}
-            </div>
-            {/* Market */}
-            <div style={{background:NL,border:"1px solid rgba(201,150,58,0.18)",borderRadius:12,overflow:"hidden",alignSelf:"start"}}>
-              <div style={{background:"rgba(201,150,58,0.08)",padding:"8px 13px",borderBottom:"1px solid rgba(201,150,58,0.12)"}}><p style={{margin:0,fontSize:10,fontWeight:800,color:GL,textTransform:"uppercase",letterSpacing:"0.08em"}}>📍 Market</p></div>
-              {mktBreak.length===0&&<p style={{color:WD,fontSize:12,textAlign:"center",padding:18,margin:0}}>Set markets</p>}
-              {mktBreak.map((r,i)=>(
-                <div key={r.m} style={{padding:"6px 12px",borderBottom:"1px solid rgba(255,255,255,0.03)",background:i%2?"rgba(255,255,255,0.016)":"transparent"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:WM}}>{r.m}</span><span style={{fontSize:13,fontWeight:800,color:W}}>{r.c}</span></div>
-                  <div style={{height:2,background:"rgba(255,255,255,0.06)",borderRadius:1}}><div style={{height:"100%",background:"rgba(96,165,250,0.6)",borderRadius:1,width:Math.round((r.c/(mktBreak[0]?.c||1))*100)+"%",transition:"width 0.4s ease"}}/></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PROSPECT FINDER */}
-      {view==="finder"&&(
-        <div style={{padding:"18px 16px",maxWidth:1100,margin:"0 auto",animation:"fadeUp 0.3s ease"}}>
-          <div style={{background:NL,border:"1px solid rgba(201,150,58,0.2)",borderRadius:13,padding:"18px 20px",marginBottom:18}}>
-            <div style={{display:"flex",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
-              <div style={{flex:1}}>
-                <h2 style={{margin:"0 0 6px",fontSize:18,fontWeight:900,color:W}}>🔍 AI Prospect Finder</h2>
-                <p style={{margin:0,fontSize:12,color:WM}}>Search across multiple AI engines and data sources to discover SMB and nonprofit prospects for HR compliance outreach. Select your sources, enter search criteria, and add results directly to your prospect list.</p>
-              </div>
-              <button onClick={()=>setShowFinder(true)} className="bh" style={{...B.gold,display:"flex",gap:8,alignItems:"center",padding:"11px 20px",fontSize:13,flexShrink:0}}>
-                🔍 Open Search Engine
-              </button>
-            </div>
-          </div>
-
-          {/* Source cards */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:11,marginBottom:18}}>
-            {AI_SOURCES.map(s=>(
-              <div key={s.id} style={{background:NL,border:`1px solid ${s.color}33`,borderRadius:12,padding:"14px 15px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <span style={{fontSize:22}}>{s.icon}</span>
-                  <div><p style={{margin:0,fontSize:12,fontWeight:700,color:W}}>{s.label}</p><p style={{margin:0,fontSize:10,color:`${s.color}cc`}}>
-                    {["apollo","hunter"].includes(s.id)?"Requires API key":"Free to use in finder"}
-                  </p></div>
-                </div>
-                <p style={{margin:0,fontSize:11,color:WM,lineHeight:1.4}}>{s.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <div style={{background:"rgba(96,165,250,0.06)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:12,padding:16}}>
-            <p style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:"#60a5fa"}}>💡 How the Prospect Finder Works</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
-              {[{i:"1️⃣",t:"Select sources",d:"Choose which AI or database tools to search (Claude, ChatGPT, Apollo, etc.)"},
-                {i:"2️⃣",t:"Enter criteria",d:"Type keywords, select vertical, market, org type, and org size filters"},
-                {i:"3️⃣",t:"Review results",d:"Browse prospects with contact info, fit rationale, and pain points"},
-                {i:"4️⃣",t:"Add to CRM",d:"Select any or all results and add them directly to your prospect list"},
-              ].map(s=>(
-                <div key={s.i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{s.i}</span>
-                  <div><p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>{s.t}</p><p style={{margin:"2px 0 0",fontSize:11,color:WM}}>{s.d}</p></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FILTER BAR */}
-      {view==="pipeline"&&(
-        <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"9px 16px",position:"sticky",top:82,zIndex:50,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <div style={{position:"relative",flex:1,minWidth:170}}>
-            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:12,color:WD}}>🔍</span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, contact, email, notes…" style={{...inp(),paddingLeft:28}}/>
-          </div>
-          <select value={sfilt} onChange={e=>setSfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:130,cursor:"pointer"}}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
-          <select value={vfilt} onChange={e=>setVfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:140,cursor:"pointer"}}><option value="All">All Verticals</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select>
-          <select value={mfilt} onChange={e=>setMfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:110,cursor:"pointer"}}><option value="All">All Markets</option>{MARKETS.map(m=><option key={m}>{m}</option>)}</select>
-          <span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{filtered.length}/{tot}</span>
-          {(search||sfilt!=="All"||vfilt!=="All"||mfilt!=="All")&&<button onClick={()=>{setSearch("");setSfilt("All");setVfilt("All");setMfilt("All");}} style={{...B.ghost,fontSize:10,padding:"5px 9px",color:"#f87171",borderColor:"rgba(248,113,113,0.3)"}}>✕ Clear</button>}
-        </div>
-      )}
-
-      {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
-      {view==="table"&&(
-        <ProspectsView crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
-          sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
-          onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
-          onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
-      )}
-
-      {/* PIPELINE — Bitrix24-style kanban */}
-      {view==="pipeline"&&(()=>{
-        // Pipeline uses only the active outreach stages (not DNR/Converted
-        // which are terminal states better viewed in the table).
-        const PIPE_STAGES=[
-          {s:"NEW",           label:"New & Unassigned",  accent:"#DBA843", bg:"rgba(201,150,58,0.18)"},
-          {s:"T1 SENT",       label:"Touch 1 Sent",      accent:"#60a5fa", bg:"rgba(96,165,250,0.18)"},
-          {s:"T2 SENT",       label:"Touch 2 Sent",      accent:"#a78bfa", bg:"rgba(139,92,246,0.18)"},
-          {s:"REVIEW",        label:"Under Review",      accent:"#fde047", bg:"rgba(251,191,36,0.18)"},
-          {s:"TOUCH 3 GATE",  label:"Touch 3 Gate",      accent:"#f472b6", bg:"rgba(236,72,153,0.18)"},
-          {s:"NURTURE/T3 SENT",label:"Nurtured / T3",   accent:"#2dd4bf", bg:"rgba(20,184,166,0.18)"},
-          {s:"Replied",       label:"Replied ✦",         accent:"#34d399", bg:"rgba(52,211,153,0.18)"},
-          {s:"Converted",     label:"Converted 🎉",      accent:"#c084fc", bg:"rgba(168,85,247,0.18)"},
-        ];
-        // (pipeSearch / dragOver / dragging are declared at the top of CRMApp — hooks can't live inside this conditional block)
-
-        const pipeFiltered=filtered.filter(p=>!pipeSearch||(p.companyName+p.contactName+p.vertical+p.cityMarket).toLowerCase().includes(pipeSearch.toLowerCase()));
-
-        const totalProspects=pipeFiltered.length;
-        const totalReplied=pipeFiltered.filter(p=>p.replyReceived).length;
-        const totalFlagged=pipeFiltered.filter(p=>p.flagToMelissa).length;
-
-        const handleDragStart=(e,p)=>{
-          setDragging(p);
-          e.dataTransfer.effectAllowed="move";
-        };
-        const handleDrop=(e,stage)=>{
-          e.preventDefault();
-          if(dragging&&dragging.currentStatus!==stage){
-            onSaveProspect({...dragging,currentStatus:stage});
-          }
-          setDragging(null);setDragOver(null);
-        };
-
-        return(
-          <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 90px)",overflow:"hidden"}}>
-
-            {/* Board toolbar */}
-            <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"10px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0,flexWrap:"wrap"}}>
-              <h2 style={{margin:0,fontSize:15,fontWeight:800,color:W}}>Pipeline</h2>
-              {/* Search */}
-              <div style={{position:"relative",flex:"0 0 260px"}}>
-                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:WD}}>🔍</span>
-                <input value={pipeSearch} onChange={e=>setPipeSearch(e.target.value)} placeholder="Search pipeline…" style={{...inp(),paddingLeft:30,fontSize:11,padding:"6px 10px 6px 30px",height:32}}/>
-              </div>
-              {/* Summary pills */}
-              <div style={{display:"flex",gap:7,alignItems:"center"}}>
-                <span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(201,150,58,0.12)",color:GL,border:"1px solid rgba(201,150,58,0.25)",fontWeight:700}}>{totalProspects} prospects</span>
-                {totalReplied>0&&<span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.25)",fontWeight:700}}>📩 {totalReplied} replied</span>}
-                {totalFlagged>0&&<span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(244,114,182,0.1)",color:"#f472b6",border:"1px solid rgba(244,114,182,0.25)",fontWeight:700}}>🚩 {totalFlagged} flagged</span>}
-              </div>
-              <div style={{marginLeft:"auto",display:"flex",gap:7}}>
-                {canEdit&&<button onClick={()=>setPDlg({...EMPTY_P,id:uid()})} className="bh" style={{...B.gold,fontSize:11,padding:"7px 14px",display:"flex",alignItems:"center",gap:5}}>＋ Add Prospect</button>}
-              </div>
-            </div>
-
-            {/* Kanban board */}
-            <div style={{flex:1,overflowX:"auto",overflowY:"hidden",padding:"14px 16px"}}>
-              <div style={{display:"flex",gap:11,height:"100%",minWidth:PIPE_STAGES.length*220}}>
-                {PIPE_STAGES.map(({s,label,accent,bg})=>{
-                  const cards=pipeFiltered.filter(p=>p.currentStatus===s);
-                  const avgPriority=cards.length?Math.round(cards.reduce((a,p)=>a+(parseInt(p.priorityScore)||0),0)/cards.length):0;
-                  const isDragTarget=dragOver===s;
-
-                  return(
-                    <div key={s}
-                      onDragOver={e=>{e.preventDefault();setDragOver(s);}}
-                      onDragLeave={()=>setDragOver(null)}
-                      onDrop={e=>handleDrop(e,s)}
-                      style={{
-                        flex:"0 0 214px",display:"flex",flexDirection:"column",
-                        background:isDragTarget?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.02)",
-                        border:`1.5px solid ${isDragTarget?accent:"rgba(255,255,255,0.06)"}`,
-                        borderRadius:13,overflow:"hidden",
-                        transition:"border-color 0.15s, background 0.15s",
-                      }}>
-
-                      {/* Column header — colored accent bar */}
-                      <div style={{background:bg,borderBottom:`1px solid ${accent}44`,padding:"10px 12px 8px"}}>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
-                          <span style={{fontSize:10,fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{label}</span>
-                          <span style={{fontSize:12,fontWeight:900,color:W,background:"rgba(0,0,0,0.25)",borderRadius:20,padding:"1px 8px",marginLeft:5,flexShrink:0}}>{cards.length}</span>
-                        </div>
-                        {/* Column metric strip — avg priority + flagged count */}
-                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                          <span style={{fontSize:9,color:"rgba(255,255,255,0.5)"}}>{cards.length} prospect{cards.length!==1?"s":""}</span>
-                          {avgPriority>0&&<span style={{fontSize:9,color:accent,fontWeight:700}}>avg ⭐{avgPriority}</span>}
-                          {cards.filter(p=>p.flagToMelissa).length>0&&<span style={{fontSize:9,color:"#f472b6",fontWeight:700}}>🚩{cards.filter(p=>p.flagToMelissa).length}</span>}
-                        </div>
-                      </div>
-
-                      {/* Cards scroll area */}
-                      <div style={{flex:1,overflowY:"auto",padding:"8px 8px 4px"}}>
-                        <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                          {cards.map(p=>{
-                            const sc2=SC[p.currentStatus]||{};
-                            const lastTouchDate=p.t3SendDate||p.t2SendDate||p.t1SendDate||null;
-                            const touchCount=[p.t1SendDate,p.t2SendDate,p.t3SendDate].filter(Boolean).length;
-                            return(
-                              <div key={p.id}
-                                draggable
-                                onDragStart={e=>handleDragStart(e,p)}
-                                onDragEnd={()=>{setDragging(null);setDragOver(null);}}
-                                onClick={()=>setPDlg(p)}
-                                className="rh"
-                                style={{
-                                  background:NL,border:`1px solid rgba(255,255,255,0.07)`,
-                                  borderLeft:`3px solid ${accent}`,
-                                  borderRadius:9,padding:"10px 11px",cursor:"pointer",
-                                  opacity:dragging?.id===p.id?0.5:1,
-                                  transition:"opacity 0.15s",
-                                }}>
-
-                                {/* Company name */}
-                                <p style={{margin:"0 0 3px",fontSize:12,fontWeight:800,color:W,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p>
-
-                                {/* Contact + title */}
-                                {p.contactName&&<p style={{margin:"0 0 5px",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>👤 {p.contactName}{p.title?` · ${p.title}`:""}</p>}
-
-                                {/* Vertical + market pills */}
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                                  {p.vertical&&<span style={{fontSize:8,padding:"2px 7px",background:`${accent}15`,color:accent,borderRadius:20,border:`1px solid ${accent}30`,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.vertical}</span>}
-                                  {p.cityMarket&&<span style={{fontSize:8,padding:"2px 7px",background:"rgba(255,255,255,0.04)",color:WD,borderRadius:20,border:`1px solid rgba(255,255,255,0.08)`}}>{p.cityMarket}</span>}
-                                </div>
-
-                                {/* Dates + touches */}
-                                {lastTouchDate&&(
-                                  <p style={{margin:"0 0 5px",fontSize:9,color:WD}}>Last touch: {lastTouchDate}</p>
-                                )}
-
-                                {/* Bottom row: flags + priority + touch count */}
-                                <div style={{display:"flex",alignItems:"center",gap:5,marginTop:2}}>
-                                  {p.flagToMelissa&&<span style={{fontSize:10}}>🚩</span>}
-                                  {p.replyReceived&&<span style={{fontSize:10}}>📩</span>}
-                                  {p.doNotRespond&&<span style={{fontSize:10}}>🚫</span>}
-                                  {p.t3Approved&&<span style={{fontSize:10}}>✅</span>}
-                                  {touchCount>0&&<span style={{fontSize:8,padding:"1px 6px",background:"rgba(255,255,255,0.05)",color:WD,borderRadius:20,border:`1px solid rgba(255,255,255,0.08)`}}>T{touchCount}</span>}
-                                  {p.priorityScore&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:800,color:parseInt(p.priorityScore)>=8?"#f472b6":parseInt(p.priorityScore)>=5?GL:WD}}>⭐{p.priorityScore}</span>}
-                                </div>
-
-                                {/* Priority bar */}
-                                {p.priorityScore&&(
-                                  <div style={{marginTop:6,height:2,background:"rgba(255,255,255,0.06)",borderRadius:1}}>
-                                    <div style={{height:"100%",background:parseInt(p.priorityScore)>=8?"#f472b6":parseInt(p.priorityScore)>=5?accent:WD,borderRadius:1,width:Math.min(parseInt(p.priorityScore)*10,100)+"%",transition:"width 0.3s"}}/>
-                                  </div>
-                                )}
-
-                                {/* Email + org size footer */}
-                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,paddingTop:5,borderTop:"1px solid rgba(255,255,255,0.05)"}}>
-                                  <span style={{fontSize:9,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{p.emailPhone||"No email"}</span>
-                                  {p.orgSize&&<span style={{fontSize:8,color:WD,flexShrink:0,marginLeft:4}}>{p.orgSize}</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* Empty state */}
-                          {cards.length===0&&(
-                            <div style={{textAlign:"center",padding:"20px 10px",color:WD}}>
-                              <p style={{fontSize:22,margin:"0 0 4px"}}>○</p>
-                              <p style={{fontSize:10,margin:0}}>No prospects</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Add here button */}
-                      {canEdit&&(
-                        <div style={{padding:"6px 8px",borderTop:"1px solid rgba(255,255,255,0.04)",flexShrink:0}}>
-                          <button
-                            onClick={()=>setPDlg({...EMPTY_P,id:uid(),currentStatus:s})}
-                            style={{...B.ghost,fontSize:10,padding:"6px",width:"100%",color:WD,borderStyle:"dashed",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                            <span style={{fontSize:14,lineHeight:1}}>+</span> Quick add
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* CALENDAR */}
-      {view==="calendar"&&(
-        <CalendarView crmData={crmData} onViewProspect={p=>setPDlg(p)} onGoToEmail={()=>setView("email")}/>
-      )}
-
-      {/* EMAIL HUB */}
-      {view==="email"&&(
-        <EmailHub
-          crmData={crmData}
-          setCrmData={setCrmData}
-          q1={q1} q2={q2} q3={q3}
-          totalDue={totalDue}
-          qStatus={qStatus}
-          canEdit={canEdit}
-          currentUser={currentUser}
-          sysSettings={sysSettings}
-          onViewProspect={p=>setPDlg(p)}
-          t2={t2}
-        />
-      )}
+      {classicViews}
       </div>
       {/* ═══ end main content column ═══ */}
 
       {/* MODALS */}
-      {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async (rows,mode)=>{await onImportProspects(rows,mode);setShowImport(false);t2(`${rows.length} prospects ${mode==="replace"?"imported":"added"}!`);}}/>}
-      {showFinder&&<NationwideFinder baseUrl={SUPABASE_URL} requestHeaders={authHeaders} crmData={crmData} savedApi={savedApi} hunterVerify={hunterVerify} currentUser={currentUser} features={features} onClose={()=>setShowFinder(false)} onAddProspects={async prospects=>{await onImportProspects(prospects,"append");t2(`${prospects.length} prospect${prospects.length!==1?"s":""} added to CRM!`);}} existingIds={existingIds} sysSettings={sysSettings}/>}
-      {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"||!crmData.find(p=>p.id===pDlg?.id)} onSave={saveP} onDelete={canEdit&&role.canDelete?deleteP:null} onClose={()=>setPDlg(null)} canDelete={canEdit&&role.canDelete}/>}
+      {classicModals}
     </div>
     )
   );
@@ -4788,18 +4831,18 @@ export default function App(){
     if (dbStatus === "connecting") return null;
     if (dbStatus === "connected") return null;
     if (dbStatus === "local") return (
-      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"#fbbf24",cursor:"pointer",maxWidth:460}}
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:20,fontSize:10,color:"var(--k-amber)",cursor:"pointer",maxWidth:460}}
         title="Open browser console (F12) to see debug info. Check that VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set in Vercel → Settings → Environment Variables, then redeploy."
         onClick={()=>alert("Demo Mode active — Supabase not connected.\n\nTo connect:\n1. Go to Vercel → your project → Settings → Environment Variables\n2. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set\n3. Trigger a new deployment (Deployments → Redeploy)\n4. Open browser console (F12) and look for [NC CRM] log messages")}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24",flexShrink:0}}/>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"var(--k-amber)",flexShrink:0}}/>
         <span>⚠️ Demo Mode — data resets on refresh. <u>Click for fix instructions.</u></span>
       </div>
     );
     if (dbStatus === "error") return (
-      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"#f87171",cursor:"pointer",maxWidth:520}}
+      <div style={{position:"fixed",bottom:12,left:12,zIndex:9998,display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:20,fontSize:10,color:"var(--k-red)",cursor:"pointer",maxWidth:520}}
         title={dbError}
         onClick={()=>alert(`Supabase DB Error:\n\n${dbError}\n\nCheck browser console (F12) for [NC CRM] log messages.`)}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171",flexShrink:0}}/>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"var(--k-red)",flexShrink:0}}/>
         <span>❌ DB Error — {(dbError||"").slice(0,60)}{(dbError||"").length>60?"…":""} · <u>Click for details</u></span>
       </div>
     );
@@ -4808,9 +4851,36 @@ export default function App(){
 
   if (screen === "login") return (
     <>
+      <div style={{position:"fixed",top:14,right:16,zIndex:60}}><ThemeToggle/></div>
       <LoginScreen users={users} onLogin={login}/>
       <DbBanner/>
     </>
+  );
+
+  const renderAdminPanel=(onBack)=>(
+      <AdminPanel
+        currentUser={currentUser}
+        users={users}
+        setUsers={(u) => {
+          if (typeof u === "function") setUsers(u);
+          else setUsers(u);
+        }}
+        onSaveUser={handleSaveUser}
+        onDeleteUser={handleDeleteUser}
+        crmData={crmData}
+        setCrmData={setCrmData}
+        onSaveProspect={handleSaveProspect}
+        onDeleteProspect={handleDeleteProspect}
+        onImportProspects={handleImportProspects}
+        sysSettings={sysSettings}
+        setSysSettings={setSysSettings}
+        onSaveSettings={handleSaveSettings}
+        auditLog={auditLog}
+        addAudit={addAudit}
+        onBack={onBack}
+        onLogout={logout}
+        dbStatus={dbStatus}
+      />
   );
 
   if (screen === "admin" && currentUser && ROLES[currentUser.role].canAdmin) return (
@@ -4848,6 +4918,7 @@ export default function App(){
         currentUser={currentUser}
         onLogout={logout}
         onOpenAdmin={openAdmin}
+        renderAdmin={renderAdminPanel}
         crmData={crmData}
         setCrmData={setCrmData}
         onSaveProspect={handleSaveProspect}
@@ -4862,5 +4933,5 @@ export default function App(){
     </>
   );
 
-  return <><LoginScreen users={users} onLogin={login}/><DbBanner/></>;
+  return <><div style={{position:"fixed",top:14,right:16,zIndex:60}}><ThemeToggle/></div><LoginScreen users={users} onLogin={login}/><DbBanner/></>;
 }

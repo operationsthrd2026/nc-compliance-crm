@@ -3,16 +3,16 @@ import {qualityRows,qualitySummary,filterQualityRows,qualityReviewCsv,QUALITY_IS
 import {localDateKey} from "../../lib/outreachPlanning.js";
 import {safeWebsite} from "../../lib/contactDetails.js";
 
-const card={background:"#fff",border:"1px solid #E5EAF4",borderRadius:15,padding:19,minWidth:0};
-const muted="#75849B",ink="#223250",purple="#6656DC";
-const field={background:"#fff",border:"1px solid #DAE2F0",color:ink,borderRadius:10,padding:"10px 11px",fontSize:12,width:"100%"};
-const label={display:"grid",gap:6,fontSize:11,fontWeight:760,color:"#536482"};
+const card={background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E5EAF4)",borderRadius:15,padding:19,minWidth:0};
+const muted="var(--pf-bd-75849B)",ink="var(--pf-bd-223250)",purple="var(--pf-bd-6656DC)";
+const field={background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-DAE2F0)",color:ink,borderRadius:10,padding:"10px 11px",fontSize:12,width:"100%"};
+const label={display:"grid",gap:6,fontSize:11,fontWeight:760,color:"var(--pf-tx-536482)"};
 const button={border:0,background:purple,color:"#fff",borderRadius:10,padding:"11px 15px",fontWeight:760,fontSize:12,cursor:"pointer"};
-const buttonOutline={...button,background:"#fff",border:"1px solid #E3E8F2",color:"#4E5F79"};
+const buttonOutline={...button,background:"var(--pf-bg-FFFFFF)",border:"1px solid var(--pf-bd-E3E8F2)",color:"var(--pf-tx-4E5F79)"};
 const pill=(tone="medium")=>({
  fontSize:10,fontWeight:780,padding:"5px 8px",borderRadius:20,whiteSpace:"nowrap",
- color:tone==="high"?"#B5464F":tone==="low"?"#526483":"#6653B3",
- background:tone==="high"?"#FFF0F0":tone==="low"?"#EFF2F8":"#F2EEFF"
+ color:tone==="high"?"var(--pf-tx-B5464F)":tone==="low"?"var(--pf-tx-526483)":"var(--pf-tx-6653B3)",
+ background:tone==="high"?"var(--pf-bg-FFF0F0)":tone==="low"?"var(--pf-bg-EFF2F8)":"var(--pf-bg-F2EEFF)"
 });
 function exportCsv(text){
  const url=URL.createObjectURL(new Blob([text],{type:"text/csv;charset=utf-8"}));
@@ -22,7 +22,7 @@ function exportCsv(text){
 }
 function Metric({name,value,note,active,onClick}){
  return <button type="button" onClick={onClick}
-  style={{...card,cursor:"pointer",textAlign:"left",borderColor:active?"#8D80EE":"#E5EAF4",background:active?"#F8F6FF":"white"}}>
+  style={{...card,cursor:"pointer",textAlign:"left",borderColor:active?"var(--pf-bd-8D80EE)":"var(--pf-bd-E5EAF4)",background:active?"var(--pf-bg-F8F6FF)":"white"}}>
   <span style={{display:"block",fontSize:10,fontWeight:780,color:muted}}>{name}</span>
   <strong style={{display:"block",fontSize:25,margin:"8px 0 5px",color:ink}}>{value.toLocaleString()}</strong>
   <small style={{color:muted,lineHeight:1.5}}>{note}</small>
@@ -37,9 +37,9 @@ function ReviewDetail({row,onClose,onOpenProspect}){
     <div style={{fontSize:11,color:muted}}>{row.category} · {p.cityMarket||p.market||"Unknown location"}</div></div>
    <button type="button" aria-label="Close review details" onClick={onClose} style={{...buttonOutline,padding:"5px 10px"}}>×</button>
   </div>
-  <div style={{background:"#F8F6FF",borderRadius:11,padding:13}}>
-   <div style={{fontSize:10,color:"#6755A9",fontWeight:800}}>RECOMMENDED MANUAL NEXT STEP</div>
-   <p style={{fontSize:12,color:"#3D316D",fontWeight:750,lineHeight:1.6,margin:"7px 0 0"}}>{row.nextAction}</p>
+  <div style={{background:"var(--pf-bg-F8F6FF)",borderRadius:11,padding:13}}>
+   <div style={{fontSize:10,color:"var(--pf-tx-6755A9)",fontWeight:800}}>RECOMMENDED MANUAL NEXT STEP</div>
+   <p style={{fontSize:12,color:"var(--pf-tx-3D316D)",fontWeight:750,lineHeight:1.6,margin:"7px 0 0"}}>{row.nextAction}</p>
   </div>
   <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
    <span style={pill(row.highIssues?"high":"medium")}>{row.issues.length} possible quality issue(s)</span>
@@ -47,9 +47,9 @@ function ReviewDetail({row,onClose,onOpenProspect}){
    {row.fitScore!==null&&<span style={pill("medium")}>Fit {row.fitScore}/100</span>}
   </div>
   <section><h3 style={{fontSize:13,color:ink,margin:"0 0 9px"}}>Items to review</h3>
-   {row.issues.length?row.issues.map(issue=><div key={issue.id} style={{borderTop:"1px solid #EEF1F7",padding:"12px 0"}}>
+   {row.issues.length?row.issues.map(issue=><div key={issue.id} style={{borderTop:"1px solid var(--pf-bd-EEF1F7)",padding:"12px 0"}}>
     <div style={{display:"flex",alignItems:"start",justifyContent:"space-between",gap:8}}><strong style={{fontSize:11,color:ink}}>{issue.label}</strong><span style={pill(issue.severity)}>{issue.severity}</span></div>
-    <p style={{fontSize:11,color:"#586983",lineHeight:1.6,margin:"7px 0 0"}}>{issue.action}</p>
+    <p style={{fontSize:11,color:"var(--pf-tx-586983)",lineHeight:1.6,margin:"7px 0 0"}}>{issue.action}</p>
     {issue.extra&&<p style={{fontSize:10,color:muted,overflowWrap:"anywhere",lineHeight:1.5,margin:"6px 0 0"}}>{issue.extra}</p>}
    </div>):<p style={{fontSize:12,color:muted}}>No issues flagged by the automatic review. This does not establish accuracy or verification.</p>}
   </section>
@@ -62,8 +62,8 @@ function ReviewDetail({row,onClose,onOpenProspect}){
   </section>
   {row.fitScore!==null&&<section><h3 style={{fontSize:13,color:ink,margin:"0 0 7px"}}>Why this fit score?</h3>
    <p style={{fontSize:11,color:muted,lineHeight:1.6,margin:"0 0 7px"}}>Existing CRM HR-service fit rubric. This is not a conversion probability or a verified contact ranking.</p>
-   {row.fitFactors.map(f=><div key={f.key} style={{borderTop:"1px solid #F0F2F8",padding:"8px 0",fontSize:11}}>
-     <div style={{display:"flex",justifyContent:"space-between",gap:9,color:"#3A4B67"}}><strong>{f.label}</strong><strong>{f.points}/{f.max}</strong></div>
+   {row.fitFactors.map(f=><div key={f.key} style={{borderTop:"1px solid var(--pf-bd-F0F2F8)",padding:"8px 0",fontSize:11}}>
+     <div style={{display:"flex",justifyContent:"space-between",gap:9,color:"var(--pf-tx-3A4B67)"}}><strong>{f.label}</strong><strong>{f.points}/{f.max}</strong></div>
      <div style={{fontSize:10,color:muted,lineHeight:1.45,marginTop:3}}>{f.note}</div>
     </div>)}
   </section>}
@@ -111,7 +111,7 @@ export default function QualityReviewWorkspace({crmData=[],onOpenProspect,onOpen
   <section aria-label="Quality review summary" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(165px,1fr))",gap:11,margin:"22px 0 18px"}}>
    {metrics.map(([name,value,note])=><Metric key={name} name={name} value={value} note={note} active={quick===name} onClick={()=>chooseQuick(name)}/>)}
   </section>
-  <div role="group" aria-label="Review mode" style={{display:"inline-flex",gap:7,padding:5,borderRadius:13,background:"#EAECF7",margin:"2px 0 18px"}}>
+  <div role="group" aria-label="Review mode" style={{display:"inline-flex",gap:7,padding:5,borderRadius:13,background:"var(--pf-bg-EAECF7)",margin:"2px 0 18px"}}>
    <button type="button" style={{...(mode==="quality"?button:buttonOutline),boxShadow:"none"}} onClick={()=>{setMode("quality");setPage(0);}}>Quality review</button>
    <button type="button" style={{...(mode==="priority"?button:buttonOutline),boxShadow:"none"}} onClick={()=>{setMode("priority");setPage(0);}}>Lead priority shortlist</button>
   </div>
@@ -126,7 +126,7 @@ export default function QualityReviewWorkspace({crmData=[],onOpenProspect,onOpen
     </select></label>
    </div>
    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap",marginTop:15}}>
-    <label style={{fontSize:11,color:"#60718A",display:"inline-flex",alignItems:"center",gap:7}}>
+    <label style={{fontSize:11,color:"var(--pf-tx-60718A)",display:"inline-flex",alignItems:"center",gap:7}}>
      <input type="checkbox" checked={includeClosed} onChange={e=>{setIncludeClosed(e.target.checked);setQuick("All active");setPage(0);}}/> Include converted and do-not-contact records
     </label>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -146,7 +146,7 @@ export default function QualityReviewWorkspace({crmData=[],onOpenProspect,onOpen
     </div>
     <table className="pf-recent" style={{minWidth:700,width:"100%"}}>
      <thead><tr><th>ORGANIZATION</th><th>{mode==="quality"?"QUALITY FLAGS":"FIT SCORE"}</th><th>CONTACT</th><th>SUGGESTED MANUAL ACTION</th><th>REVIEW</th></tr></thead>
-     <tbody>{visible.map(row=><tr key={String(row.id)} style={{background:selectedId===row.id?"#F6F3FF":"transparent"}}>
+     <tbody>{visible.map(row=><tr key={String(row.id)} style={{background:selectedId===row.id?"var(--pf-bg-F6F3FF)":"transparent"}}>
       <td style={{minWidth:150}}>
        <strong className="pf-name" style={{overflowWrap:"anywhere"}}>{row.prospect.companyName||"Unnamed organization"}</strong>
        <div style={{fontSize:10,color:muted,marginTop:5}}>{row.category} · {row.prospect.currentStatus||"NEW"}</div>
@@ -154,13 +154,13 @@ export default function QualityReviewWorkspace({crmData=[],onOpenProspect,onOpen
       </td>
       <td>{mode==="quality"?<>
        {row.highIssues>0&&<span style={pill("high")}>{row.highIssues} high</span>}
-       <div style={{fontSize:11,marginTop:5,color:"#485871"}}>{row.issues.length} item(s) to review</div>
+       <div style={{fontSize:11,marginTop:5,color:"var(--pf-tx-485871)"}}>{row.issues.length} item(s) to review</div>
        {row.duplicate&&<div style={{marginTop:6}}><span style={pill(row.duplicate.level)}>Possible duplicate</span></div>}
       </>:<><strong style={{fontSize:19,color:ink}}>{row.fitScore??"—"}</strong>{row.fitScore!==null&&<span style={{fontSize:10,color:muted}}>/100</span>}
        <div style={{fontSize:10,color:muted,marginTop:4}}>Rubric: {row.fitTier}</div>
       </>}</td>
       <td><span style={pill(row.readiness==="Do not contact"?"high":"low")}>{row.readiness}</span></td>
-      <td style={{fontSize:11,color:"#485B78",lineHeight:1.5,maxWidth:230}}>{row.nextAction}</td>
+      <td style={{fontSize:11,color:"var(--pf-tx-485B78)",lineHeight:1.5,maxWidth:230}}>{row.nextAction}</td>
       <td><button type="button" className="pf-link" onClick={()=>setSelectedId(row.id)}>Inspect →</button></td>
      </tr>)}</tbody>
     </table>

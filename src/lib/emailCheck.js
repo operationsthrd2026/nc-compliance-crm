@@ -96,10 +96,10 @@ export async function mapPool(items, limit, fn, onProgress){
 }
 
 export const EMAIL_STATUS = {
-  valid:   { label: "Valid",     color: "#34d399" },
-  risky:   { label: "Risky",     color: "#fbbf24" },
-  invalid: { label: "Invalid",   color: "#f87171" },
-  unknown: { label: "Unknown",   color: "rgba(240,244,255,0.45)" },
-  "":      { label: "Unchecked", color: "rgba(240,244,255,0.28)" },
+  valid:   { label: "Valid",     color: "var(--k-green)" },
+  risky:   { label: "Risky",     color: "var(--k-amber)" },
+  invalid: { label: "Invalid",   color: "var(--k-red)" },
+  unknown: { label: "Unknown",   color: "var(--k-text2)" },
+  "":      { label: "Unchecked", color: "var(--k-text3)" },
 };
 export const _clearDnsCache = () => domainCache.clear();

@@ -11,7 +11,7 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-export default function ProspectDrawer({ prospect: p, scoreResult, canEdit, tagsEnabled, tagList, dupMatches, onClose, onPatch, onEdit, onVerify, verifying, lastCheck, hunterOn, onOpenOther }){
+export default function ProspectDrawer({ onQualify, prospect: p, scoreResult, canEdit, tagsEnabled, tagList, dupMatches, onClose, onPatch, onEdit, onVerify, verifying, lastCheck, hunterOn, onOpenOther }){
   const [notes, setNotes] = useState(p.outreachNotes || "");
   useEffect(() => { setNotes(p.outreachNotes || ""); }, [p.id, p.outreachNotes]);
   const emails = extractEmails(p.emailPhone), phones = extractPhones(p.emailPhone);
@@ -24,7 +24,7 @@ export default function ProspectDrawer({ prospect: p, scoreResult, canEdit, tags
         <StatusPill status={p.currentStatus} /><ScoreBadge result={scoreResult} size={30} showLabel />
         {tagsEnabled && emails.length > 0 && <EmailBadge status={p.emailStatus || ""} confirmed={lastCheck?.confirmed} />}
       </div>}
-      footer={<><Btn variant="primary" icon="✎" onClick={() => onEdit(p)}>{canEdit ? "Open full editor" : "View all fields"}</Btn><Btn onClick={onClose}>Close</Btn></>}>
+      footer={<>{onQualify && <Btn variant="gold-ghost" icon="✔" onClick={() => onQualify(p)}>Qualify</Btn>}<Btn variant="primary" icon="✎" onClick={() => onEdit(p)}>{canEdit ? "Open full editor" : "View all fields"}</Btn><Btn onClick={onClose}>Close</Btn></>}>
 
       <div className="nc-card" style={{ padding: "12px 14px", marginBottom: 20, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <div><div style={{ font: "600 10.5px var(--nc-font)", color: "var(--nc-text-3)" }}>NEXT STEP</div>

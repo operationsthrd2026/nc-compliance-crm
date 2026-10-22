@@ -4,21 +4,21 @@
    (Pure JS — no React — so it is also usable from unit tests.)
 ════════════════════════════════════════════════════════════════ */
 
-export const N="#0B1426";
-export const NL="#111E38";
-export const NC="#162040";
-export const NB="#1C2B50";
+export const N="var(--k-bg)";
+export const NL="var(--k-surface)";
+export const NC="var(--k-surface2)";
+export const NB="var(--k-surface3)";
 export const G="#C9963A";
-export const GL="#DBA843";
-export const W="#F0F4FF";
-export const WM="rgba(240,244,255,0.55)";
-export const WD="rgba(240,244,255,0.28)";
-export const BR="rgba(240,244,255,0.08)";
+export const GL="var(--k-gold-l)";
+export const W="var(--k-text)";
+export const WM="var(--k-text2)";
+export const WD="var(--k-text3)";
+export const BR="var(--k-border)";
 export const ROLES={
   superadmin:{label:"Super Admin",color:"#e879f9",bg:"rgba(232,121,249,0.13)",icon:"🔱",canAdmin:true,canManageUsers:true,canDelete:true,canEditSystem:true,canEdit:true},
   admin:     {label:"Admin",      color:"#DBA843",bg:"rgba(219,168,67,0.13)", icon:"⚡",canAdmin:true,canManageUsers:true,canDelete:true,canEditSystem:true,canEdit:true},
-  manager:   {label:"Manager",   color:"#34d399",bg:"rgba(52,211,153,0.13)", icon:"📋",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:true},
-  user:      {label:"User",      color:"#60a5fa",bg:"rgba(96,165,250,0.13)", icon:"👤",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:true},
+  manager:   {label:"Manager",   color:"var(--k-green)",bg:"rgba(52,211,153,0.13)", icon:"📋",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:true},
+  user:      {label:"User",      color:"var(--k-blue)",bg:"rgba(96,165,250,0.13)", icon:"👤",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:true},
   viewer:    {label:"Viewer",    color:"#94a3b8",bg:"rgba(148,163,184,0.1)", icon:"👁",canAdmin:false,canManageUsers:false,canDelete:false,canEditSystem:false,canEdit:false},
 };
 export const STATUSES=["NEW","T1 SENT","T2 SENT","REVIEW","TOUCH 3 GATE","NURTURE/T3 SENT","Replied","Do Not Respond","Converted"];
@@ -28,16 +28,16 @@ export const ORG_SIZES=["1-9","10-49","50-99","100-249","250-499","500+"];
 export const SRC_TYPES=["Apollo.io","Hunter.io","LinkedIn","Nonprofit Directory","Charity Navigator","GuideStar / Candid","Google Maps","IRS 990 Database","State Registry","Referral","Website","Claude AI","ChatGPT","Gemini","Other AI","Manual Research"];
 export const SC={
   "NEW":            {bg:"rgba(201,150,58,0.15)",c:"#DBA843",b:"rgba(201,150,58,0.4)"},
-  "T1 SENT":        {bg:"rgba(96,165,250,0.12)",c:"#60a5fa",b:"rgba(96,165,250,0.35)"},
+  "T1 SENT":        {bg:"rgba(96,165,250,0.12)",c:"var(--k-blue)",b:"rgba(96,165,250,0.35)"},
   "T2 SENT":        {bg:"rgba(139,92,246,0.12)",c:"#a78bfa",b:"rgba(139,92,246,0.35)"},
   "REVIEW":         {bg:"rgba(251,191,36,0.12)",c:"#fde047",b:"rgba(251,191,36,0.35)"},
-  "TOUCH 3 GATE":   {bg:"rgba(236,72,153,0.12)",c:"#f472b6",b:"rgba(236,72,153,0.35)"},
+  "TOUCH 3 GATE":   {bg:"rgba(236,72,153,0.12)",c:"var(--k-pink)",b:"rgba(236,72,153,0.35)"},
   "NURTURE/T3 SENT":{bg:"rgba(20,184,166,0.12)",c:"#2dd4bf",b:"rgba(20,184,166,0.35)"},
-  "Replied":        {bg:"rgba(52,211,153,0.12)",c:"#34d399",b:"rgba(52,211,153,0.35)"},
-  "Do Not Respond": {bg:"rgba(239,68,68,0.12)", c:"#f87171",b:"rgba(239,68,68,0.35)"},
-  "Converted":      {bg:"rgba(168,85,247,0.12)",c:"#c084fc",b:"rgba(168,85,247,0.35)"},
+  "Replied":        {bg:"rgba(52,211,153,0.12)",c:"var(--k-green)",b:"rgba(52,211,153,0.35)"},
+  "Do Not Respond": {bg:"rgba(239,68,68,0.12)", c:"var(--k-red)",b:"rgba(239,68,68,0.35)"},
+  "Converted":      {bg:"rgba(168,85,247,0.12)",c:"var(--k-purple)",b:"rgba(168,85,247,0.35)"},
 };
-export const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"No",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:"",tags:[],emailStatus:"",emailCheckedAt:""};
+export const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"Unknown",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:"",tags:[],emailStatus:"",emailCheckedAt:""};
 export const uid=()=>Date.now()+Math.random();
 export const today=()=>new Date().toISOString().split("T")[0];
 export const isPast=d=>d&&new Date(d+"T23:59:59")<new Date();
@@ -49,10 +49,10 @@ export const LBL={display:"block",fontSize:10,color:WD,marginBottom:5,textTransf
 export const B={
   gold:   {background:`linear-gradient(135deg,${G},${GL})`,color:"#0B1426",border:"none",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:800,cursor:"pointer"},
   ghost:  {background:"rgba(255,255,255,0.06)",color:WM,border:"1px solid rgba(255,255,255,0.12)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:600,cursor:"pointer"},
-  danger: {background:"rgba(239,68,68,0.1)",color:"#f87171",border:"1px solid rgba(239,68,68,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-  green:  {background:"rgba(52,211,153,0.12)",color:"#34d399",border:"1px solid rgba(52,211,153,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-  purple: {background:"rgba(168,85,247,0.12)",color:"#c084fc",border:"1px solid rgba(168,85,247,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
-  blue:   {background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
+  danger: {background:"rgba(239,68,68,0.1)",color:"var(--k-red)",border:"1px solid rgba(239,68,68,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
+  green:  {background:"rgba(52,211,153,0.12)",color:"var(--k-green)",border:"1px solid rgba(52,211,153,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
+  purple: {background:"rgba(168,85,247,0.12)",color:"var(--k-purple)",border:"1px solid rgba(168,85,247,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
+  blue:   {background:"rgba(96,165,250,0.12)",color:"var(--k-blue)",border:"1px solid rgba(96,165,250,0.28)",borderRadius:9,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer"},
 };
 export const NC_CITY_COORDS = {
   "Raleigh":[35.7796,-78.6382], "Durham":[35.9940,-78.8986], "Chapel Hill":[35.9132,-79.0558],
