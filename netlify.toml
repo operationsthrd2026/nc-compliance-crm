@@ -1,0 +1,13 @@
+# Netlify configuration for the Vite + React CRM
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Route client-side React paths back to the app entry point.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
