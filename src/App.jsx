@@ -6,6 +6,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { cleanTag } from "./lib/filters.js";
+import { hrFromTitle } from "./lib/hrSignals.js";
 import { mapPool } from "./lib/emailCheck.js";
 import ProspectsView from "./features/prospects/ProspectsView.jsx";
 import NationwideFinder from "./features/prospects/NationwideFinder.jsx";
@@ -156,7 +157,7 @@ function dbToProspect(r) {
     market: r.market || "", sourceUrl: r.source_url || "", sourceType: r.source_type || "",
     website: r.website || "", email: r.email || "", phone: r.phone || "",
     verificationNotes: r.verification_notes || "", whyFit: r.why_fit || "",
-    vertical: r.vertical || "", hrPersonListed: r.hr_person_listed || "No",
+    vertical: r.vertical || "", hrPersonListed: r.hr_person_listed || "Unknown",
     hrPeopleContact: r.hr_people_contact || "", orgSize: r.org_size || "",
     t1SendDate: r.t1_send_date || "", t1DueDate: r.t1_due_date || "",
     t2SendDate: r.t2_send_date || "", t2DueDate: r.t2_due_date || "",
@@ -924,7 +925,7 @@ function hunterEmailToProspect(domainData, emailEntry, vertical, market){
       : "Found via Hunter.io domain search",
     whyFit: `Found via Hunter.io for domain ${domainData.domain || "unknown"}${title?`. Role: ${title}.`:""}`,
     vertical: vertical || "",
-    hrPersonListed: /hr|human resources|people|talent/i.test(title) ? "Yes" : "No",
+    hrPersonListed: hrFromTitle(title),
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1036,7 +1037,7 @@ async function apolloSearch(query, apiKey, vertical, market, log){
           : "Found via Apollo.io — email/phone not included by this endpoint. Use Apollo Enrichment or search this contact's domain in Hunter.io to find their email.",
         whyFit: `Found via Apollo.io for "${query}". Title: ${p.title||"—"}.`,
         vertical: vertical || "",
-        hrPersonListed: /hr|human resources|people|talent/i.test(p.title||"") ? "Yes" : "No",
+        hrPersonListed: hrFromTitle(p.title),
         hrPeopleContact: "",
         orgSize: p.organization?.estimated_num_employees ? String(p.organization.estimated_num_employees) : "",
         leadPainPoint: "",
@@ -1096,7 +1097,7 @@ function proPublicaOrgToProspect(org, vertical, market){
     verificationNotes: `IRS-registered 501(c)(${org.subseccd||"3"}) nonprofit, EIN ${org.strein||org.ein||"—"}. Email/phone not in IRS data — find a contact via Hunter.io or the organization's website.`,
     whyFit: `Found via ProPublica Nonprofit Explorer (IRS Form 990 data) for "${vertical||"nonprofit"}" in ${cityTitleCase||market||"NC"}.`,
     vertical: vertical || "",
-    hrPersonListed: "No",
+    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1155,7 +1156,7 @@ function nppesOrgToProspect(record, vertical, market){
     verificationNotes: `NPI ${record.number} — ${primaryTaxonomy.desc||"Healthcare provider"}.${phone?` Phone: ${phone}.`:" No phone on file."} Email not available via NPPES — try the organization's website or Hunter.io.`,
     whyFit: `Found via the federal NPI Registry (CMS) for "${vertical}" in ${cityTitleCase||market||"NC"}. Taxonomy: ${primaryTaxonomy.desc||"—"}.`,
     vertical: vertical || "",
-    hrPersonListed: "No",
+    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -1282,7 +1283,7 @@ function osmElementToProspect(el, vertical, market){
     verificationNotes: `Community-mapped OSM data (category: ${category}).${addrParts?` Address: ${addrParts}, ${city}.`:""}${phone?` Phone: ${phone}.`:""} Email not available — check the website${website?"":" (not listed)"} or try Hunter.io for this domain.`,
     whyFit: `Found via OpenStreetMap for "${vertical||category}" near ${market||"NC"}.`,
     vertical: vertical || "",
-    hrPersonListed: "No",
+    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
     hrPeopleContact: "",
     orgSize: "",
     leadPainPoint: "",
@@ -2232,7 +2233,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
           <FG label="Title"><input value={fv("title")} onChange={e=>sf("title",e.target.value)} style={inp()}/></FG>
           <FG label="Email / Phone"><input value={fv("emailPhone")} onChange={e=>sf("emailPhone",e.target.value)} style={inp()}/></FG>
           <FG label="City / Market"><input value={fv("cityMarket")} onChange={e=>sf("cityMarket",e.target.value)} style={inp()}/></FG>
-          <FG label="Market"><select value={fv("market")} onChange={e=>sf("market",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{MARKETS.map(m=><option key={m}>{m}</option>)}</select></FG>
+          <FG label="Market"><input value={fv("market")} onChange={e=>sf("market",e.target.value)} list="nc-market-suggestions" placeholder="e.g. Austin, TX" maxLength={80} style={inp()}/><datalist id="nc-market-suggestions">{MARKETS.map(m=><option key={m} value={m}/>)}</datalist></FG>
           <FG label="Vertical"><select value={fv("vertical")} onChange={e=>sf("vertical",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select></FG>
           <FG label="Org Size"><select value={fv("orgSize")} onChange={e=>sf("orgSize",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{ORG_SIZES.map(s=><option key={s}>{s}</option>)}</select></FG>
           <FG label="Source Type"><select value={fv("sourceType")} onChange={e=>sf("sourceType",e.target.value)} style={{...inp(),cursor:"pointer"}}><option value="">Select…</option>{SRC_TYPES.map(s=><option key={s}>{s}</option>)}</select></FG>
@@ -2250,7 +2251,7 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
           <FG label="Outreach Notes"><textarea value={fv("outreachNotes")} onChange={e=>sf("outreachNotes",e.target.value)} rows={3} style={{...inp(),resize:"vertical"}}/></FG>
           <FG label="Melissa Review Notes"><input value={fv("melissaReview")} onChange={e=>sf("melissaReview",e.target.value)} style={inp()}/></FG>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11}}>
-            <FG label="HR Person Listed?"><select value={fv("hrPersonListed")} onChange={e=>sf("hrPersonListed",e.target.value)} style={{...inp(),cursor:"pointer"}}><option>No</option><option>Yes</option></select></FG>
+            <FG label="HR Person Listed?"><select value={fv("hrPersonListed")} onChange={e=>sf("hrPersonListed",e.target.value)} style={{...inp(),cursor:"pointer"}}><option>Unknown</option><option>No</option><option>Yes</option></select></FG>
             <FG label="HR People Contact"><input value={fv("hrPeopleContact")} onChange={e=>sf("hrPeopleContact",e.target.value)} style={inp()}/></FG>
           </div>
           <FG label="Remarks"><input value={fv("remarks")} onChange={e=>sf("remarks",e.target.value)} style={inp()}/></FG>
@@ -3833,12 +3834,13 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
   const tot=crmData.length;
   const pipeSumm=STATUSES.map(s=>({s,c:crmData.filter(p=>p.currentStatus===s).length}));
   const vertBreak=VERTICALS.map(v=>({v,c:crmData.filter(p=>p.vertical===v).length})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
-  const mktBreak=MARKETS.map(m=>({m,c:crmData.filter(p=>p.market===m).length})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
+  const mktBreak=(()=>{const c=new Map();crmData.forEach(p=>{if(p.market)c.set(p.market,(c.get(p.market)||0)+1);});return [...c.entries()].map(([m,n])=>({m,c:n})).sort((a,b)=>b.c-a.c).slice(0,12);})(); // markets come from the data (nationwide), not a fixed NC list
   const typeBreak=[{l:"Nonprofits",c:crmData.filter(p=>["Human Services Nonprofits","Nonprofits & Associations","Faith-Based Organizations","Foundations & Grantmakers","Advocacy Organizations","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Religious & Faith-Based Nonprofits","Community Development Orgs"].includes(p.vertical)).length,col:"#c084fc"},{l:"SMB / For-Profit",c:crmData.filter(p=>["Home Health / Homecare","Childcare & Licensed Group Homes","Construction & Contractors","Healthcare Practices","Light Manufacturing & Logistics","Education & Schools"].includes(p.vertical)).length,col:"#60a5fa"}];
 
   const NAVS=[{id:"dashboard",l:"📊",full:"Dashboard"},{id:"finder",l:"🔍",full:"Prospect Finder",alert:false},{id:"table",l:"🗄️",full:"Prospects"},{id:"pipeline",l:"◫",full:"Pipeline"},{id:"calendar",l:"📅",full:"Calendar"},{id:"email",l:"📧",full:`Email${totalDue>0?` (${totalDue})`:""}`,alert:totalDue>0}];
   const [sidebarExpanded,setSidebarExpanded]=useState(false);
   const SIDEBAR_W=sidebarExpanded?228:62;
+  const marketChoices=useMemo(()=>[...new Set(crmData.map(p=>p.market).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[crmData]);
 
   /* ── Prospects screen plumbing ───────────────────────────────── */
   // Shared (database) saved searches when the migration exists, else this browser only.
@@ -4245,7 +4247,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           </div>
           <select value={sfilt} onChange={e=>setSfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:130,cursor:"pointer"}}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
           <select value={vfilt} onChange={e=>setVfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:140,cursor:"pointer"}}><option value="All">All Verticals</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select>
-          <select value={mfilt} onChange={e=>setMfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:110,cursor:"pointer"}}><option value="All">All Markets</option>{MARKETS.map(m=><option key={m}>{m}</option>)}</select>
+          <select value={mfilt} onChange={e=>setMfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:110,cursor:"pointer"}}><option value="All">All Markets</option>{marketChoices.map(m=><option key={m}>{m}</option>)}</select>
           <span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{filtered.length}/{tot}</span>
           {(search||sfilt!=="All"||vfilt!=="All"||mfilt!=="All")&&<button onClick={()=>{setSearch("");setSfilt("All");setVfilt("All");setMfilt("All");}} style={{...B.ghost,fontSize:10,padding:"5px 9px",color:"#f87171",borderColor:"rgba(248,113,113,0.3)"}}>✕ Clear</button>}
         </div>

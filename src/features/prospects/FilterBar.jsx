@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { STATUSES, VERTICALS, MARKETS } from "../../constants.js";
+import { STATUSES, VERTICALS } from "../../constants.js";
+import { placeLabel } from "../../lib/geo.js";
 import { BUILTIN_VIEWS, EMPTY_FILTERS, countActive, filtersEqual, withDefaults } from "../../lib/filters.js";
 import { TIERS } from "../../lib/scoring.js";
 import { EMAIL_STATUS } from "../../lib/emailCheck.js";
@@ -23,7 +24,8 @@ export default function FilterBar({ filters, setFilters, allRows, tagList, tagsE
     return {
       status: STATUSES.map(s => ({ value: s, label: s, count: st.get(s) || 0 })),
       vertical: VERTICALS.map(v => ({ value: v, label: v, count: vt.get(v) || 0 })).filter(o => o.count || filters.vertical.includes(o.value)),
-      market: MARKETS.map(m => ({ value: m, label: m, count: mk.get(m) || 0 })).filter(o => o.count || filters.market.includes(o.value)),
+      // markets come from YOUR data (nationwide), not a fixed list
+      market: [...new Set([...mk.keys(), ...filters.market])].filter(Boolean).map(m => ({ value: m, label: m, count: mk.get(m) || 0 })).sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label))),
       source: [...sr.keys()].filter(Boolean).sort().map(s => ({ value: s, label: s, count: sr.get(s) })),
       tags: tagList.map(([t, n]) => ({ value: t, label: t, count: n })),
       tier: ["hot", "strong", "possible", "low"].map(t => ({ value: t, label: TIERS[t].label })),
@@ -45,7 +47,8 @@ export default function FilterBar({ filters, setFilters, allRows, tagList, tagsE
         </div>
         <MultiSelect label="Status" options={opts.status} value={f.status} onChange={v => set({ status: v })} />
         <MultiSelect label="Industry" options={opts.vertical} value={f.vertical} onChange={v => set({ vertical: v })} searchable />
-        <MultiSelect label="Market" options={opts.market} value={f.market} onChange={v => set({ market: v })} />
+        <MultiSelect label="Market" options={opts.market} value={f.market} onChange={v => set({ market: v })} searchable />
+        {f.place.map(k => <span key={k} className="nc-chip active" title="Set from the map">📍 {placeLabel(k)}<button type="button" aria-label={`Remove map area ${placeLabel(k)}`} onClick={() => set({ place: f.place.filter(x => x !== k) })}>×</button></span>)}
         <MultiSelect label="Fit" options={opts.tier} value={f.tier} onChange={v => set({ tier: v })} />
         {tagsEnabled && <MultiSelect label="Tags" options={opts.tags} value={f.tags} onChange={v => set({ tags: v })} searchable empty="No tags yet — add some from a prospect or the bulk bar" />}
         {tagsEnabled && <MultiSelect label="Email" options={opts.email} value={f.emailStatus} onChange={v => set({ emailStatus: v })} />}
@@ -56,7 +59,7 @@ export default function FilterBar({ filters, setFilters, allRows, tagList, tagsE
           </button>)}>
           <div style={{ padding: 8, display: "grid", gap: 14 }}>
             <Row label="Has email"><Segmented label="Has email" value={f.hasEmail} onChange={v => set({ hasEmail: v })} options={[{ value: "any", label: "Any" }, { value: "yes", label: "Yes" }, { value: "no", label: "No" }]} /></Row>
-            <Row label="HR person listed"><Segmented label="HR person listed" value={f.hrListed} onChange={v => set({ hrListed: v })} options={[{ value: "any", label: "Any" }, { value: "No", label: "No" }, { value: "Yes", label: "Yes" }]} /></Row>
+            <Row label="HR person listed"><Segmented label="HR person listed" value={f.hrListed} onChange={v => set({ hrListed: v })} options={[{ value: "any", label: "Any" }, { value: "Unknown", label: "Unknown" }, { value: "No", label: "No" }, { value: "Yes", label: "Yes" }]} /></Row>
             <Row label="Replied"><Segmented label="Replied" value={f.replied} onChange={v => set({ replied: v })} options={[{ value: "any", label: "Any" }, { value: "yes", label: "Yes" }, { value: "no", label: "No" }]} /></Row>
             <Row label={`Minimum fit score: ${f.minScore || "any"}`}><input type="range" min="0" max="90" step="5" value={f.minScore} onChange={e => set({ minScore: Number(e.target.value) })} aria-label="Minimum fit score" style={{ width: "100%", accentColor: "#C9963A" }} /></Row>
             <label style={{ display: "flex", gap: 9, alignItems: "center", font: "500 12.5px var(--nc-font)", cursor: "pointer" }}><Check checked={f.hideDNR} onChange={e => set({ hideDNR: e.target.checked })} label="Hide Do Not Respond" />Hide "Do Not Respond"</label>

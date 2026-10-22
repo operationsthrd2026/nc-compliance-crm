@@ -41,3 +41,18 @@ test("tags helpers", () => {
   assert.equal(cleanTag("  Q4,  Home  Health;; "), "q4 home health"); assert.equal(cleanTag("x".repeat(50)).length, 32);
   assert.ok(Object.isFrozen(EMPTY_FILTERS));
 });
+
+test("place filter matches by map place (city or state), so 'Durham, NH' never matches NC's Durham", () => {
+  const rows = [P(10, { market: "Austin, TX" }), P(11, { market: "Texas" }), P(12, { market: "Durham, NH" }), P(13, { market: "Durham" }), P(14, { market: "Nowhere" })];
+  assert.deepEqual(applyFilters(rows, { place: ["TX"] }).map(p => p.id), [11]);
+  assert.deepEqual(applyFilters(rows, { place: ["austin|TX"] }).map(p => p.id), [10]);
+  assert.deepEqual(applyFilters(rows, { place: ["durham|NC"] }).map(p => p.id), [13]);
+  assert.deepEqual(applyFilters(rows, { place: ["NH", "TX"] }).map(p => p.id), [11, 12]); // Durham, NH is in New Hampshire — not North Carolina
+  assert.equal(countActive({ place: ["TX"] }), 1);
+});
+test("HR-listed 'Unknown' means anything that is not an explicit Yes or No", () => {
+  const rows = [P(20, { hrPersonListed: "Yes" }), P(21, { hrPersonListed: "No" }), P(22, { hrPersonListed: "Unknown" }), P(23, { hrPersonListed: "" }), P(24, {})];
+  assert.deepEqual(applyFilters(rows, { hrListed: "Unknown" }).map(p => p.id), [22, 23, 24]);
+  assert.deepEqual(applyFilters(rows, { hrListed: "No" }).map(p => p.id), [21]);
+  assert.deepEqual(applyFilters(rows, { hrListed: "Yes" }).map(p => p.id), [20]);
+});
