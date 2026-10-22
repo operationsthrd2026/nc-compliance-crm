@@ -69,6 +69,7 @@ export function summarizeTaskNotifications(notifications=[]){
   overdue:rows.filter(item=>item.type==="overdue").length,
   dueToday:rows.filter(item=>item.type==="due_today").length,
   dueSoon:rows.filter(item=>item.type==="due_soon").length,
-  priority:rows.filter(item=>item.type==="priority").length
+  priority:rows.filter(item=>item.type==="priority").length,
+  highOrUrgent:rows.filter(item=>["high","urgent"].includes(item.priority)).length
  };
 }
