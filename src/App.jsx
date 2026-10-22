@@ -382,6 +382,36 @@ const DB = {
     if (!row?.id) throw new Error("The database did not confirm the new activity.");
     return row;
   },
+  // Phase 5: server RLS limits team task visibility, assignment and updates.
+  async getProspectTasks() {
+    const rows=await sbFetch("prospect_tasks?order=updated_at.desc&select=*&limit=1000");
+    return Array.isArray(rows)?rows:[];
+  },
+  async getTaskMembers() {
+    const rows=await sbFetch("crm_users?active=eq.true&select=id,name,username,role,active&order=name.asc&limit=250");
+    return Array.isArray(rows)?rows:[];
+  },
+  async createProspectTask(data) {
+    const rowData={
+      prospect_id:data.prospect_id,assigned_to:data.assigned_to,
+      task_title:data.task_title,description:data.description||"",
+      due_date:data.due_date||null,priority:data.priority||"normal",status:"open"
+    };
+    const rows=await sbFetch("prospect_tasks","POST",rowData,"return=representation");
+    const row=Array.isArray(rows)?rows[0]:rows;
+    if(!row?.id)throw new Error("Task creation was not confirmed by CRM.");
+    return row;
+  },
+  async updateProspectTask(id,changes) {
+    if(!/^[0-9a-f-]{36}$/i.test(String(id)))throw new Error("Invalid task ID.");
+    const allow=["task_title","description","priority","status","due_date","assigned_to"];
+    const body=Object.fromEntries(Object.entries(changes).filter(([k])=>allow.includes(k)));
+    if(!Object.keys(body).length)throw new Error("No task changes supplied.");
+    const rows=await sbFetch("prospect_tasks?id=eq."+encodeURIComponent(id),"PATCH",body,"return=representation");
+    const row=Array.isArray(rows)?rows[0]:rows;
+    if(!row?.id)throw new Error("Task not found or account not permitted to change it.");
+    return row;
+  },
 };
 
 /* ════════════════════════════════════════════════════════════════
@@ -3892,6 +3922,24 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,crmData,setCrmData,onSaveProsp
           if(!crmData.some(p=>p.id===entry.prospectId))throw new Error("The prospect was not found in your current CRM.");
           const row=await DB.logProspectActivity(entry);
           if(addAudit){try{await addAudit(currentUser.username,"Added "+entry.activityType+" activity for CRM prospect.");}catch{}}
+          return row;
+        }}
+        tasksEnabled={isConfigured&&dbStatus==="connected"}
+        onGetTasks={DB.getProspectTasks}
+        onGetTaskMembers={DB.getTaskMembers}
+        onCreateTask={async data=>{
+          if(!role.canEdit)throw new Error("View-only accounts cannot create tasks.");
+          if(!crmData.some(p=>p.id===data.prospect_id))throw new Error("Prospect not found.");
+          if(!role.canAdmin&&data.assigned_to!==currentUser.id)throw new Error("Only admins can assign work to another staff member.");
+          const row=await DB.createProspectTask(data);
+          if(addAudit){try{await addAudit(currentUser.username,"Created prospect task: "+data.task_title);}catch{}}
+          return row;
+        }}
+        onUpdateTask={async(id,changes)=>{
+          if(!role.canEdit)throw new Error("View-only accounts cannot edit tasks.");
+          if(!role.canAdmin&&changes.assigned_to)throw new Error("Only admins can reassign tasks.");
+          const row=await DB.updateProspectTask(id,changes);
+          if(addAudit){try{await addAudit(currentUser.username,"Updated prospect task: "+row.task_title);}catch{}}
           return row;
         }}
       />
