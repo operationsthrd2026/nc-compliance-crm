@@ -8,7 +8,7 @@ import {qualityRows} from "./qualityReview.js";
 
 const mk=(id,extra={})=>({
  id,companyName:"Organization "+id,vertical:"Healthcare Practices",
- email:id+"@business.example",website:"https://business-"+id+".example",
+ email:id+"@"+id+".example",contactName:"Listed contact",website:"https://business-"+id+".example",
  sourceUrl:"https://source-"+id+".example/page",verificationNotes:"Directory checked by reviewer",
  market:"Austin",currentStatus:"NEW",...extra
 });
