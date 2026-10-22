@@ -58,12 +58,12 @@ function TaskEditor({task,canEdit,onChange,onClose,members,canAdmin,myId}){
   <p style={{fontSize:10,color:"#8A96A8",margin:0,lineHeight:1.6}}>Completing a task updates its task status only. It does not send outreach or modify the prospect's pipeline stage.</p>
  </aside>;
 }
-export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAdmin=false,enabled=false,onGetTasks,onCreateTask,onUpdateTask,onGetTaskMembers,onOpenCRM,initialTaskDraft=null}){
+export default function TeamTasks({crmData=[],currentUser={},canEdit=false,canAdmin=false,enabled=false,onGetTasks,onCreateTask,onUpdateTask,onGetTaskMembers,onOpenCRM,initialTaskDraft=null,initialTaskId=null}){
  const myId=currentUser?.id||"";
  const [tasks,setTasks]=useState([]),[members,setMembers]=useState([]);
  const [loading,setLoading]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const [keyword,setKeyword]=useState(""),[bucket,setBucket]=useState("All"),[owner,setOwner]=useState("All");
- const [selectedId,setSelectedId]=useState(""),[creating,setCreating]=useState(false);
+ const [selectedId,setSelectedId]=useState(initialTaskId||""),[creating,setCreating]=useState(false);
  const [companySearch,setCompanySearch]=useState(""),[prospectId,setProspectId]=useState("");
  const [taskTitle,setTaskTitle]=useState(""),[description,setDescription]=useState(""),[dueDate,setDueDate]=useState(""),[priority,setPriority]=useState("normal"),[assignee,setAssignee]=useState(myId);
  const [saving,setSaving]=useState(false);
