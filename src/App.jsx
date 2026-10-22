@@ -3791,6 +3791,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
   const [cl,setCl]=useState(Array(CHECKLIST.length).fill(false));
   const [showImport,setShowImport]=useState(false);
   const [showFinder,setShowFinder]=useState(false);
+  const [pvReq,setPvReq]=useState(null);   // asks the Prospects area to apply a view / open a prospect (Today screen, command palette)
   const [wsReq,setWsReq]=useState(null); // quick actions on a prospect: open Email / schedule a follow-up
   const [qualifyReq,setQualifyReq]=useState(null); // asks the Prospects area to open a prospect in Qualification
   const [sortCol,setSortCol]=useState("companyName");
@@ -4075,7 +4076,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
 
       {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
       {view==="table"&&(
-        <ProspectsView qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} onWorkspaceAction={(type,p)=>setWsReq({type,id:p.id,company:p.companyName,n:Date.now()})} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
+        <ProspectsView viewRequest={pvReq} onRequestHandled={()=>{setPvReq(null);setQualifyReq(null);}} qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} onWorkspaceAction={(type,p)=>setWsReq({type,id:p.id,company:p.companyName,n:Date.now()})} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
           sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
           onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
           onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
@@ -4301,6 +4302,9 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
         crmData={crmData}
         classicViews={classicViews}
         workspaceRequest={wsReq}
+        onProspectsRequest={r=>setPvReq({...r,n:Date.now()})}
+        onCommand={c=>{if(c==="add")setPDlg("add");if(c==="import")setShowImport(true);}}
+        tagsEnabled={!!features?.tags}
         onSelectClassic={setView}
         renderAdmin={renderAdmin}
         onOpenQualification={id=>setQualifyReq({id,n:Date.now()})}
