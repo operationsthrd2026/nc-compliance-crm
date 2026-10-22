@@ -2,7 +2,6 @@ import {localDateKey,parseLocalDay} from "./outreachPlanning.js";
 import {taskBucket} from "./prospectTasks.js";
 
 const ACTIVE=new Set(["open","in_progress"]);
-const CLOSED=new Set(["completed","cancelled"]);
 const STATUSES=["open","in_progress","completed","cancelled"];
 const PRIORITIES=["urgent","high","normal","low"];
 
