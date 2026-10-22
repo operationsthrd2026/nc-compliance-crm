@@ -20,7 +20,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
+lerna-debug.log
 *.log
 
 # ── Editor / OS ───────────────────────────────────────────────
@@ -36,6 +36,9 @@ Thumbs.db
 
 # ── Vite cache ────────────────────────────────────────────────
 .vite/
+
+# ── Netlify local state ───────────────────────────────────────
+.netlify/
 
 # Supabase CLI local state (contains project refs / pooler URLs)
 supabase/.temp/
