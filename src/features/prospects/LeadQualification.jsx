@@ -90,9 +90,9 @@ function Details({selected,onUpdateProspect,canEdit,onOpenCRM,onClose}) {
   {!canEdit&&<p style={{fontSize:11,color:"#74829B",margin:0}}>View-only access. An editor, manager or administrator can save changes.</p>}
  </section>;
 }
-export default function LeadQualification({crmData=[],onOpenCRM,onUpdateProspect,canEdit=false}) {
+export default function LeadQualification({crmData=[],initialProspectId=null,onOpenCRM,onUpdateProspect,canEdit=false}) {
  const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[readiness,setReadiness]=useState("all");
- const [category,setCategory]=useState("all"),[page,setPage]=useState(0),[selectedId,setSelectedId]=useState(null);
+ const [category,setCategory]=useState("all"),[page,setPage]=useState(0),[selectedId,setSelectedId]=useState(initialProspectId);
  const counts=useMemo(()=>readinessCounts(crmData),[crmData]);
  const filtered=useMemo(()=>filterSavedLeads(crmData,{query,status,readiness,category}),[crmData,query,status,readiness,category]);
  const sorted=useMemo(()=>[...filtered].reverse(),[filtered]);
