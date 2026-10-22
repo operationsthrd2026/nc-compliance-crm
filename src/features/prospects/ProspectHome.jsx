@@ -61,11 +61,12 @@ function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
   </div>;
 }
 
-export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onOpenAdmin, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask }) {
+export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onOpenAdmin, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
   const [tab, setTab] = useState("overview");
   const [focusedProspectId, setFocusedProspectId] = useState(null);
   const [focusedOutreachId, setFocusedOutreachId] = useState(null);
   const [taskDraft, setTaskDraft] = useState(null);
+  const [focusedTaskId,setFocusedTaskId] = useState(null);
   const openQualification = id => { setFocusedProspectId(id); setTab("leads"); };
   const nonprofitCount = useMemo(() => crmData.filter(p => nonprofitPattern.test(text(p.vertical))).length, [crmData]);
   const smallCount = Math.max(0, crmData.length - nonprofitCount);
@@ -75,12 +76,12 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
   const nav = [
     ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["leads","▤","Saved Prospects"],["outreach","◷","Outreach & Reports"],["tools","✉","Templates & Activity"],["tasks","☑","Team Tasks"],["analytics","▥","Analytics Dashboard"],["quality","◇","Quality & Priorities"],["workflow","◷","Action Queue"],["integrations","⚙","API Integrations"],["crm","▦","Classic CRM"]
   ];
-  const toTab = id => { if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); setTab(id); };
+  const toTab = id => { if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
   const name = text(currentUser?.name || currentUser?.username || "Team Member");
   return <div className="pf-root">
     <style>{css}</style>
     <aside className="pf-side">
-      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · PHASE 8</div></div></div>
+      <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE · PHASE 9</div></div></div>
       <p className="pf-navhint">WORKSPACE</p>
       <nav aria-label="ProspectFinder navigation">{nav.map(([id,ico,label]) => <button key={id} className={"pf-navbtn " + (tab===id?"active":"")} onClick={()=>toTab(id)}><span className="pf-ico">{ico}</span>{label}</button>)}</nav>
       <div className="pf-side-bottom">
@@ -145,10 +146,10 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM, onO
       {tab==="leads" && <LeadQualification crmData={crmData} initialProspectId={focusedProspectId} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM}/>}
       {tab==="outreach" && <OutreachWorkspace crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM} initialProspectId={focusedOutreachId}/>}
       {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM}/>}
-      {tab==="tasks" && <TeamTasks crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onGetTaskMembers={onGetTaskMembers} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} onOpenCRM={onOpenCRM} initialTaskDraft={taskDraft}/>}
+      {tab==="tasks" && <TeamTasks crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onGetTaskMembers={onGetTaskMembers} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} onOpenCRM={onOpenCRM} initialTaskDraft={taskDraft} initialTaskId={focusedTaskId}/>}
       {tab==="analytics" && <AnalyticsWorkspace crmData={crmData} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenOutreach={()=>setTab("outreach")} onOpenTasks={()=>setTab("tasks")}/>}
       {tab==="quality" && <QualityReviewWorkspace crmData={crmData} onOpenProspect={openQualification} onOpenCRM={onOpenCRM}/>}
-      {tab==="workflow" && <WorkflowWorkspace crmData={crmData} currentUser={currentUser} canEdit={canEdit} tasksEnabled={tasksEnabled} onOpenProspect={openQualification} onOpenQuality={()=>setTab("quality")} onOpenOutreach={id=>{setFocusedOutreachId(id);setTab("outreach");}} onPrepareTask={item=>{setTaskDraft({prospectId:item.id,taskTitle:item.taskTitle,description:item.why,priority:["Immediate review","Overdue","Due today"].includes(item.bucket)?"high":"normal"});setTab("tasks");}}/>}
+      {tab==="workflow" && <WorkflowWorkspace crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} tasksEnabled={tasksEnabled} savedApi={savedApi} onGetTasks={onGetTasks} onOpenTask={id=>{setFocusedTaskId(id);setTaskDraft(null);setTab("tasks");}} onOpenProspect={openQualification} onOpenQuality={()=>setTab("quality")} onOpenOutreach={id=>{setFocusedOutreachId(id);setTab("outreach");}} onPrepareTask={item=>{setFocusedTaskId(null);setTaskDraft({prospectId:item.id,taskTitle:item.taskTitle,description:item.why,priority:["Immediate review","Overdue","Due today"].includes(item.bucket)?"high":"normal"});setTab("tasks");}}/>}
       </div>
     </main>
   </div>;
