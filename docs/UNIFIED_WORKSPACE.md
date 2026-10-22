@@ -1,5 +1,23 @@
 # Unified workspace + light/dark themes
 
+## Email & outreach (redesigned)
+**Outreach desk** is now the main email screen: three columns on one page.
+- **Left — who to write to**, organised by urgency: replies to answer → overdue follow-ups → due in the next 3 days → ready for Touch 1 (best fit first). Do Not Respond and converted prospects never appear. Search finds any prospect.
+- **Middle — the message.** The right template is suggested for where the prospect is in your cadence (introduction → follow-up → final check-in, or a personal reply), with a personalised greeting, editable subject and text, a preview, and a "before you send" list (no email on file, no contact name, leftover placeholders, a failed email check…).
+- **Right — context:** why the prospect is a good fit, the contact details on file, and recent activity.
+
+**How sending works — nothing is automatic**
+1. *Open in my email app* or *Copy* only **prepare** the message.
+2. The desk then asks **"Did you send it?"** and lists exactly what it will change (move to "Touch 1 sent", the next touch date, an activity-log entry). Only when you press **Yes** is anything saved. **Not yet** changes nothing.
+3. *Send with Gmail* appears only when Gmail is connected, and records the touch only if Gmail reports success. If Gmail refuses, nothing is recorded.
+4. If the database refuses a change (for example a view-only account), you are told and nothing else is recorded.
+
+**Honesty fixes in the Gmail inbox tab (real workspaces)**
+- It no longer shows **fictional emails** (sample people and companies). Until Gmail is connected it says so; the sample emails remain only in demo mode.
+- Clicking Send there when Gmail isn't connected used to **pretend to send** (it moved the prospect to "T1 SENT" and wrote an "outbound email" row though nothing was sent). It now does nothing and tells you to connect Gmail.
+- The "Opened / Not opened" tick was never backed by any tracking, so it was removed (a reply is the only reliable signal).
+- Email headers built for Gmail now strip line breaks (prevents header injection).
+
 ## Today, search and shortcuts
 - **Today (Home)** tells you what to do next instead of listing menus. It ranks: replies waiting → overdue follow-ups → prospects ready for Touch 1 → unchecked emails → prospects with no email → strong prospects needing an HR check → possible duplicates. The most urgent one is shown large; each has a button that opens the exact place to do it (for example, one overdue follow-up opens the email composer with that prospect already chosen). It also shows four numbers, your pipeline by stage, and where your prospects are (click any to drill in).
 - **It only suggests.** Nothing is sent, saved, merged or changed automatically. Do Not Respond and Converted prospects are never suggested.
@@ -15,7 +33,7 @@ Related screens are **tabs inside an area**, and each area remembers the tab you
 | **Home** | — | Today at a glance and shortcuts |
 | **Find prospects** | — | Search nonprofits and small businesses anywhere in the U.S. and save the good ones |
 | **Prospects** | List, map & qualify · Pipeline board | Your saved prospects: table, **map**, duplicates, qualification, and the pipeline board |
-| **Email & outreach** | Gmail inbox · Write from template · Follow-ups & reports | Read and send email, draft from templates (and log it), manage who is due a follow-up |
+| **Email & outreach** | Outreach desk · Gmail inbox · Follow-ups & reports · Activity log | Read and send email, draft from templates (and log it), manage who is due a follow-up |
 | **Calendar & tasks** | Calendar · Team tasks · Task alerts | Due dates, tasks and reminders |
 | **Insights** | Analytics · Quality & priorities · Action queue | Reports, data clean-up and "what should I do next" |
 | **Settings** | API integrations · Admin (admins) | Connections, users and the audit log |

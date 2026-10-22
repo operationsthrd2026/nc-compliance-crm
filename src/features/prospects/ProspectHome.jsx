@@ -4,6 +4,7 @@ import { ThemeToggle, Popover, MenuItem, Btn } from "../../ui/kit.jsx";
 import Icon from "../../ui/icons.jsx";
 import CommandPalette from "../../ui/CommandPalette.jsx";
 import TodayHome from "./TodayHome.jsx";
+import OutreachDesk from "./OutreachDesk.jsx";
 import { setPreference } from "../../ui/theme.js";
 import { findDuplicateGroups } from "../../lib/dedupe.js";
 import { loadDismissed } from "../useSavedSearches.js";
@@ -69,7 +70,7 @@ function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
   </div>;
 }
 
-export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onOpenCRMProp, onOpenAdmin, classicViews, onSelectClassic, renderAdmin, onOpenQualification, workspaceRequest, onProspectsRequest, onCommand, tagsEnabled, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
+export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onOpenCRMProp, onOpenAdmin, classicViews, onSelectClassic, renderAdmin, onOpenQualification, workspaceRequest, onProspectsRequest, onCommand, tagsEnabled, applyStatus, onSaveOne, gmail, onEmailSent, notify, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
   const [tab, setTab] = useState("overview");
   const [focusedProspectId, setFocusedProspectId] = useState(null);
   const [focusedOutreachId, setFocusedOutreachId] = useState(null);
@@ -86,7 +87,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
   useEffect(() => {
     if (!workspaceRequest) return;
     const { type, id, company } = workspaceRequest;
-    if (type === "email"){ setComposeId(id); setLastSub(m => ({ ...m, email: "tools" })); setTab("tools"); }
+    if (type === "email"){ setComposeId(id); setLastSub(m => ({ ...m, email: "desk" })); setTab("desk"); }
     if (type === "task"){ setTaskDraft({ prospectId: id, taskTitle: `Follow up with ${company || "prospect"}`, description: "", priority: "normal" }); setFocusedTaskId(null); setLastSub(m => ({ ...m, calendar: "tasks" })); setTab("tasks"); }
   }, [workspaceRequest]);
   const nonprofitCount = useMemo(() => crmData.filter(p => nonprofitPattern.test(text(p.vertical))).length, [crmData]);
@@ -100,7 +101,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
     { id:"overview",  label:"Home",             icon:"home", subs:[["overview","Home"]] },
     { id:"find",      label:"Find prospects",   icon:"search", subs:[["discover","Find prospects"]] },
     { id:"prospects", label:"Prospects",        icon:"users", subs:[["table","List, map & qualify"],["pipeline","Pipeline board"]] },
-    { id:"email",     label:"Email & outreach", icon:"mail", subs:[["email","Gmail inbox"],["tools","Write from template"],["outreach","Follow-ups & reports"]] },
+    { id:"email",     label:"Email & outreach", icon:"mail", subs:[["desk","Outreach desk"],["email","Gmail inbox"],["outreach","Follow-ups & reports"],["tools","Activity log"]] },
     { id:"calendar",  label:"Calendar & tasks", icon:"calendar", subs:[["calendar","Calendar"],["tasks","Team tasks"],["notifications","Task alerts"]] },
     { id:"insights",  label:"Insights",         icon:"chart", subs:[["analytics","Analytics"],["quality","Quality & priorities"],["workflow","Action queue"]] },
     { id:"settings",  label:"Settings",         icon:"settings", subs:[["integrations","API integrations"], ...((canAdmin && renderAdmin) ? [["admin","Admin"]] : [])] },
@@ -110,7 +111,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
   const subLabel = (hub.subs.find(([t]) => t === tab) || [])[1] || "";
   // A suggested action from the Today screen → open the place where a person does the step.
   const runTarget = t => {
-    if (t.type === "email"){ setComposeId(t.id); setLastSub(m => ({ ...m, email: "tools" })); setTab("tools"); return; }
+    if (t.type === "email"){ setComposeId(t.id); setLastSub(m => ({ ...m, email: "desk" })); setTab("desk"); return; }
     openProspects();
     if (t.type === "view") onProspectsRequest?.({ viewId: t.viewId });
     else if (t.type === "mode") onProspectsRequest?.({ mode: t.mode });
@@ -125,11 +126,12 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
     const k = e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"){ e.preventDefault(); setPaletteOpen(o => !o); } };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   }, []);
-  const toTab = id => { setLastSub(m => ({ ...m, [hubOfTab(id).id]: id })); if(CLASSIC.includes(id)){ onSelectClassic?.(id); setTab(id); return; } if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tools")setComposeId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
+  const toTab = id => { setLastSub(m => ({ ...m, [hubOfTab(id).id]: id })); if(CLASSIC.includes(id)){ onSelectClassic?.(id); setTab(id); return; } if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tools"||id==="desk")setComposeId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
 
   const commands = useMemo(() => [
     { id: "add", group: "Do", label: "Add a prospect", icon: "plus", keywords: "new create", run: () => onCommand?.("add") },
     { id: "import", group: "Do", label: "Import a spreadsheet", icon: "upload", keywords: "excel csv xlsx upload", run: () => onCommand?.("import") },
+    { id: "desk", group: "Do", label: "Write emails (Outreach desk)", icon: "mail", keywords: "send draft compose outreach touch", run: () => toTab("desk") },
     { id: "find", group: "Do", label: "Find new prospects", icon: "search", keywords: "search discover nonprofit business", run: () => toTab("discover") },
     { id: "ready", group: "Do", label: "Show prospects ready for Touch 1", icon: "mail", keywords: "email outreach first", run: () => runTarget({ type: "view", viewId: "ready" }) },
     { id: "overdue", group: "Do", label: "Show overdue follow-ups", icon: "clock", keywords: "late touch 2 touch 3", run: () => runTarget({ type: "view", viewId: "overdue" }) },
@@ -193,6 +195,9 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
       {CLASSIC.includes(tab) && <div className="pf-classic">{classicViews}</div>}
       {tab==="admin" && renderAdmin && renderAdmin(()=>setTab("overview"))}
       {tab==="outreach" && <OutreachWorkspace crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM} initialProspectId={focusedOutreachId}/>}
+      {tab==="desk" && <OutreachDesk crmData={crmData} canEdit={canEdit} initialProspectId={composeId} applyStatus={applyStatus} onSaveProspect={onSaveOne}
+        onLogActivity={onLogActivity} onGetActivities={onGetActivities} activityEnabled={activityEnabled} gmail={gmail} onEmailSent={onEmailSent}
+        onOpenProspect={p=>{openProspects();onProspectsRequest?.({openId:p.id});}} onFind={()=>toTab("discover")} toast={notify}/>}
       {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM} initialProspectId={composeId}/>}
       {tab==="tasks" && <TeamTasks crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onGetTaskMembers={onGetTaskMembers} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} onOpenCRM={onOpenCRM} initialTaskDraft={taskDraft} initialTaskId={focusedTaskId}/>}
       {tab==="notifications" && <TaskNotifications currentUser={currentUser} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenTask={id=>{setFocusedTaskId(id);setTaskDraft(null);setTab("tasks");}}/>}
