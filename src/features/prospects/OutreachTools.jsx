@@ -86,8 +86,8 @@ function ActivityTimeline({prospect,enabled,onGetActivities,onLogActivity,canEdi
    </div>}
  </section>;
 }
-export default function OutreachTools({crmData=[],canEdit=false,enabled=false,onGetActivities,onLogActivity,onOpenCRM}){
- const [term,setTerm]=useState(""),[prospectId,setProspectId]=useState(""),[templateId,setTemplateId]=useState("business-intro");
+export default function OutreachTools({crmData=[],canEdit=false,enabled=false,onGetActivities,onLogActivity,onOpenCRM,initialProspectId=null}){
+ const [term,setTerm]=useState(""),[prospectId,setProspectId]=useState(initialProspectId?String(initialProspectId):""),[templateId,setTemplateId]=useState("business-intro");
  const [subject,setSubject]=useState(""),[body,setBody]=useState("");
  const [evidence,setEvidence]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState("");
  const [busy,setBusy]=useState(false);

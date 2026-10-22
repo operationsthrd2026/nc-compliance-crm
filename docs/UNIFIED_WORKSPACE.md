@@ -1,6 +1,21 @@
 # Unified workspace + light/dark themes
 
-## What changed
+## The sidebar: seven areas (not fourteen)
+Related screens are **tabs inside an area**, and each area remembers the tab you used last.
+
+| Area | Tabs inside it | What it's for |
+|---|---|---|
+| **Home** | — | Today at a glance and shortcuts |
+| **Find prospects** | — | Search nonprofits and small businesses anywhere in the U.S. and save the good ones |
+| **Prospects** | List, map & qualify · Pipeline board | Your saved prospects: table, **map**, duplicates, qualification, and the pipeline board |
+| **Email & outreach** | Gmail inbox · Write from template · Follow-ups & reports | Read and send email, draft from templates (and log it), manage who is due a follow-up |
+| **Calendar & tasks** | Calendar · Team tasks · Task alerts | Due dates, tasks and reminders |
+| **Insights** | Analytics · Quality & priorities · Action queue | Reports, data clean-up and "what should I do next" |
+| **Settings** | API integrations · Admin (admins) | Connections, users and the audit log |
+
+**Quick actions on every prospect** (open any row in Prospects): **Write email** (opens the template composer with that prospect chosen), **Schedule follow-up** (opens a task pre-filled for you to review and save), **Show on map** (the Map view, filtered to that place). Nothing is sent or saved automatically.
+
+## What changed (the first step)
 The app used to be two apps in one: the new ProspectFinder workspace (light, purple) and the classic CRM (dark, gold), each with its own navigation. They are now **one app with one sidebar**.
 
 | Before | Now |

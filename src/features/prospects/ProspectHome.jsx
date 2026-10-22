@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import NationwideFinder from "./NationwideFinder.jsx";
 import { ThemeToggle } from "../../ui/kit.jsx";
 import {safeWebsite,safeEmail,safePhone} from "../../lib/contactDetails.js";
@@ -38,7 +38,8 @@ const css = [
   ".pf-recent{width:100%;border-collapse:collapse;margin-top:15px}.pf-recent th{text-align:left;color:var(--pf-tx-8390A6);font-size:10px;letter-spacing:.3px;padding:13px 9px;border-bottom:1px solid var(--pf-border);font-weight:750}.pf-recent td{font-size:11px;padding:14px 9px;border-bottom:1px solid var(--pf-bd-F1F3F8);color:var(--pf-tx-394860)}.pf-recent tr:last-child td{border-bottom:0}.pf-name{font-weight:790;color:var(--pf-tx-1B2944)}.pf-tag{font-size:9px;padding:5px 8px;border-radius:50px;display:inline-block;background:var(--pf-bg-F0F1F7);color:var(--pf-tx-637187);font-weight:750}.pf-tag.green{background:var(--pf-bg-DDF9ED);color:var(--pf-tx-0D8C6B)}.pf-tag.blue{background:var(--pf-bg-E7EFFF);color:var(--pf-tx-3869CD)}.pf-tag.red{background:var(--pf-bg-FFEBED);color:var(--pf-tx-C74758)}.pf-empty{text-align:center;padding:30px 15px;color:var(--pf-tx-8793A8);font-size:12px;line-height:1.7}",
   ".pf-searchline{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.pf-searchline input{padding:12px 13px;border:1px solid var(--pf-bd-E0E6F0);border-radius:10px;flex:1;min-width:200px;background:var(--pf-bg-FFFFFF);color:var(--pf-tx-253653);font-size:12px}.pf-finder-card{margin-top:23px}.pf-finder-card .pf-native-search input,.pf-finder-card .pf-native-search select{background:var(--pf-bg-FFFFFF)!important;color:var(--pf-tx-22314C)!important;border:1px solid var(--pf-bd-DEE4F0)!important;border-radius:9px!important}.pf-finder-card .pf-native-search label{color:var(--pf-tx-53627D)!important}.pf-finder-card button:disabled{opacity:.55;cursor:not-allowed}.pf-footnote{font-size:11px;color:var(--pf-tx-8190AB);margin-top:22px}",
   "@media(max-width:1080px){.pf-metrics{grid-template-columns:repeat(2,1fr)}.pf-layout{grid-template-columns:1fr}.pf-side{width:205px}.pf-content{padding:25px}}",
-  "@media(max-width:720px){.pf-root{display:block}.pf-side{position:relative;width:100%;min-height:auto;padding:10px 12px;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}.pf-brand{padding:4px 7px}.pf-brand-sub,.pf-navhint,.pf-side-bottom{display:none}.pf-side nav{display:flex;flex-wrap:wrap;gap:4px}.pf-navbtn{width:auto;padding:9px 11px;font-size:11px;gap:5px}.pf-ico{width:auto}.pf-header{height:57px;padding:0 18px}.pf-header .pf-pill{display:none}.pf-content{padding:20px 14px 48px}.pf-page-title{font-size:25px}.pf-hero{padding:25px;min-height:205px}.pf-hero-head{font-size:24px}.pf-metrics{grid-template-columns:repeat(2,1fr);gap:9px}.pf-metric{padding:14px}.pf-metric-num{font-size:23px}.pf-actions{grid-template-columns:1fr}.pf-card{padding:17px}}"
+  "@media(max-width:720px){.pf-root{display:block}.pf-side{position:relative;width:100%;min-height:auto;padding:10px 12px;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}.pf-brand{padding:4px 7px}.pf-brand-sub,.pf-navhint,.pf-side-bottom{display:none}.pf-side nav{display:flex;flex-wrap:wrap;gap:4px}.pf-navbtn{width:auto;padding:9px 11px;font-size:11px;gap:5px}.pf-ico{width:auto}.pf-header{height:57px;padding:0 18px}.pf-header .pf-pill{display:none}.pf-content{padding:20px 14px 48px}.pf-page-title{font-size:25px}.pf-hero{padding:25px;min-height:205px}.pf-hero-head{font-size:24px}.pf-metrics{grid-template-columns:repeat(2,1fr);gap:9px}.pf-metric{padding:14px}.pf-metric-num{font-size:23px}.pf-actions{grid-template-columns:1fr}.pf-card{padding:17px}}",
+  ".pf-subtabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--pf-border);margin:-8px 0 24px}.pf-subtab{border:0;background:transparent;color:var(--pf-muted);font-size:13.5px;font-weight:650;padding:11px 16px;border-bottom:3px solid transparent;margin-bottom:-1px;border-radius:9px 9px 0 0}.pf-subtab:hover{color:var(--pf-ink);background:rgba(127,127,160,.08)}.pf-subtab.active{color:var(--pf-ink);border-bottom-color:var(--pf-primary)}.pf-subtab:focus-visible{outline:2px solid var(--pf-primary);outline-offset:-2px}"
 ].join("\n");
 
 function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
@@ -62,11 +63,13 @@ function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
   </div>;
 }
 
-export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onOpenCRMProp, onOpenAdmin, classicViews, onSelectClassic, renderAdmin, onOpenQualification, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
+export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onOpenCRMProp, onOpenAdmin, classicViews, onSelectClassic, renderAdmin, onOpenQualification, workspaceRequest, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
   const [tab, setTab] = useState("overview");
   const [focusedProspectId, setFocusedProspectId] = useState(null);
   const [focusedOutreachId, setFocusedOutreachId] = useState(null);
   const [taskDraft, setTaskDraft] = useState(null);
+  const [composeId, setComposeId] = useState(null);   // prospect chosen for "Write email"
+  const [lastSub, setLastSub] = useState({});   // remembers the last tab you used in each area
   const [focusedTaskId,setFocusedTaskId] = useState(null);
   // The classic CRM screens now live INSIDE this workspace (one navigation, one app).
   const CLASSIC = ["table","pipeline","calendar","email"];
@@ -74,23 +77,39 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
   const openProspects = () => { onSelectClassic?.("table"); setTab("table"); };
   const onOpenCRM = () => { onOpenCRMProp?.(); openProspects(); };   // children call this to jump to the Prospects area
   const openQualification = id => { onOpenQualification?.(id); openProspects(); };
+  useEffect(() => {
+    if (!workspaceRequest) return;
+    const { type, id, company } = workspaceRequest;
+    if (type === "email"){ setComposeId(id); setLastSub(m => ({ ...m, email: "tools" })); setTab("tools"); }
+    if (type === "task"){ setTaskDraft({ prospectId: id, taskTitle: `Follow up with ${company || "prospect"}`, description: "", priority: "normal" }); setFocusedTaskId(null); setLastSub(m => ({ ...m, calendar: "tasks" })); setTab("tasks"); }
+  }, [workspaceRequest]);
   const nonprofitCount = useMemo(() => crmData.filter(p => nonprofitPattern.test(text(p.vertical))).length, [crmData]);
   const smallCount = Math.max(0, crmData.length - nonprofitCount);
   const fresh = crmData.filter(p => statusName(p.currentStatus).toUpperCase() === "NEW").length;
   const contacted = crmData.filter(p => /T1 SENT|T2 SENT|T3 SENT|CONTACTED|FOLLOW.UP/i.test(statusName(p.currentStatus))).length;
   const recent = [...crmData].reverse();
-  const nav = [
-    ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["table","👥","Prospects"],["pipeline","🗂️","Pipeline"],["calendar","📅","Calendar"],["email","✉️","Email Hub"],["outreach","◷","Outreach & Reports"],["tools","✉","Templates & Activity"],["notifications","♧","Task Alerts"],["tasks","☑","Team Tasks"],["analytics","▥","Analytics Dashboard"],["quality","◇","Quality & Priorities"],["workflow","◷","Action Queue"],["integrations","⚙","API Integrations"],
+  // Seven areas instead of fourteen sidebar items. Related screens are tabs INSIDE an area:
+  //   find prospects → prospects (list · map · pipeline) → email → calendar → insights → settings
+  const HUBS = [
+    { id:"overview",  label:"Home",             icon:"🏠", subs:[["overview","Home"]] },
+    { id:"find",      label:"Find prospects",   icon:"🔍", subs:[["discover","Find prospects"]] },
+    { id:"prospects", label:"Prospects",        icon:"👥", subs:[["table","List, map & qualify"],["pipeline","Pipeline board"]] },
+    { id:"email",     label:"Email & outreach", icon:"✉️", subs:[["email","Gmail inbox"],["tools","Write from template"],["outreach","Follow-ups & reports"]] },
+    { id:"calendar",  label:"Calendar & tasks", icon:"📅", subs:[["calendar","Calendar"],["tasks","Team tasks"],["notifications","Task alerts"]] },
+    { id:"insights",  label:"Insights",         icon:"📊", subs:[["analytics","Analytics"],["quality","Quality & priorities"],["workflow","Action queue"]] },
+    { id:"settings",  label:"Settings",         icon:"⚙️", subs:[["integrations","API integrations"], ...((canAdmin && renderAdmin) ? [["admin","Admin"]] : [])] },
   ];
-  if (canAdmin && renderAdmin) nav.push(["admin","🛡️","Admin"]);
-  const toTab = id => { if(CLASSIC.includes(id)){ onSelectClassic?.(id); setTab(id); return; } if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
+  const hubOfTab = id => HUBS.find(h => h.subs.some(([t]) => t === id)) || HUBS[0];
+  const hub = hubOfTab(tab);
+  const subLabel = (hub.subs.find(([t]) => t === tab) || [])[1] || "";
+  const toTab = id => { setLastSub(m => ({ ...m, [hubOfTab(id).id]: id })); if(CLASSIC.includes(id)){ onSelectClassic?.(id); setTab(id); return; } if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tools")setComposeId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
   const name = text(currentUser?.name || currentUser?.username || "Team Member");
   return <div className="pf-root">
     <style>{css}</style>
     <aside className="pf-side">
       <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE CRM</div></div></div>
       <p className="pf-navhint">WORKSPACE</p>
-      <nav aria-label="ProspectFinder navigation">{nav.map(([id,ico,label]) => <button key={id} className={"pf-navbtn " + (tab===id?"active":"")} onClick={()=>toTab(id)}><span className="pf-ico">{ico}</span>{label}</button>)}</nav>
+      <nav aria-label="ProspectFinder navigation">{HUBS.map(h => <button key={h.id} className={"pf-navbtn " + (hub.id===h.id?"active":"")} aria-current={hub.id===h.id?"page":undefined} onClick={()=>toTab(lastSub[h.id] && h.subs.some(([t])=>t===lastSub[h.id]) ? lastSub[h.id] : h.subs[0][0])}><span className="pf-ico">{h.icon}</span>{h.label}</button>)}</nav>
       <div className="pf-side-bottom">
         {canAdmin && !renderAdmin && <button className="pf-navbtn" onClick={onOpenAdmin}><span className="pf-ico">⚙</span>Admin settings</button>}
         <div style={{padding:"4px 2px 10px"}}><ThemeToggle onDark/></div>
@@ -99,8 +118,13 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
       </div>
     </aside>
     <main className="pf-main">
-      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {CRUMBS[tab]?CRUMBS[tab]:tab==="overview"?"Overview":tab==="discover"?"Find Prospects":tab==="integrations"?"API Integrations":tab==="outreach"?"Outreach & Reports":tab==="tools"?"Templates & Activity":tab==="notifications"?"Task Alerts":tab==="tasks"?"Team Tasks":tab==="analytics"?"Analytics Dashboard":tab==="quality"?"Quality & Priorities":tab==="workflow"?"Action Queue":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
+      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {hub.label}{hub.subs.length>1 ? " / " + subLabel : ""}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
       <div className="pf-content">
+      {hub.subs.length > 1 && (
+        <div className="pf-subtabs" role="tablist" aria-label={hub.label}>
+          {hub.subs.map(([id,label]) => <button key={id} type="button" role="tab" aria-selected={tab===id} className={"pf-subtab " + (tab===id?"active":"")} onClick={()=>toTab(id)}>{label}</button>)}
+        </div>
+      )}
       {tab==="overview" && <>
         <div className="pf-page-kicker">PROSPECTFINDER · NATIONWIDE CRM</div>
         <h1 className="pf-page-title">Good morning, {name.split(" ")[0]} <span aria-hidden="true">✳</span></h1>
@@ -153,7 +177,7 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
       {CLASSIC.includes(tab) && <div className="pf-classic">{classicViews}</div>}
       {tab==="admin" && renderAdmin && renderAdmin(()=>setTab("overview"))}
       {tab==="outreach" && <OutreachWorkspace crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM} initialProspectId={focusedOutreachId}/>}
-      {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM}/>}
+      {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM} initialProspectId={composeId}/>}
       {tab==="tasks" && <TeamTasks crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onGetTaskMembers={onGetTaskMembers} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} onOpenCRM={onOpenCRM} initialTaskDraft={taskDraft} initialTaskId={focusedTaskId}/>}
       {tab==="notifications" && <TaskNotifications currentUser={currentUser} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenTask={id=>{setFocusedTaskId(id);setTaskDraft(null);setTab("tasks");}}/>}
       {tab==="analytics" && <AnalyticsWorkspace crmData={crmData} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenOutreach={()=>setTab("outreach")} onOpenTasks={()=>setTab("tasks")}/> }

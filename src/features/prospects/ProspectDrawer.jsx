@@ -11,7 +11,7 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-export default function ProspectDrawer({ onQualify, prospect: p, scoreResult, canEdit, tagsEnabled, tagList, dupMatches, onClose, onPatch, onEdit, onVerify, verifying, lastCheck, hunterOn, onOpenOther }){
+export default function ProspectDrawer({ onQualify, onEmail, onSchedule, onShowOnMap, prospect: p, scoreResult, canEdit, tagsEnabled, tagList, dupMatches, onClose, onPatch, onEdit, onVerify, verifying, lastCheck, hunterOn, onOpenOther }){
   const [notes, setNotes] = useState(p.outreachNotes || "");
   useEffect(() => { setNotes(p.outreachNotes || ""); }, [p.id, p.outreachNotes]);
   const emails = extractEmails(p.emailPhone), phones = extractPhones(p.emailPhone);
@@ -30,6 +30,12 @@ export default function ProspectDrawer({ onQualify, prospect: p, scoreResult, ca
         <div><div style={{ font: "600 10.5px var(--nc-font)", color: "var(--nc-text-3)" }}>NEXT STEP</div>
           <div style={{ font: "700 14px var(--nc-font)", color: na.tone === "due" ? "var(--nc-red)" : na.tone === "ready" ? "var(--nc-green)" : "var(--nc-text)" }}>{na.label}{na.due ? ` · ${na.overdue ? "overdue " : "due "}${fmtDay(na.due)}` : ""}</div></div>
         {canEdit && <select className="nc-select" style={{ width: "auto", minWidth: 150 }} value={p.currentStatus} aria-label="Change status" onChange={e => onPatch({ currentStatus: e.target.value })}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select>}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "-8px 0 22px" }} role="group" aria-label="Quick actions">
+        {onEmail && <Btn size="sm" icon="✉️" onClick={() => onEmail(p)}>Write email</Btn>}
+        {onSchedule && canEdit && <Btn size="sm" icon="📅" onClick={() => onSchedule(p)}>Schedule follow-up</Btn>}
+        {onShowOnMap && <Btn size="sm" icon="📍" onClick={() => onShowOnMap(p)}>Show on map</Btn>}
       </div>
 
       <Section title="Contact" action={tagsEnabled && emails.length > 0 && canEdit && <Btn size="sm" variant="gold-ghost" loading={verifying} onClick={onVerify}>{hunterOn ? "Verify (mailbox)" : "Verify email"}</Btn>}>

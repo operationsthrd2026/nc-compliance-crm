@@ -3791,6 +3791,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
   const [cl,setCl]=useState(Array(CHECKLIST.length).fill(false));
   const [showImport,setShowImport]=useState(false);
   const [showFinder,setShowFinder]=useState(false);
+  const [wsReq,setWsReq]=useState(null); // quick actions on a prospect: open Email / schedule a follow-up
   const [qualifyReq,setQualifyReq]=useState(null); // asks the Prospects area to open a prospect in Qualification
   const [sortCol,setSortCol]=useState("companyName");
   // Pipeline (kanban) state. These MUST be top-level hooks: they used to be declared inside the
@@ -4074,7 +4075,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
 
       {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
       {view==="table"&&(
-        <ProspectsView qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
+        <ProspectsView qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} onWorkspaceAction={(type,p)=>setWsReq({type,id:p.id,company:p.companyName,n:Date.now()})} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
           sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
           onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
           onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
@@ -4299,6 +4300,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
       <ProspectHome
         crmData={crmData}
         classicViews={classicViews}
+        workspaceRequest={wsReq}
         onSelectClassic={setView}
         renderAdmin={renderAdmin}
         onOpenQualification={id=>setQualifyReq({id,n:Date.now()})}

@@ -3,6 +3,7 @@ import { EMPTY_FILTERS, BUILTIN_VIEWS, applyFilters, sortList, withDefaults, all
 import { scoreProspect } from "../../lib/scoring.js";
 import { findDuplicateGroups, findMatches, buildIndex, pairKeyFor } from "../../lib/dedupe.js";
 import { extractEmails } from "../../lib/text.js";
+import { placeKey, placeLabel } from "../../lib/geo.js";
 import { emailKind } from "../../lib/scoring.js";
 import { verifyEmail, mapPool } from "../../lib/emailCheck.js";
 import { Btn, Segmented, Popover, Check, EmptyState, useDebounced } from "../../ui/kit.jsx";
@@ -25,7 +26,7 @@ const primaryEmail = p => { const e = extractEmails(p.emailPhone); return e.find
 export default function ProspectsView({
   crmData, role, currentUser, canEdit, features, sysSettings, savedApi, hunterVerify, applyStatus,
   onEditProspect, onAddProspect, onOpenFinder, onOpenImport, onExport, onBulkSave, onDeleteMany, onMerge, toast,
-  qualifyRequest, onQualifyUpdate,
+  qualifyRequest, onQualifyUpdate, onWorkspaceAction,
 }){
   const tagsEnabled = !!features?.tags;
   const [prefs, setPrefsState] = useState(loadPrefs);
@@ -252,6 +253,13 @@ export default function ProspectsView({
         <ProspectDrawer prospect={openProspect} scoreResult={scoreOf(openProspect)} canEdit={canEdit} tagsEnabled={tagsEnabled} tagList={tagList}
           dupMatches={dupMatches} lastCheck={lastCheck[openProspect.id]} verifying={verifyingId === openProspect.id} hunterOn={!!hunterVerify}
           onClose={() => setOpenId(null)} onPatch={patch => patchOne(openProspect.id, patch)} onQualify={p => { setOpenId(null); setQualifyId(p.id); setMode("qualify"); }}
+          onEmail={onWorkspaceAction ? p => { setOpenId(null); onWorkspaceAction("email", p); } : undefined}
+          onSchedule={onWorkspaceAction ? p => { setOpenId(null); onWorkspaceAction("task", p); } : undefined}
+          onShowOnMap={p => {
+            const k = placeKey(p);
+            if (!k){ toast("This prospect has no recognised U.S. state or city yet — set its Market first.", "err"); return; }
+            setOpenId(null); setFilters(f => ({ ...EMPTY_FILTERS, place: [k] })); setMode("map"); toast(`Showing ${placeLabel(k)} on the map`);
+          }}
           onEdit={p => { setOpenId(null); onEditProspect(p); }} onOpenOther={p => setOpenId(p.id)}
           onVerify={async () => { setVerifyingId(openProspect.id); try { await verifyRows([openProspect]); } finally { setVerifyingId(null); } }} />
       )}
