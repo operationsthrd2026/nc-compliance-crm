@@ -1,6 +1,13 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import NationwideFinder from "./NationwideFinder.jsx";
-import { ThemeToggle } from "../../ui/kit.jsx";
+import { ThemeToggle, Popover, MenuItem, Btn } from "../../ui/kit.jsx";
+import Icon from "../../ui/icons.jsx";
+import CommandPalette from "../../ui/CommandPalette.jsx";
+import TodayHome from "./TodayHome.jsx";
+import OutreachDesk from "./OutreachDesk.jsx";
+import { setPreference } from "../../ui/theme.js";
+import { findDuplicateGroups } from "../../lib/dedupe.js";
+import { loadDismissed } from "../useSavedSearches.js";
 import {safeWebsite,safeEmail,safePhone} from "../../lib/contactDetails.js";
 import ApiIntegrations from "./ApiIntegrations.jsx";
 import OutreachWorkspace from "./OutreachWorkspace.jsx";
@@ -38,7 +45,8 @@ const css = [
   ".pf-recent{width:100%;border-collapse:collapse;margin-top:15px}.pf-recent th{text-align:left;color:var(--pf-tx-8390A6);font-size:10px;letter-spacing:.3px;padding:13px 9px;border-bottom:1px solid var(--pf-border);font-weight:750}.pf-recent td{font-size:11px;padding:14px 9px;border-bottom:1px solid var(--pf-bd-F1F3F8);color:var(--pf-tx-394860)}.pf-recent tr:last-child td{border-bottom:0}.pf-name{font-weight:790;color:var(--pf-tx-1B2944)}.pf-tag{font-size:9px;padding:5px 8px;border-radius:50px;display:inline-block;background:var(--pf-bg-F0F1F7);color:var(--pf-tx-637187);font-weight:750}.pf-tag.green{background:var(--pf-bg-DDF9ED);color:var(--pf-tx-0D8C6B)}.pf-tag.blue{background:var(--pf-bg-E7EFFF);color:var(--pf-tx-3869CD)}.pf-tag.red{background:var(--pf-bg-FFEBED);color:var(--pf-tx-C74758)}.pf-empty{text-align:center;padding:30px 15px;color:var(--pf-tx-8793A8);font-size:12px;line-height:1.7}",
   ".pf-searchline{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.pf-searchline input{padding:12px 13px;border:1px solid var(--pf-bd-E0E6F0);border-radius:10px;flex:1;min-width:200px;background:var(--pf-bg-FFFFFF);color:var(--pf-tx-253653);font-size:12px}.pf-finder-card{margin-top:23px}.pf-finder-card .pf-native-search input,.pf-finder-card .pf-native-search select{background:var(--pf-bg-FFFFFF)!important;color:var(--pf-tx-22314C)!important;border:1px solid var(--pf-bd-DEE4F0)!important;border-radius:9px!important}.pf-finder-card .pf-native-search label{color:var(--pf-tx-53627D)!important}.pf-finder-card button:disabled{opacity:.55;cursor:not-allowed}.pf-footnote{font-size:11px;color:var(--pf-tx-8190AB);margin-top:22px}",
   "@media(max-width:1080px){.pf-metrics{grid-template-columns:repeat(2,1fr)}.pf-layout{grid-template-columns:1fr}.pf-side{width:205px}.pf-content{padding:25px}}",
-  "@media(max-width:720px){.pf-root{display:block}.pf-side{position:relative;width:100%;min-height:auto;padding:10px 12px;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}.pf-brand{padding:4px 7px}.pf-brand-sub,.pf-navhint,.pf-side-bottom{display:none}.pf-side nav{display:flex;flex-wrap:wrap;gap:4px}.pf-navbtn{width:auto;padding:9px 11px;font-size:11px;gap:5px}.pf-ico{width:auto}.pf-header{height:57px;padding:0 18px}.pf-header .pf-pill{display:none}.pf-content{padding:20px 14px 48px}.pf-page-title{font-size:25px}.pf-hero{padding:25px;min-height:205px}.pf-hero-head{font-size:24px}.pf-metrics{grid-template-columns:repeat(2,1fr);gap:9px}.pf-metric{padding:14px}.pf-metric-num{font-size:23px}.pf-actions{grid-template-columns:1fr}.pf-card{padding:17px}}"
+  "@media(max-width:720px){.pf-root{display:block}.pf-side{position:relative;width:100%;min-height:auto;padding:10px 12px;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}.pf-brand{padding:4px 7px}.pf-brand-sub,.pf-navhint,.pf-side-bottom{display:none}.pf-side nav{display:flex;flex-wrap:wrap;gap:4px}.pf-navbtn{width:auto;padding:9px 11px;font-size:11px;gap:5px}.pf-ico{width:auto}.pf-header{height:57px;padding:0 18px}.pf-header .pf-pill{display:none}.pf-content{padding:20px 14px 48px}.pf-page-title{font-size:25px}.pf-hero{padding:25px;min-height:205px}.pf-hero-head{font-size:24px}.pf-metrics{grid-template-columns:repeat(2,1fr);gap:9px}.pf-metric{padding:14px}.pf-metric-num{font-size:23px}.pf-actions{grid-template-columns:1fr}.pf-card{padding:17px}}",
+  ".pf-subtabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--pf-border);margin:-8px 0 24px}.pf-subtab{border:0;background:transparent;color:var(--pf-muted);font-size:13.5px;font-weight:650;padding:11px 16px;border-bottom:3px solid transparent;margin-bottom:-1px;border-radius:9px 9px 0 0}.pf-subtab:hover{color:var(--pf-ink);background:rgba(127,127,160,.08)}.pf-subtab.active{color:var(--pf-ink);border-bottom-color:var(--pf-primary)}.pf-subtab:focus-visible{outline:2px solid var(--pf-primary);outline-offset:-2px}"
 ].join("\n");
 
 function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
@@ -62,11 +70,13 @@ function MiniTable({ data, onOpenCRM, limit = 5, showContacts = false }) {
   </div>;
 }
 
-export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onOpenCRMProp, onOpenAdmin, classicViews, onSelectClassic, renderAdmin, onOpenQualification, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
+export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onOpenCRMProp, onOpenAdmin, classicViews, onSelectClassic, renderAdmin, onOpenQualification, workspaceRequest, onProspectsRequest, onCommand, tagsEnabled, applyStatus, onSaveOne, gmail, onEmailSent, notify, onLogout, onAddProspects, onUpdateProspect, canEdit=false, baseUrl, requestHeaders, dbStatus, canAdmin, onLoadApiCredentials, onSaveApiCredential, activityEnabled=false, onGetActivities, onLogActivity, tasksEnabled=false, onGetTasks, onGetTaskMembers, onCreateTask, onUpdateTask, savedApi }) {
   const [tab, setTab] = useState("overview");
   const [focusedProspectId, setFocusedProspectId] = useState(null);
   const [focusedOutreachId, setFocusedOutreachId] = useState(null);
   const [taskDraft, setTaskDraft] = useState(null);
+  const [composeId, setComposeId] = useState(null);   // prospect chosen for "Write email"
+  const [lastSub, setLastSub] = useState({});   // remembers the last tab you used in each area
   const [focusedTaskId,setFocusedTaskId] = useState(null);
   // The classic CRM screens now live INSIDE this workspace (one navigation, one app).
   const CLASSIC = ["table","pipeline","calendar","email"];
@@ -74,23 +84,71 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
   const openProspects = () => { onSelectClassic?.("table"); setTab("table"); };
   const onOpenCRM = () => { onOpenCRMProp?.(); openProspects(); };   // children call this to jump to the Prospects area
   const openQualification = id => { onOpenQualification?.(id); openProspects(); };
+  useEffect(() => {
+    if (!workspaceRequest) return;
+    const { type, id, company } = workspaceRequest;
+    if (type === "email"){ setComposeId(id); setLastSub(m => ({ ...m, email: "desk" })); setTab("desk"); }
+    if (type === "task"){ setTaskDraft({ prospectId: id, taskTitle: `Follow up with ${company || "prospect"}`, description: "", priority: "normal" }); setFocusedTaskId(null); setLastSub(m => ({ ...m, calendar: "tasks" })); setTab("tasks"); }
+  }, [workspaceRequest]);
   const nonprofitCount = useMemo(() => crmData.filter(p => nonprofitPattern.test(text(p.vertical))).length, [crmData]);
   const smallCount = Math.max(0, crmData.length - nonprofitCount);
   const fresh = crmData.filter(p => statusName(p.currentStatus).toUpperCase() === "NEW").length;
   const contacted = crmData.filter(p => /T1 SENT|T2 SENT|T3 SENT|CONTACTED|FOLLOW.UP/i.test(statusName(p.currentStatus))).length;
   const recent = [...crmData].reverse();
-  const nav = [
-    ["overview","◈","Overview"],["discover","⌕","Find Prospects"],["table","👥","Prospects"],["pipeline","🗂️","Pipeline"],["calendar","📅","Calendar"],["email","✉️","Email Hub"],["outreach","◷","Outreach & Reports"],["tools","✉","Templates & Activity"],["notifications","♧","Task Alerts"],["tasks","☑","Team Tasks"],["analytics","▥","Analytics Dashboard"],["quality","◇","Quality & Priorities"],["workflow","◷","Action Queue"],["integrations","⚙","API Integrations"],
+  // Seven areas instead of fourteen sidebar items. Related screens are tabs INSIDE an area:
+  //   find prospects → prospects (list · map · pipeline) → email → calendar → insights → settings
+  const HUBS = [
+    { id:"overview",  label:"Home",             icon:"home", subs:[["overview","Home"]] },
+    { id:"find",      label:"Find prospects",   icon:"search", subs:[["discover","Find prospects"]] },
+    { id:"prospects", label:"Prospects",        icon:"users", subs:[["table","List, map & qualify"],["pipeline","Pipeline board"]] },
+    { id:"email",     label:"Email & outreach", icon:"mail", subs:[["desk","Outreach desk"],["email","Gmail inbox"],["outreach","Follow-ups & reports"],["tools","Activity log"]] },
+    { id:"calendar",  label:"Calendar & tasks", icon:"calendar", subs:[["calendar","Calendar"],["tasks","Team tasks"],["notifications","Task alerts"]] },
+    { id:"insights",  label:"Insights",         icon:"chart", subs:[["analytics","Analytics"],["quality","Quality & priorities"],["workflow","Action queue"]] },
+    { id:"settings",  label:"Settings",         icon:"settings", subs:[["integrations","API integrations"], ...((canAdmin && renderAdmin) ? [["admin","Admin"]] : [])] },
   ];
-  if (canAdmin && renderAdmin) nav.push(["admin","🛡️","Admin"]);
-  const toTab = id => { if(CLASSIC.includes(id)){ onSelectClassic?.(id); setTab(id); return; } if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
+  const hubOfTab = id => HUBS.find(h => h.subs.some(([t]) => t === id)) || HUBS[0];
+  const hub = hubOfTab(tab);
+  const subLabel = (hub.subs.find(([t]) => t === tab) || [])[1] || "";
+  // A suggested action from the Today screen → open the place where a person does the step.
+  const runTarget = t => {
+    if (t.type === "email"){ setComposeId(t.id); setLastSub(m => ({ ...m, email: "desk" })); setTab("desk"); return; }
+    openProspects();
+    if (t.type === "view") onProspectsRequest?.({ viewId: t.viewId });
+    else if (t.type === "mode") onProspectsRequest?.({ mode: t.mode });
+    else if (t.type === "open") onProspectsRequest?.({ openId: t.id });
+    else if (t.type === "stage") onProspectsRequest?.({ status: t.status });
+    else if (t.type === "place") onProspectsRequest?.({ placeKey: t.key, mode: "map" });
+  };
+  const onHome = tab === "overview";
+  const dupCount = useMemo(() => onHome ? findDuplicateGroups(crmData, { dismissed: loadDismissed() }).length : 0, [crmData, onHome]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const k = e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"){ e.preventDefault(); setPaletteOpen(o => !o); } };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, []);
+  const toTab = id => { setLastSub(m => ({ ...m, [hubOfTab(id).id]: id })); if(CLASSIC.includes(id)){ onSelectClassic?.(id); setTab(id); return; } if(id==="crm")return onOpenCRM(); if(id==="outreach")setFocusedOutreachId(null); if(id==="tools"||id==="desk")setComposeId(null); if(id==="tasks"){setTaskDraft(null);setFocusedTaskId(null);} setTab(id); };
+
+  const commands = useMemo(() => [
+    { id: "add", group: "Do", label: "Add a prospect", icon: "plus", keywords: "new create", run: () => onCommand?.("add") },
+    { id: "import", group: "Do", label: "Import a spreadsheet", icon: "upload", keywords: "excel csv xlsx upload", run: () => onCommand?.("import") },
+    { id: "desk", group: "Do", label: "Write emails (Outreach desk)", icon: "mail", keywords: "send draft compose outreach touch", run: () => toTab("desk") },
+    { id: "find", group: "Do", label: "Find new prospects", icon: "search", keywords: "search discover nonprofit business", run: () => toTab("discover") },
+    { id: "ready", group: "Do", label: "Show prospects ready for Touch 1", icon: "mail", keywords: "email outreach first", run: () => runTarget({ type: "view", viewId: "ready" }) },
+    { id: "overdue", group: "Do", label: "Show overdue follow-ups", icon: "clock", keywords: "late touch 2 touch 3", run: () => runTarget({ type: "view", viewId: "overdue" }) },
+    { id: "replied", group: "Do", label: "Show prospects who replied", icon: "reply", keywords: "answers responses", run: () => runTarget({ type: "view", viewId: "replied" }) },
+    { id: "map", group: "Do", label: "Show prospects on the map", icon: "map", keywords: "territory location", run: () => runTarget({ type: "mode", mode: "map" }) },
+    { id: "dups", group: "Do", label: "Review possible duplicates", icon: "users", keywords: "merge clean", run: () => runTarget({ type: "mode", mode: "duplicates" }) },
+    { id: "light", group: "Do", label: "Switch to the light theme", icon: "sun", keywords: "appearance colour", run: () => setPreference("light") },
+    { id: "dark", group: "Do", label: "Switch to the dark theme", icon: "moon", keywords: "appearance colour", run: () => setPreference("dark") },
+    ...HUBS.flatMap(h => h.subs.map(([t, label]) => ({ id: "go-" + t, group: "Go to", label: h.subs.length > 1 ? `${h.label} › ${label}` : h.label, icon: h.icon, keywords: label, run: () => toTab(t) }))),
+  ], [HUBS.length, canAdmin, renderAdmin, onCommand, onProspectsRequest]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = text(currentUser?.name || currentUser?.username || "Team Member");
   return <div className="pf-root">
     <style>{css}</style>
     <aside className="pf-side">
       <div className="pf-brand"><span className="pf-mark">P</span><div><div className="pf-brand-name">ProspectFinder</div><div className="pf-brand-sub">NATIONWIDE CRM</div></div></div>
       <p className="pf-navhint">WORKSPACE</p>
-      <nav aria-label="ProspectFinder navigation">{nav.map(([id,ico,label]) => <button key={id} className={"pf-navbtn " + (tab===id?"active":"")} onClick={()=>toTab(id)}><span className="pf-ico">{ico}</span>{label}</button>)}</nav>
+      <nav aria-label="ProspectFinder navigation">{HUBS.map(h => <button key={h.id} className={"pf-navbtn " + (hub.id===h.id?"active":"")} aria-current={hub.id===h.id?"page":undefined} onClick={()=>toTab(lastSub[h.id] && h.subs.some(([t])=>t===lastSub[h.id]) ? lastSub[h.id] : h.subs[0][0])}><span className="pf-ico"><Icon name={h.icon} size={18}/></span>{h.label}</button>)}</nav>
       <div className="pf-side-bottom">
         {canAdmin && !renderAdmin && <button className="pf-navbtn" onClick={onOpenAdmin}><span className="pf-ico">⚙</span>Admin settings</button>}
         <div style={{padding:"4px 2px 10px"}}><ThemeToggle onDark/></div>
@@ -99,47 +157,31 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
       </div>
     </aside>
     <main className="pf-main">
-      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {CRUMBS[tab]?CRUMBS[tab]:tab==="overview"?"Overview":tab==="discover"?"Find Prospects":tab==="integrations"?"API Integrations":tab==="outreach"?"Outreach & Reports":tab==="tools"?"Templates & Activity":tab==="notifications"?"Task Alerts":tab==="tasks"?"Team Tasks":tab==="analytics"?"Analytics Dashboard":tab==="quality"?"Quality & Priorities":tab==="workflow"?"Action Queue":"Saved Prospects"}</div><strong>ProspectFinder · U.S. Nationwide</strong></div><div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></header>
+      <header className="pf-header"><div><div className="pf-breadcrumb">Workspace / {hub.label}{hub.subs.length>1 ? " / " + subLabel : ""}</div><strong>{hub.id==="overview" ? "Today" : hub.label}</strong></div>
+      <div className="pf-header-actions">
+        <button type="button" className="pf-search" onClick={()=>setPaletteOpen(true)} aria-label="Search or jump to anything (Ctrl K)"><Icon name="search" size={16}/><span>Search or jump to…</span><kbd>Ctrl K</kbd></button>
+        <span className="nc"><Popover align="right" width={230} trigger={({toggle})=><Btn variant="primary" onClick={toggle} icon="＋">New</Btn>}>{({close})=><>
+          <MenuItem icon={<Icon name="users" size={16}/>} onClick={()=>{close();onCommand?.("add");}}>Add a prospect</MenuItem>
+          <MenuItem icon={<Icon name="upload" size={16}/>} onClick={()=>{close();onCommand?.("import");}}>Import a spreadsheet</MenuItem>
+          <MenuItem icon={<Icon name="search" size={16}/>} onClick={()=>{close();toTab("discover");}}>Find prospects</MenuItem>
+          <MenuItem icon={<Icon name="calendar" size={16}/>} onClick={()=>{close();setTaskDraft(null);toTab("tasks");}}>New task</MenuItem>
+        </>}</Popover></span>
+      <div className="pf-pill"><span className="pf-online"/>{dbStatus==="connected"?"CRM Connected":dbStatus==="local"?"Demo Mode":"CRM "+(dbStatus||"Status")}</div></div></header>
       <div className="pf-content">
-      {tab==="overview" && <>
-        <div className="pf-page-kicker">PROSPECTFINDER · NATIONWIDE CRM</div>
-        <h1 className="pf-page-title">Good morning, {name.split(" ")[0]} <span aria-hidden="true">✳</span></h1>
-        <p className="pf-page-description">Discover organizations nationwide, qualify opportunities, and move prospects into your CRM.</p>
-        <section className="pf-hero">
-          <div><div className="pf-hero-eyebrow">PROSPECT DISCOVERY · UNITED STATES</div>
-            <h2 className="pf-hero-head">Discover more. Connect with purpose.</h2>
-            <p className="pf-hero-sub">Find nonprofits and local businesses anywhere in the U.S. and save qualified leads straight to your existing CRM.</p>
-            <button className="pf-button white" onClick={()=>setTab("discover")}>⌕ &nbsp; Start finding prospects <span aria-hidden="true">→</span></button>
-          </div>
-        </section>
-        <section className="pf-metrics" aria-label="Your saved prospect statistics">
-          {[
-            ["◫","Total saved leads",crmData.length,"From your connected CRM"],
-            ["♡","Nonprofits",nonprofitCount,"Categorized nonprofit prospects"],
-            ["▣","Small businesses",smallCount,"Other saved organizations"],
-            ["↗","Outreach started",contacted,"Leads with contacted status"]
-          ].map(([ico,label,num,foot])=><div className="pf-metric" key={label}><div className="pf-metric-top"><span className="pf-metric-label">{label}</span><span className="pf-metric-ico">{ico}</span></div><div className="pf-metric-num">{num.toLocaleString()}</div><div className="pf-metric-foot">{foot}</div></div>)}
-        </section>
-        <div className="pf-layout">
-          <section className="pf-card">
-            <div className="pf-card-top"><div><h3 className="pf-card-title">Quick discovery</h3><p className="pf-card-sub">Jump into your next targeted search</p></div></div>
-            <div className="pf-actions">
-              <button className="pf-action" onClick={()=>setTab("discover")}><span className="pf-action-ico">♡</span><span><strong>Find nonprofits</strong><small>Organizations, charities & foundations</small></span></button>
-              <button className="pf-action" onClick={()=>setTab("discover")}><span className="pf-action-ico">▣</span><span><strong>Find small businesses</strong><small>Local services, shops & companies</small></span></button>
-              <button className="pf-action" onClick={()=>openQualification(null)}><span className="pf-action-ico">▤</span><span><strong>Qualify saved leads</strong><small>{fresh} prospects currently marked new</small></span></button>
-              <button className="pf-action" onClick={()=>setTab("outreach")}><span className="pf-action-ico">◷</span><span><strong>Manage follow-ups</strong><small>Due dates, manual outreach and pipeline reports</small></span></button>
-              <button className="pf-action" onClick={()=>setTab("analytics")}><span className="pf-action-ico">▥</span><span><strong>Review analytics</strong><small>Pipeline performance, contact coverage and tasks</small></span></button>
-              <button className="pf-action" onClick={()=>setTab("quality")}><span className="pf-action-ico">◇</span><span><strong>Review lead quality</strong><small>Duplicate warnings, missing data and priorities</small></span></button>
-              <button className="pf-action" onClick={()=>setTab("workflow")}><span className="pf-action-ico">◷</span><span><strong>Open action queue</strong><small>Manual next steps and reusable review filters</small></span></button>
-            </div>
-          </section>
-          <section className="pf-card">
-            <div className="pf-card-top"><div><h3 className="pf-card-title">Recent saved prospects</h3><p className="pf-card-sub">Records from your existing CRM</p></div><button className="pf-link" onClick={()=>openQualification(null)}>View all →</button></div>
+      {hub.subs.length > 1 && (
+        <div className="pf-subtabs" role="tablist" aria-label={hub.label}>
+          {hub.subs.map(([id,label]) => <button key={id} type="button" role="tab" aria-selected={tab===id} className={"pf-subtab " + (tab===id?"active":"")} onClick={()=>toTab(id)}>{label}</button>)}
+        </div>
+      )}
+      {tab==="overview" && (
+        <TodayHome crmData={crmData} firstName={name.split(" ")[0]} dupGroups={dupCount} tagsEnabled={!!tagsEnabled} onRun={runTarget} onOpenFind={()=>toTab("discover")}>
+          <section className="td-card">
+            <div className="td-card-head"><h3>Recently saved</h3><button type="button" className="td-link" onClick={onOpenCRM}>Open all prospects</button></div>
             <MiniTable data={recent} onOpenCRM={onOpenCRM} limit={4}/>
           </section>
-        </div>
-        <p className="pf-footnote">Lead counts reflect CRM records. Directory listings and public contact details are not the same as verified decision-maker contacts.</p>
-      </>}
+          <p className="pf-footnote">Lead counts reflect CRM records. Directory listings and public contact details are not the same as verified decision-maker contacts.</p>
+        </TodayHome>
+      )}
       {tab==="discover" && <>
         <div className="pf-page-kicker">LIVE ORGANIZATION DISCOVERY</div><h1 className="pf-page-title">Find your next prospect</h1>
         <p className="pf-page-description">Search nonprofit and small-business sources by U.S. state, city, ZIP, industry or keyword. Save selected results to your CRM.</p>
@@ -153,7 +195,10 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
       {CLASSIC.includes(tab) && <div className="pf-classic">{classicViews}</div>}
       {tab==="admin" && renderAdmin && renderAdmin(()=>setTab("overview"))}
       {tab==="outreach" && <OutreachWorkspace crmData={crmData} canEdit={canEdit} onUpdateProspect={onUpdateProspect} onOpenCRM={onOpenCRM} initialProspectId={focusedOutreachId}/>}
-      {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM}/>}
+      {tab==="desk" && <OutreachDesk crmData={crmData} canEdit={canEdit} initialProspectId={composeId} applyStatus={applyStatus} onSaveProspect={onSaveOne}
+        onLogActivity={onLogActivity} onGetActivities={onGetActivities} activityEnabled={activityEnabled} gmail={gmail} onEmailSent={onEmailSent}
+        onOpenProspect={p=>{openProspects();onProspectsRequest?.({openId:p.id});}} onFind={()=>toTab("discover")} toast={notify}/>}
+      {tab==="tools" && <OutreachTools crmData={crmData} canEdit={canEdit} enabled={activityEnabled} onGetActivities={onGetActivities} onLogActivity={onLogActivity} onOpenCRM={onOpenCRM} initialProspectId={composeId}/>}
       {tab==="tasks" && <TeamTasks crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onGetTaskMembers={onGetTaskMembers} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} onOpenCRM={onOpenCRM} initialTaskDraft={taskDraft} initialTaskId={focusedTaskId}/>}
       {tab==="notifications" && <TaskNotifications currentUser={currentUser} canAdmin={canAdmin} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenTask={id=>{setFocusedTaskId(id);setTaskDraft(null);setTab("tasks");}}/>}
       {tab==="analytics" && <AnalyticsWorkspace crmData={crmData} enabled={tasksEnabled} onGetTasks={onGetTasks} onOpenOutreach={()=>setTab("outreach")} onOpenTasks={()=>setTab("tasks")}/> }
@@ -161,5 +206,6 @@ export default function ProspectHome({ crmData = [], currentUser, onOpenCRM: onO
       {tab==="workflow" && <WorkflowWorkspace crmData={crmData} currentUser={currentUser} canEdit={canEdit} canAdmin={canAdmin} tasksEnabled={tasksEnabled} savedApi={savedApi} onGetTasks={onGetTasks} onOpenTask={id=>{setFocusedTaskId(id);setTaskDraft(null);setTab("tasks");}} onOpenProspect={openQualification} onOpenQuality={()=>setTab("quality")} onOpenOutreach={id=>{setFocusedOutreachId(id);setTab("outreach");}} onPrepareTask={item=>{setFocusedTaskId(null);setTaskDraft({prospectId:item.id,taskTitle:item.taskTitle,description:item.why,priority:["Immediate review","Overdue","Due today"].includes(item.bucket)?"high":"normal"});setTab("tasks");}}/>}
       </div>
     </main>
+    <CommandPalette open={paletteOpen} onClose={()=>setPaletteOpen(false)} commands={commands} prospects={crmData} onOpenProspect={p=>{openProspects();onProspectsRequest?.({openId:p.id});}}/>
   </div>;
 }

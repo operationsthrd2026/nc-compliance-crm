@@ -435,6 +435,9 @@ function isGmailConnected() {
 async function sendViaGmailAPI({ to, subject, body, cc }) {
   const token = getGoogleToken();
   if (!token) return { ok: false, reason: "no_token" };
+  // header-bound fields must not contain line breaks (prevents mail-header injection)
+  const clean = v => String(v ?? "").replace(/[\r\n]+/g, " ").trim();
+  to = clean(to); subject = clean(subject); cc = cc ? clean(cc) : cc;
 
   const headers = [
     `To: ${to}`,
@@ -2798,8 +2801,9 @@ const MOCK_SENT=[
 ════════════════════════════════════════════════════════════════ */
 function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentUser,sysSettings,onViewProspect,t2}){
   const [etab,setEtab]=useState("queue");
-  const [inbox,setInbox]=useState(MOCK_INBOX);
-  const [sent,setSent]=useState(MOCK_SENT);
+  // Fictional sample emails exist ONLY for demo mode. A real workspace must never show invented people or fake sends.
+  const [inbox,setInbox]=useState(isConfigured?[]:MOCK_INBOX);
+  const [sent,setSent]=useState(isConfigured?[]:MOCK_SENT);
   const [inboxSearch,setInboxSearch]=useState("");
   const [selectedEmail,setSelectedEmail]=useState(null);
   const [compose,setCompose]=useState(null);
@@ -2864,14 +2868,14 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
         // Shouldn't happen if isGmailConnected() returned true, but just in case
         setInboxConnected(true);
         setUsingRealGmail(false);
-        setInbox(MOCK_INBOX);
-        t2("Showing demo inbox — Gmail token unavailable.");
+        setInbox(isConfigured?[]:MOCK_INBOX);
+        t2(isConfigured?"Gmail isn't connected — sign in with Google to see your replies.":"Showing demo inbox — Gmail token unavailable.");
       } else {
         // Gmail API error (e.g. token expired or scopes missing)
         setInboxConnected(true);
         setUsingRealGmail(false);
-        setInbox(MOCK_INBOX);
-        t2("Couldn't load Gmail — showing demo inbox. Try signing out and back in.", "err");
+        setInbox(isConfigured?[]:MOCK_INBOX);
+        t2(isConfigured?"Couldn't load Gmail. Try signing out and back in.":"Couldn't load Gmail — showing demo inbox. Try signing out and back in.", "err");
       }
     } else {
       // Not signed in via Google — fall back to demo inbox
@@ -2879,8 +2883,8 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
         setConnecting(false);
         setInboxConnected(true);
         setUsingRealGmail(false);
-        setInbox(MOCK_INBOX);
-        t2("Showing demo inbox. Sign in with Google to connect your real Gmail.");
+        setInbox(isConfigured?[]:MOCK_INBOX);
+        t2(isConfigured?"Gmail isn't connected — sign in with Google to see your replies.":"Showing demo inbox. Sign in with Google to connect your real Gmail.");
       },900);
     }
   };
@@ -2895,8 +2899,8 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
         t2("Couldn't refresh Gmail inbox.", "err");
       }
     } else {
-      setInbox(MOCK_INBOX);
-      t2("Demo inbox refreshed!");
+      setInbox(isConfigured?[]:MOCK_INBOX);
+      t2(isConfigured?"Nothing to refresh until Gmail is connected.":"Demo inbox refreshed!");
     }
   };
 
@@ -2970,7 +2974,9 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
       return;
     }
 
-    // Demo fallback — no Gmail connected
+    // Not connected: in a real workspace NOTHING is sent, so nothing may be recorded (no status change, no email row).
+    if(isConfigured){ setSending(false); t2("Gmail isn't connected, so nothing was sent or recorded. Connect Gmail first, or use the Outreach desk (Open in my email app).","err"); return; }
+    // Demo fallback — no Gmail connected (demo mode only)
     setTimeout(()=>{
       const next=touchKey==="t1"?"T1 SENT":touchKey==="t2"?"T2 SENT":"NURTURE/T3 SENT";
       if(prospect)qStatus(prospect.id,next);
@@ -3376,7 +3382,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                           <td style={{padding:"10px 14px"}}><span style={{fontSize:10,padding:"2px 8px",background:e.touch==="T1"?"rgba(219,168,67,0.12)":e.touch==="T2"?"rgba(139,92,246,0.12)":"rgba(236,72,153,0.12)",border:`1px solid ${e.touch==="T1"?"rgba(219,168,67,0.3)":e.touch==="T2"?"rgba(139,92,246,0.3)":"rgba(236,72,153,0.3)"}`,borderRadius:6,color:e.touch==="T1"?GL:e.touch==="T2"?"#a78bfa":"var(--k-pink)",fontWeight:700}}>Touch {e.touch}</span></td>
                           <td style={{padding:"10px 14px"}}>{e.via==="gmail"?<span style={{fontSize:10,color:"var(--k-green)",display:"flex",alignItems:"center",gap:4}}><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg> Gmail</span>:<span style={{fontSize:10,color:WD}}>Demo log</span>}</td>
                           <td style={{padding:"10px 14px",fontSize:11,color:WD,whiteSpace:"nowrap"}}>{(e.date||"").slice(0,16)}</td>
-                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,color:e.opened?"var(--k-green)":WD,display:"flex",alignItems:"center",gap:4}}>{e.opened?<>✓ Opened</>:<>— Not opened</>}</span></td>
+                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,color:e.opened?"var(--k-green)":WD,display:"flex",alignItems:"center",gap:4}}><span title="Open tracking is not available — a reply is the only reliable signal">—</span></span></td>
                         </tr>
                       );
                     })}
@@ -3791,6 +3797,8 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
   const [cl,setCl]=useState(Array(CHECKLIST.length).fill(false));
   const [showImport,setShowImport]=useState(false);
   const [showFinder,setShowFinder]=useState(false);
+  const [pvReq,setPvReq]=useState(null);   // asks the Prospects area to apply a view / open a prospect (Today screen, command palette)
+  const [wsReq,setWsReq]=useState(null); // quick actions on a prospect: open Email / schedule a follow-up
   const [qualifyReq,setQualifyReq]=useState(null); // asks the Prospects area to open a prospect in Qualification
   const [sortCol,setSortCol]=useState("companyName");
   // Pipeline (kanban) state. These MUST be top-level hooks: they used to be declared inside the
@@ -3901,6 +3909,16 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
   },[onSaveProspect,deleteMany,addAudit,currentUser]);
   const exportRows=useCallback((rows,name)=>{exportToExcel(rows,name);t2(`Exported ${rows.length} prospect${rows.length===1?"":"s"}`);},[]);
 
+
+  // Outreach desk plumbing: change one prospect (reports failure), Gmail access, and saving a REAL Gmail send to the emails table.
+  const saveOne=useCallback((id,fn)=>bulkSave([{id,patch:fn}]),[bulkSave]);
+  const gmailApi=useMemo(()=>({isConnected:isGmailConnected,send:sendViaGmailAPI}),[]);
+  const logSentEmail=useCallback(({prospect,subject,body,touch,to})=>{
+    if(!isConfigured)return;
+    DB.addEmail({prospect_id:(prospect?.id&&/^[0-9a-f-]{36}$/.test(String(prospect.id)))?prospect.id:null,to_email:to,to_name:prospect?.contactName||"",subject,body,
+      touch:touch?`T${touch}`:"",direction:"outbound",from_email:sessionStorage.getItem("google_email")||"",from_name:currentUser.name,opened:false,sent_at:new Date().toISOString()})
+      .catch(e=>dwarn("[NC CRM] Could not save email to DB:",e.message));
+  },[currentUser]);
 
   // Qualification saves (shared by the Prospects area and the workspace shell)
   const qualifyUpdate=async ({id,changes})=>{
@@ -4074,7 +4092,7 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
 
       {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
       {view==="table"&&(
-        <ProspectsView qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
+        <ProspectsView viewRequest={pvReq} onRequestHandled={()=>{setPvReq(null);setQualifyReq(null);}} qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} onWorkspaceAction={(type,p)=>setWsReq({type,id:p.id,company:p.companyName,n:Date.now()})} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
           sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
           onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
           onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
@@ -4299,6 +4317,15 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
       <ProspectHome
         crmData={crmData}
         classicViews={classicViews}
+        workspaceRequest={wsReq}
+        applyStatus={applyTouchDates}
+        onSaveOne={saveOne}
+        gmail={gmailApi}
+        onEmailSent={logSentEmail}
+        notify={t2}
+        onProspectsRequest={r=>setPvReq({...r,n:Date.now()})}
+        onCommand={c=>{if(c==="add")setPDlg("add");if(c==="import")setShowImport(true);}}
+        tagsEnabled={!!features?.tags}
         onSelectClassic={setView}
         renderAdmin={renderAdmin}
         onOpenQualification={id=>setQualifyReq({id,n:Date.now()})}
