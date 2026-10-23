@@ -15,12 +15,20 @@ import {
 } from "./text.js";
 import { STATUSES } from "../constants.js";
 
+/* Sites that LIST many organisations. A link to one of these says nothing about who the organisation is, so it
+   must never be treated as "the same website": two unrelated charities both sourced from ProPublica are not duplicates. */
+const LISTING_SITES = ["propublica.org", "openstreetmap.org", "guidestar.org", "candid.org", "charitynavigator.org", "irs.gov", "linkedin.com",
+  "facebook.com", "instagram.com", "twitter.com", "x.com", "youtube.com", "yelp.com", "google.com", "goo.gl", "bing.com", "wikipedia.org", "wikidata.org",
+  "apple.com", "nppes.cms.hhs.gov", "npiregistry.cms.hhs.gov", "cms.gov", "bbb.org", "yellowpages.com", "manta.com", "mapquest.com"];
+export const isListingSite = d => { d = String(d || "").toLowerCase(); return LISTING_SITES.some(l => d === l || d.endsWith("." + l)); };
+
 export function keysOf(p){
   const emails = extractEmails(p.emailPhone);
   const phones = extractPhones(p.emailPhone);
   const domains = new Set();
   for (const e of emails){ const d = domainOfEmail(e); if (d && !isFreemail(d)) domains.add(d); }
-  const web = domainOfUrl(p.sourceUrl); if (web && !isFreemail(web)) domains.add(web);
+  // the organisation's OWN website (never a listing page): prefer the dedicated field, fall back to the source link
+  for (const web of [domainOfUrl(p.website), domainOfUrl(p.sourceUrl)]) if (web && !isFreemail(web) && !isListingSite(web)) domains.add(web);
   const name = normalizeName(p.companyName), tokens = nameTokens(p.companyName);
   return {
     emails, phones, domains: [...domains],

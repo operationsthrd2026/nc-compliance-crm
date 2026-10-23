@@ -6,7 +6,6 @@ const frame={border:"1px solid var(--pf-bd-E8ECF4)",background:"var(--pf-bg-FFFF
 const select={border:"1px solid var(--pf-bd-DBE2ED)",background:"var(--pf-bg-FFFFFF)",color:"var(--pf-tx-243653)",padding:"10px 12px",borderRadius:9,fontSize:12,maxWidth:"100%"};
 const accent="var(--pf-tx-6656DD)";
 const muted="var(--pf-tx-687993)";
-const TERMINAL=["Replied","Do Not Respond","Converted","NURTURE/T3 SENT"];
 function fmtDay(s){
  if(parseLocalDay(s)===null)return "Not scheduled";
  const [y,m,d]=s.split("-").map(Number);

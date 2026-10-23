@@ -3,12 +3,14 @@
 ════════════════════════════════════════════════════════════════ */
 import { extractEmails } from "./text.js";
 import { placeKey } from "./geo.js";
+import { nextAction } from "./outreach.js";
 
 export const EMPTY_FILTERS = Object.freeze({
   q: "", status: [], vertical: [], market: [], place: [], source: [], tags: [], tier: [], emailStatus: [],
   hasEmail: "any",   // any | yes | no
   hrListed: "any",   // any | Yes | No
   replied: "any",    // any | yes | no
+  followup: "any",   // any | overdue
   hideDNR: false, minScore: 0,
 });
 
@@ -20,7 +22,7 @@ export function countActive(f){
   const x = withDefaults(f); let n = 0;
   if (x.q.trim()) n++;
   ARRAY_KEYS.forEach(k => { if (x[k].length) n++; });
-  if (x.hasEmail !== "any") n++; if (x.hrListed !== "any") n++; if (x.replied !== "any") n++;
+  if (x.followup !== "any") n++; if (x.hasEmail !== "any") n++; if (x.hrListed !== "any") n++; if (x.replied !== "any") n++;
   if (x.hideDNR) n++; if (x.minScore > 0) n++;
   return n;
 }
@@ -55,6 +57,7 @@ export function applyFilters(list, filters, scoreOf){
     else if (f.hrListed !== "any" && p.hrPersonListed !== f.hrListed) return false;
     if (f.replied === "yes" && !p.replyReceived) return false;
     if (f.replied === "no" && p.replyReceived) return false;
+    if (f.followup === "overdue" && !(nextAction(p).overdue && !p.doNotRespond)) return false;
     if (f.hideDNR && (p.doNotRespond || p.currentStatus === "Do Not Respond")) return false;
     if (f.tier.length || f.minScore > 0){
       const s = scoreOf ? scoreOf(p) : null;
@@ -86,6 +89,7 @@ export const BUILTIN_VIEWS = [
   { id: "hot",        name: "Hot & strong fit",    filters: { tier: ["hot", "strong"], hideDNR: true } },
   { id: "noemail",    name: "Missing email",       filters: { hasEmail: "no", hideDNR: true } },
   { id: "unverified", name: "Emails to verify",    filters: { hasEmail: "yes", emailStatus: [""], hideDNR: true } },
+  { id: "overdue",    name: "Overdue follow-ups",  filters: { followup: "overdue", hideDNR: true } },
   { id: "replied",    name: "Replied",             filters: { replied: "yes" } },
 ];
 

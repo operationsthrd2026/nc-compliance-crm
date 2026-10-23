@@ -3,6 +3,7 @@ import { EMPTY_FILTERS, BUILTIN_VIEWS, applyFilters, sortList, withDefaults, all
 import { scoreProspect } from "../../lib/scoring.js";
 import { findDuplicateGroups, findMatches, buildIndex, pairKeyFor } from "../../lib/dedupe.js";
 import { extractEmails } from "../../lib/text.js";
+import { placeKey, placeLabel } from "../../lib/geo.js";
 import { emailKind } from "../../lib/scoring.js";
 import { verifyEmail, mapPool } from "../../lib/emailCheck.js";
 import { Btn, Segmented, Popover, Check, EmptyState, useDebounced } from "../../ui/kit.jsx";
@@ -25,7 +26,7 @@ const primaryEmail = p => { const e = extractEmails(p.emailPhone); return e.find
 export default function ProspectsView({
   crmData, role, currentUser, canEdit, features, sysSettings, savedApi, hunterVerify, applyStatus,
   onEditProspect, onAddProspect, onOpenFinder, onOpenImport, onExport, onBulkSave, onDeleteMany, onMerge, toast,
-  qualifyRequest, onQualifyUpdate,
+  qualifyRequest, onQualifyUpdate, onWorkspaceAction, viewRequest, onRequestHandled,
 }){
   const tagsEnabled = !!features?.tags;
   const [prefs, setPrefsState] = useState(loadPrefs);
@@ -45,7 +46,7 @@ export default function ProspectsView({
   const [mergingId, setMergingId] = useState(null);
   const [qualifyId, setQualifyId] = useState(null);
   // Other parts of the workspace can ask to open a prospect in Qualification
-  useEffect(() => { if (qualifyRequest){ setQualifyId(qualifyRequest.id || null); setMode("qualify"); } }, [qualifyRequest]);
+  useEffect(() => { if (qualifyRequest){ setQualifyId(qualifyRequest.id || null); setMode("qualify"); onRequestHandled?.(); } }, [qualifyRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── derived data ─────────────────────────────────────────── */
   const scoreMap = useMemo(() => { const m = new Map(); for (const p of crmData) m.set(p.id, scoreProspect(p)); return m; }, [crmData]);
@@ -140,6 +141,17 @@ export default function ProspectsView({
   /* ── saved views ──────────────────────────────────────────── */
   const applyView = v => { setFilters({ ...EMPTY_FILTERS, ...(v.filters || {}) }); setPage(0); };
   const saveView = async (name, shared) => { await saved.save(name, { ...filters, q: filters.q.trim() }, shared); toast(`View “${name}” saved`); };
+  // Requests from the Today screen / command palette: apply a ready-made view, open a mode, a stage, a place or one prospect.
+  useEffect(() => {
+    if (!viewRequest) return;
+    const { viewId, mode: m, status, placeKey: pk, openId } = viewRequest;
+    if (viewId){ const v = BUILTIN_VIEWS.find(x => x.id === viewId); if (v) applyView(v); setMode("table"); }
+    if (status){ setFilters({ ...EMPTY_FILTERS, status: [status] }); setMode("table"); }
+    if (pk){ setFilters({ ...EMPTY_FILTERS, place: [pk] }); }
+    if (m) setMode(m);
+    if (openId){ setMode("table"); setOpenId(openId); }
+    onRequestHandled?.();
+  }, [viewRequest]); // eslint-disable-line react-hooks/exhaustive-deps
   const deleteView = async v => { try { await saved.remove(v.id); toast("View deleted"); } catch (e){ toast(e.message || "Couldn't delete", "err"); } };
 
   /* ── duplicates ───────────────────────────────────────────── */
@@ -252,6 +264,13 @@ export default function ProspectsView({
         <ProspectDrawer prospect={openProspect} scoreResult={scoreOf(openProspect)} canEdit={canEdit} tagsEnabled={tagsEnabled} tagList={tagList}
           dupMatches={dupMatches} lastCheck={lastCheck[openProspect.id]} verifying={verifyingId === openProspect.id} hunterOn={!!hunterVerify}
           onClose={() => setOpenId(null)} onPatch={patch => patchOne(openProspect.id, patch)} onQualify={p => { setOpenId(null); setQualifyId(p.id); setMode("qualify"); }}
+          onEmail={onWorkspaceAction ? p => { setOpenId(null); onWorkspaceAction("email", p); } : undefined}
+          onSchedule={onWorkspaceAction ? p => { setOpenId(null); onWorkspaceAction("task", p); } : undefined}
+          onShowOnMap={p => {
+            const k = placeKey(p);
+            if (!k){ toast("This prospect has no recognised U.S. state or city yet — set its Market first.", "err"); return; }
+            setOpenId(null); setFilters(f => ({ ...EMPTY_FILTERS, place: [k] })); setMode("map"); toast(`Showing ${placeLabel(k)} on the map`);
+          }}
           onEdit={p => { setOpenId(null); onEditProspect(p); }} onOpenOther={p => setOpenId(p.id)}
           onVerify={async () => { setVerifyingId(openProspect.id); try { await verifyRows([openProspect]); } finally { setVerifyingId(null); } }} />
       )}

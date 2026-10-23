@@ -37,6 +37,8 @@ select * from (
                       where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity)
   union all select 18, 'No allow-everything policies (USING true) remain',
          not exists (select 1 from pg_policies where schemaname = 'public' and (qual = 'true' or with_check = 'true'))
+  union all select 19, 'M8  prospects.latitude / longitude / street_address columns',
+         (select count(*) = 3 from information_schema.columns where table_schema='public' and table_name='prospects' and column_name in ('latitude','longitude','street_address'))
 ) t order by n;
 
 -- If row 17 is false, this lists the exposed tables:

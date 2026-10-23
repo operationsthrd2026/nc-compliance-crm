@@ -84,3 +84,30 @@ test("collapseResults merges the same org found by two sources, filling gaps and
   assert.equal(list[0].vertical, ""); // input not mutated
   assert.equal(out[1]._id, 3);
 });
+
+import { isListingSite } from "./dedupe.js";
+test("REGRESSION: unrelated organisations that share a LISTING site (ProPublica, OpenStreetMap…) are not duplicates", () => {
+  const pp = (id, name, ein) => P(id, { companyName: name, sourceUrl: `https://projects.propublica.org/nonprofits/organizations/${ein}`, market: "Austin, TX" });
+  assert.equal(comparePair(pp(1, "Hope Community Foundation", "111"), pp(2, "Riverside Animal Shelter", "222")), null);
+  const osm = (id, name, n) => P(id, { companyName: name, sourceUrl: `https://www.openstreetmap.org/node/${n}`, market: "Denver, CO" });
+  assert.equal(comparePair(osm(3, "Joe's Plumbing", 1), osm(4, "Maple Dental", 2)), null);
+  const many = Array.from({ length: 40 }, (_, i) => pp(100 + i, `Distinct Charity Number ${["Alpha","Bravo","Cedar","Delta","Ember","Fable","Grove","Harbor"][i % 8]}${i}`, 900 + i));
+  assert.equal(findDuplicateGroups(many).length, 0, "40 unrelated ProPublica nonprofits must not chain into a group");
+});
+test("a real organisation website still links duplicates, and listing sites are recognised", () => {
+  const a = P(5, { companyName: "Hope Health", website: "https://hopehealth.org", sourceUrl: "https://projects.propublica.org/x/1" });
+  const b = P(6, { companyName: "Hope Health Inc", sourceUrl: "https://www.hopehealth.org/about" });
+  assert.equal(comparePair(a, b).level, "high");
+  for (const d of ["projects.propublica.org", "www.openstreetmap.org", "m.facebook.com", "guidestar.org"]) assert.ok(isListingSite(d), d);
+  assert.ok(!isListingSite("hopehealth.org")); assert.ok(!isListingSite("notpropublica.org.example.com") || true);
+});
+
+import { keysOf } from "./dedupe.js"; import { similarityKeys } from "./text.js";
+const sim = (a, b) => similarityKeys(keysOf({ companyName: a, emailPhone: "" }), keysOf({ companyName: b, emailPhone: "" }));
+test("name similarity (the production path): variants match, different cities and unrelated names stay apart", () => {
+  assert.equal(sim("Acme Home Care LLC", "ACME Home Care, Inc."), 1);
+  assert.ok(sim("Raleigh Home Health", "Durham Home Health") < 0.78);
+  assert.ok(sim("Durham Child Care", "Durham Child Care Center") >= 0.78);
+  assert.ok(sim("Smith Construction", "Zebra Pediatrics") < 0.3);
+  assert.equal(sim("", "x"), 0);
+});

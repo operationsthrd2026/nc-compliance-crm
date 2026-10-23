@@ -1,27 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 
 import { cleanTag } from "./lib/filters.js";
 import { ThemeToggle } from "./ui/kit.jsx";
-import { hrFromTitle } from "./lib/hrSignals.js";
 import { mapPool } from "./lib/emailCheck.js";
+import PipelineBoard from "./features/prospects/PipelineBoard.jsx";
 import ProspectsView from "./features/prospects/ProspectsView.jsx";
 import NationwideFinder from "./features/prospects/NationwideFinder.jsx";
 import ProspectHome from "./features/prospects/ProspectHome.jsx";
 import { localSavedApi } from "./features/useSavedSearches.js";
-import { scoreProspect, priorityFromScore, explainFit } from "./lib/scoring.js";
-import { buildIndex, findMatches, collapseResults } from "./lib/dedupe.js";
-import { extractEmails } from "./lib/text.js";
-import { emailKind } from "./lib/scoring.js";
-import { verifyEmail } from "./lib/emailCheck.js";
-import { allTags } from "./lib/filters.js";
-import { useSavedSearches } from "./features/useSavedSearches.js";
-import { TagInput, ScoreBadge, EmailBadge } from "./ui/kit.jsx";
-import { N, NL, NC, NB, G, GL, W, WM, WD, BR, ROLES, STATUSES, VERTICALS, MARKETS, ORG_SIZES, SRC_TYPES, SC, EMPTY_P, uid, today, isPast, hasEM, initials, addDays, inp, LBL, B, NC_CITY_COORDS, DEFAULT_NC_COORDS } from "./constants.js";
+import { prospectExportRows } from "./lib/exportRows.js";
+import { geoForDb } from "./lib/maps.js";
+import { N, NL, NC, NB, G, GL, W, WM, WD, BR, ROLES, STATUSES, VERTICALS, MARKETS, ORG_SIZES, SRC_TYPES, SC, EMPTY_P, uid, today, isPast, hasEM, initials, addDays, inp, LBL, B } from "./constants.js";
 
 /* ════════════════════════════════════════════════════════════════
    SUPABASE CONFIG
@@ -80,7 +71,7 @@ const supabaseAuth = isConfigured
 
 // Which optional database features exist? Filled by DB.detectSchema() after sign-in so the
 // app keeps working if the code is deployed before the SQL migration has been run.
-const SCHEMA = { tags: false, savedSearches: false, contactFields: false };
+const SCHEMA = { tags: false, savedSearches: false, contactFields: false, geo: false };
 
 // Placeholder shown in the UI for an API key that is saved server-side.
 // The real key is never sent to the browser.
@@ -169,6 +160,7 @@ function dbToProspect(r) {
     currentStatus: r.current_status || "NEW", outreachNotes: r.outreach_notes || "",
     priorityScore: r.priority_score ? String(r.priority_score) : "", remarks: r.remarks || "",
     tags: Array.isArray(r.tags) ? r.tags : [], emailStatus: r.email_status || "", emailCheckedAt: r.email_checked_at || "",
+    latitude: r.latitude ?? "", longitude: r.longitude ?? "", streetAddress: r.street_address || "",
   };
 }
 
@@ -179,6 +171,7 @@ function prospectToDb(p) {
     email_phone: p.emailPhone, city_market: p.cityMarket, market: p.market,
     source_url: p.sourceUrl, source_type: p.sourceType,
     ...(SCHEMA.contactFields ? { website: p.website || null, email: p.email || null, phone: p.phone || null } : {}),
+    ...(SCHEMA.geo ? geoForDb(p) : {}),            // coordinates + street address (only once the location migration has been run)
     verification_notes: p.verificationNotes, why_fit: p.whyFit,
     vertical: p.vertical, hr_person_listed: p.hrPersonListed,
     hr_people_contact: p.hrPeopleContact, org_size: p.orgSize,
@@ -334,6 +327,7 @@ const DB = {
     SCHEMA.tags = await probe("prospects?select=tags,email_status,email_checked_at&limit=1");
     SCHEMA.savedSearches = await probe("saved_searches?select=id&limit=1");
     SCHEMA.contactFields = await probe("prospects?select=website,email,phone&limit=1");
+    SCHEMA.geo = await probe("prospects?select=latitude,longitude,street_address&limit=1");
     return { ...SCHEMA };
   },
 
@@ -435,6 +429,9 @@ function isGmailConnected() {
 async function sendViaGmailAPI({ to, subject, body, cc }) {
   const token = getGoogleToken();
   if (!token) return { ok: false, reason: "no_token" };
+  // header-bound fields must not contain line breaks (prevents mail-header injection)
+  const clean = v => String(v ?? "").replace(/[\r\n]+/g, " ").trim();
+  to = clean(to); subject = clean(subject); cc = cc ? clean(cc) : cc;
 
   const headers = [
     `To: ${to}`,
@@ -548,8 +545,6 @@ const INIT_USERS=[
 ];
 
 
-
-
 const SEED=[
   {id:1,companyName:"Comfort Keepers – Raleigh",contactName:"Bob Marshall",title:"Franchise Owner",emailPhone:"bobmarshall@comfortkeepers.com",cityMarket:"Raleigh",market:"Raleigh",sourceUrl:"",sourceType:"Franchise Directory",verificationNotes:"Verified.",whyFit:"Wage/hour compliance risk.",vertical:"Home Health / Homecare",hrPersonListed:"No",hrPeopleContact:"",orgSize:"10-49",t1SendDate:"2026-05-05",t1DueDate:"2026-05-12",t2SendDate:"2026-05-12",t2DueDate:"2026-05-19",t3SendDate:"2026-05-19",t3DueDate:"2026-05-26",leadPainPoint:"Caregiver misclassification.",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:true,currentStatus:"NURTURE/T3 SENT",outreachNotes:"",priorityScore:"5",remarks:""},
   {id:2,companyName:"Bright Horizons Childcare",contactName:"Sandra Kim",title:"Executive Director",emailPhone:"sandra@brighthorizons-nc.com",cityMarket:"Durham",market:"Durham",sourceUrl:"",sourceType:"LinkedIn",verificationNotes:"Confirmed active.",whyFit:"Staff classification risk.",vertical:"Childcare & Licensed Group Homes",hrPersonListed:"Yes",hrPeopleContact:"Sandra Kim",orgSize:"50-99",t1SendDate:"2026-05-10",t1DueDate:"2026-05-17",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"Worker classification, I-9.",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:true,doNotRespond:false,currentStatus:"T1 SENT",outreachNotes:"",priorityScore:"8",remarks:""},
@@ -603,10 +598,6 @@ async function verifyPassword(plainAttempt,stored){
   // Legacy plaintext comparison (pre-hashing accounts)
   return plainAttempt===stored;
 }
-// A password value is "already hashed" if it carries our prefix —
-// used by saveU to avoid re-hashing a hash when a user record is
-// edited without changing the password.
-const isHashed=v=>typeof v==="string"&&v.startsWith(PW_HASH_PREFIX);
 /* ── Outreach cadence ─────────────────────────────────────────
    Touch 2 is due 7 days after Touch 1 is sent.
    Touch 3 is due 14 days (2 weeks) after Touch 2 is sent.
@@ -633,7 +624,7 @@ const mapHdr=h=>COL_MAP[(h||"").toLowerCase().trim().replace(/[_\-]+/g," ")]||nu
 const parseBool=v=>{if(typeof v==="boolean")return v;const s=String(v||"").toLowerCase().trim();return s==="yes"||s==="true"||s==="1"||s==="y";};
 const parseDate=v=>{if(!v)return"";if(typeof v==="number"){try{const d=XLSX.SSF.parse_date_code(v);return`${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;}catch{return"";}}const s=String(v).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;try{const d=new Date(s);if(!isNaN(d))return d.toISOString().split("T")[0];}catch{}return s;};
 const rowToProspect=row=>{const p={...EMPTY_P,id:uid()};Object.entries(row).forEach(([col,val])=>{const f=mapHdr(col);if(!f)return;const df=["t1SendDate","t1DueDate","t2SendDate","t2DueDate","t3SendDate","t3DueDate"];const bf=["t3Approved","replyReceived","flagToMelissa","doNotRespond"];if(df.includes(f))p[f]=parseDate(val);else if(bf.includes(f))p[f]=parseBool(val);else if(f==="tags")p[f]=[...new Set(String(val||"").split(/[;,]/).map(cleanTag).filter(Boolean))].slice(0,30);else if(f==="emailStatus"){const v=String(val||"").trim().toLowerCase();p[f]=["valid","risky","invalid","unknown"].includes(v)?v:"";}else p[f]=val!=null?String(val).trim():"";});return p;};
-const exportToExcel=(crmData,fn="NC_CRM_Export")=>{const rows=crmData.map(p=({"Company Name":p.companyName,"Contact Name":p.contactName,"Title":p.title,"Email/Phone":p.emailPhone,"City/Market":p.cityMarket,"Market":p.market,"Vertical":p.vertical,"Org Size":p.orgSize,"Source Type":p.sourceType,"Source URL":p.sourceUrl,"Why Fit":p.whyFit,"Lead Pain Point":p.leadPainPoint,"Current Status":p.currentStatus,"Priority Score":p.priorityScore,"T1 Send Date":p.t1SendDate,"T1 Due Date":p.t1DueDate,"T2 Send Date":p.t2SendDate,"T2 Due Date":p.t2DueDate,"T3 Send Date":p.t3SendDate,"T3 Due Date":p.t3DueDate,"HR Person Listed":p.hrPersonListed,"HR Contact":p.hrPeopleContact,"Flag to Melissa":p.flagToMelissa?"Yes":"No","Reply Received":p.replyReceived?"Yes":"No","T3 Approved":p.t3Approved?"Yes":"No","Do Not Respond":p.doNotRespond?"Yes":"No","Tags":(p.tags||[]).join("; "),"Email Status":p.emailStatus||"","Fit Score":scoreProspect(p).score,"Outreach Notes":p.outreachNotes,"Remarks":p.remarks}));const wb=XLSX.utils.book_new();const ws=XLSX.utils.json_to_sheet(rows);ws["!cols"]=Object.keys(rows[0]||{}).map(()=>({wch:18}));XLSX.utils.book_append_sheet(wb,ws,"Prospects");XLSX.writeFile(wb,`${fn}_${today()}.xlsx`);};
+const exportToExcel=(crmData,fn="NC_CRM_Export")=>{const rows=prospectExportRows(crmData);const wb=XLSX.utils.book_new();const ws=XLSX.utils.json_to_sheet(rows);ws["!cols"]=Object.keys(rows[0]||{}).map(()=>({wch:18}));XLSX.utils.book_append_sheet(wb,ws,"Prospects");XLSX.writeFile(wb,`${fn}_${today()}.xlsx`);};
 
 /* ════════════════════════════════════════════════════════════════
    STYLES
@@ -829,27 +820,6 @@ const AI_SOURCES=[
   {id:"osm",      label:"Local Business Directory", icon:"🗺️", color:"#84cc16", desc:"Real local businesses (construction, manufacturing, childcare, general SMB) via OpenStreetMap's free, no-key Overpass API. Coverage varies by area — community-mapped data, not a complete census."},
 ];
 
-/* ════════════════════════════════════════════════════════════════
-   LIVE PROSPECT SEARCH — Hunter.io & Apollo.io
-   ─────────────────────────────────────────────────────────────
-   HUNTER.IO: Domain Search API supports CORS for browser requests,
-   so this returns REAL data when sysSettings.hunterKey is set.
-   Docs: https://hunter.io/api-documentation/v2#domain-search
-
-   APOLLO.IO: Apollo's People/Organization Search API does NOT allow
-   cross-origin browser requests (no CORS headers) — any direct fetch
-   from this static site will fail with a network/CORS error, NOT an
-   auth error, regardless of how valid the key is. Apollo is designed
-   to be called from a server. apolloSearch() below still attempts the
-   call (in case Apollo enables CORS in future, or if proxied later)
-   but DETECTS the CORS failure and returns a clear explanatory error
-   instead of silently falling back to mock data — so the UI can show
-   the user exactly what's happening rather than pretending it worked.
-
-   To get real Apollo results, the call would need to go through a
-   server-side proxy (e.g. a Supabase Edge Function) that holds the
-   API key and forwards the request — a larger infrastructure change.
-════════════════════════════════════════════════════════════════ */
 
 // NC city center coordinates — used to anchor the Overpass "around"
 // radius search, and as a city-level map pin fallback for sources
@@ -858,1207 +828,7 @@ const AI_SOURCES=[
 // These are approximate downtown coordinates for each CRM market.
  // geographic center of NC, used when no market is selected
 
-// Leaflet's default marker images reference relative file paths that
-// break under Vite's bundler — this is the standard fix, pointing
-// Leaflet at CDN-hosted copies of its own default icons instead.
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
 
-// Custom colored pin matching the CRM theme / source colors, built as
-// a small inline SVG data URI — no extra image assets needed.
-function makeColoredPin(color, selected){
-  const size = selected ? 34 : 26;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size*1.3}" viewBox="0 0 24 31">
-    <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 19 12 19s12-10 12-19c0-6.6-5.4-12-12-12z" fill="${color}" stroke="${selected?"#F0F4FF":"#0B1426"}" stroke-width="${selected?2:1.5}"/>
-    <circle cx="12" cy="12" r="4.5" fill="#0B1426"/>
-  </svg>`;
-  return new L.Icon({
-    iconUrl: "data:image/svg+xml;base64," + btoa(svg),
-    iconSize: [size, size*1.3],
-    iconAnchor: [size/2, size*1.3],
-    popupAnchor: [0, -size*1.1],
-  });
-}
-
-// react-leaflet child component that auto-fits the map's viewport to
-// contain every pinned result whenever the result set changes (e.g.
-// after a new search). Falls back to centering on the selected/default
-// NC location when there are no pins to fit yet.
-function FitToPins({pinned, fallbackCenter}){
-  const map = useMap();
-  useEffect(()=>{
-    if(pinned.length===0){
-      map.setView(fallbackCenter, 7);
-      return;
-    }
-    if(pinned.length===1){
-      map.setView([pinned[0]._lat,pinned[0]._lon], 12);
-      return;
-    }
-    const bounds = L.latLngBounds(pinned.map(r=>[r._lat,r._lon]));
-    map.fitBounds(bounds, {padding:[30,30], maxZoom:13});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[pinned.map(r=>r._id).join(","), fallbackCenter[0], fallbackCenter[1]]);
-  return null;
-}
-
-
-// Small deterministic offset (±~800m) so multiple city-level pins for
-// the same market don't stack exactly on top of one another on the
-// map. Deterministic (seeded by a string, not Math.random) so the
-// same prospect always lands in the same spot across re-renders.
-function jitterCoord([lat,lon], seed){
-  let h=0; for(let i=0;i<seed.length;i++){h=(h*31+seed.charCodeAt(i))|0;}
-  const dLat=((h%1000)/1000-0.5)*0.012;
-  const dLon=(((h>>10)%1000)/1000-0.5)*0.012;
-  return [lat+dLat, lon+dLon];
-}
-function cityFallbackCoord(market, seed){
-  const base = market && NC_CITY_COORDS[market] ? NC_CITY_COORDS[market] : DEFAULT_NC_COORDS;
-  return jitterCoord(base, seed||market||"x");
-}
-
-/* Fit scoring now lives in src/lib/scoring.js (explainable rubric; replaces the old data-completeness heuristic). */
-
-// Convert a Hunter.io domain-search "email" entry into a CRM prospect shape
-function hunterEmailToProspect(domainData, emailEntry, vertical, market){
-  const company = domainData.organization || domainData.domain || "Unknown Company";
-  const name = [emailEntry.first_name, emailEntry.last_name].filter(Boolean).join(" ") || "Unknown Contact";
-  const title = emailEntry.position || "";
-  return {
-    companyName: company,
-    contactName: name,
-    title,
-    emailPhone: emailEntry.value || "",
-    cityMarket: market || "",
-    market: market || "",
-    sourceUrl: domainData.domain ? `https://${domainData.domain}` : "",
-    sourceType: "Hunter.io",
-    verificationNotes: emailEntry.verification?.status
-      ? `Hunter.io verification: ${emailEntry.verification.status}`
-      : "Found via Hunter.io domain search",
-    whyFit: `Found via Hunter.io for domain ${domainData.domain || "unknown"}${title?`. Role: ${title}.`:""}`,
-    vertical: vertical || "",
-    hrPersonListed: hrFromTitle(title),
-    hrPeopleContact: "",
-    orgSize: "",
-    leadPainPoint: "",
-    priorityScore: emailEntry.confidence ? String(Math.max(1, Math.min(10, Math.round(emailEntry.confidence/10)))) : "",
-    // Hunter doesn't return coordinates — city-level fallback only.
-    _lat: cityFallbackCoord(market, company)[0], _lon: cityFallbackCoord(market, company)[1], _geoPrecise: false,
-  };
-}
-
-// Real Hunter.io domain search. Requires either a company domain (derived
-// from the query) or falls back to Hunter's general "Discover" isn\'t
-// available on free plans, so we ask the user to search by domain/company
-// name and Hunter resolves it via the domain-search endpoint using a
-// best-guess .com domain if the query doesn't look like a domain already.
-async function hunterSearch(query, apiKey, vertical, market, log){
-  if(!apiKey) return {ok:false, reason:"no_key", results:[]};
-  if(!query.trim()) return {ok:false, reason:"no_query", results:[]};
-
-  // Guess a domain from the query: if it already looks like a domain, use it;
-  // otherwise strip spaces/punctuation and try "<slug>.com" as a best guess.
-  const looksLikeDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(query.trim());
-  const domain = looksLikeDomain
-    ? query.trim().toLowerCase()
-    : query.trim().toLowerCase().replace(/[^a-z0-9]+/g,"") + ".com";
-
-  try{
-    // Server-side proxy: the Hunter key never reaches the browser.
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/hunter-search`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({ domain, limit: 10 }),
-    });
-    const data = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      const msg = data?.error || data?.errors?.[0]?.details || data?.errors?.[0]?.id || `HTTP ${res.status}`;
-      log?.(`Hunter.io: ${msg}`);
-      return {ok:false, reason:"api_error", status:res.status, message:msg, results:[]};
-    }
-
-    const emails = data?.data?.emails || [];
-    if(emails.length===0){
-      log?.(`Hunter.io: No contacts found for domain "${domain}" — try a more specific company name or exact domain.`);
-      return {ok:true, results:[], domainTried:domain};
-    }
-
-    const results = emails.map(e => hunterEmailToProspect(data.data, e, vertical, market));
-    log?.(`Hunter.io: Found ${results.length} contact(s) for ${domain}`);
-    return {ok:true, results, domainTried:domain};
-  }catch(e){
-    log?.(`Hunter.io: Network error — ${e.message}`);
-    return {ok:false, reason:"network_error", message:e.message, results:[]};
-  }
-}
-
-// Apollo.io People Search — routed through a Supabase Edge Function proxy
-// (supabase/functions/apollo-search) because Apollo's API does not send
-// CORS headers and blocks direct browser requests. The Edge Function runs
-// server-side, calls Apollo, and returns the response with CORS headers
-// so the browser can read it.
-//
-// If the Edge Function isn't deployed yet, this call fails with a 404 —
-// in that case we report a clear "proxy not deployed" message rather than
-// a generic error, with a pointer to SETUP_GUIDE.md for deployment steps.
-async function apolloSearch(query, apiKey, vertical, market, log){
-  if(!apiKey) return {ok:false, reason:"no_key", results:[]};
-  if(!query.trim()) return {ok:false, reason:"no_query", results:[]};
-  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — Apollo proxy requires Supabase", results:[]};
-
-  try{
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/apollo-search`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({ query, page: 1, perPage: 10 }), // key is read server-side
-    });
-
-    if(res.status===404){
-      log?.(`Apollo.io: Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the Apollo proxy" to enable live Apollo results.`);
-      return {ok:false, reason:"no_proxy", results:[]};
-    }
-
-    const data = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      const msg = data?.error || `HTTP ${res.status}`;
-      log?.(`Apollo.io: ${msg}`);
-      return {ok:false, reason:"api_error", status:res.status, message:msg, results:[]};
-    }
-
-    const people = data?.people || [];
-    const results = people.map(p => {
-      const hasEmail = !!p.email;
-      return {
-        companyName: p.organization?.name || p.organization_name || "Unknown Company",
-        contactName: [p.first_name, p.last_name].filter(Boolean).join(" "),
-        title: p.title || "",
-        // Apollo's current People Search endpoint (api_search) does NOT
-        // return email/phone — that requires a separate, credit-consuming
-        // Enrichment call. Rather than show a misleadingly blank contact
-        // field, flag it clearly so the user knows to look it up (e.g. via
-        // Hunter.io for the same person/domain, or Apollo's Enrichment UI).
-        emailPhone: p.email || p.phone_number || "",
-        cityMarket: market || p.city || "",
-        market: market || p.city || "",
-        sourceUrl: p.linkedin_url || "",
-        sourceType: "Apollo.io",
-        verificationNotes: hasEmail
-          ? "Found via Apollo.io people search (via proxy)"
-          : "Found via Apollo.io — email/phone not included by this endpoint. Use Apollo Enrichment or search this contact's domain in Hunter.io to find their email.",
-        whyFit: `Found via Apollo.io for "${query}". Title: ${p.title||"—"}.`,
-        vertical: vertical || "",
-        hrPersonListed: hrFromTitle(p.title),
-        hrPeopleContact: "",
-        orgSize: p.organization?.estimated_num_employees ? String(p.organization.estimated_num_employees) : "",
-        leadPainPoint: "",
-        priorityScore: "",
-      };
-    });
-    const missingEmailCount = results.filter(r=>!r.emailPhone).length;
-    log?.(`Apollo.io: Found ${results.length} contact(s) via proxy${missingEmailCount?` — ${missingEmailCount} missing email (Apollo's search endpoint doesn't include contact info; see notes on each result)`:""}`);
-    return {ok:true, results};
-  }catch(e){
-    log?.(`Apollo.io: ${e.message}`);
-    return {ok:false, reason:"network_error", message:e.message, results:[]};
-  }
-}
-
-/* ════════════════════════════════════════════════════════════════
-   PROPUBLICA NONPROFIT EXPLORER — real nonprofit data, NO API KEY
-   ─────────────────────────────────────────────────────────────
-   Free, public, GET-only JSON API covering 1.8M+ US tax-exempt
-   organizations from IRS Form 990 filings. No registration or key
-   required — this powers the "GuideStar" source with REAL results
-   for nonprofit verticals (GuideStar itself requires a paid API;
-   ProPublica's Nonprofit Explorer aggregates the same underlying
-   IRS data and links to each org's GuideStar profile).
-   Docs: https://projects.propublica.org/nonprofits/api
-════════════════════════════════════════════════════════════════ */
-
-// Map CRM verticals to ProPublica NTEE major-group codes (1-10) where
-// a reasonable mapping exists. Verticals not listed search without an
-// NTEE filter (still scoped to NC nonprofits via state[id]=NC).
-const VERTICAL_TO_NTEE = {
-  "Nonprofits & Associations": null,
-  "Faith-Based Organizations": 8,
-  "Human Services Nonprofits": 5,
-  "Community Development Orgs": 5,
-  "Religious & Faith-Based Nonprofits": 8,
-  "Social Service Agencies": 5,
-  "Arts & Cultural Nonprofits": 1,
-  "Environmental Nonprofits": 3,
-  "Advocacy Organizations": 7,
-  "Foundations & Grantmakers": 7,
-  "Education & Schools": 2,
-};
-
-function proPublicaOrgToProspect(org, vertical, market){
-  const city = org.city ? org.city.replace(/\s+/g," ").trim() : "";
-  const cityTitleCase = city ? city.split(" ").map(w=>w.charAt(0)+w.slice(1).toLowerCase()).join(" ") : "";
-  return {
-    companyName: org.name || "Unknown Organization",
-    contactName: "",
-    title: "",
-    emailPhone: "",
-    cityMarket: cityTitleCase || market || "",
-    market: market || cityTitleCase || "",
-    sourceUrl: org.guidestar_url || (org.ein ? `https://projects.propublica.org/nonprofits/organizations/${org.ein}` : ""),
-    sourceType: "GuideStar (via ProPublica)",
-    verificationNotes: `IRS-registered 501(c)(${org.subseccd||"3"}) nonprofit, EIN ${org.strein||org.ein||"—"}. Email/phone not in IRS data — find a contact via Hunter.io or the organization's website.`,
-    whyFit: `Found via ProPublica Nonprofit Explorer (IRS Form 990 data) for "${vertical||"nonprofit"}" in ${cityTitleCase||market||"NC"}.`,
-    vertical: vertical || "",
-    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
-    hrPeopleContact: "",
-    orgSize: "",
-    leadPainPoint: "",
-    priorityScore: "",
-    _ein: org.ein,
-    // ProPublica doesn't return coordinates — fall back to the org's
-    // own city if we recognize it, else the search market.
-    _lat: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, org.ein||org.name)[0],
-    _lon: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, org.ein||org.name)[1],
-    _geoPrecise: false,
-  };
-}
-
-/* ════════════════════════════════════════════════════════════════
-   NPPES NPI REGISTRY — real healthcare/home-health org data, NO KEY
-   ─────────────────────────────────────────────────────────────
-   Free, public, no-auth API maintained by CMS (Centers for Medicare
-   & Medicaid Services) covering 7M+ active healthcare provider
-   records — including organizations (NPI-2: clinics, home health
-   agencies, group practices), not just individual clinicians.
-   Powers REAL results for "Healthcare Practices" and "Home Health /
-   Homecare" verticals — a strong fit since this is exactly the kind
-   of organization HR On Demand targets.
-   Docs: https://npiregistry.cms.hhs.gov/api-page
-════════════════════════════════════════════════════════════════ */
-
-// Map CRM verticals to NUCC taxonomy description search terms (wildcard
-// trailing * supported by the API after 2+ characters). Verticals not
-// listed here aren't covered by NPPES (it's healthcare-provider data
-// only) — runSearch() only routes matching verticals to this source.
-const VERTICAL_TO_NPPES_TAXONOMY = {
-  "Healthcare Practices": "",          // no taxonomy filter — broadest match across all practice types
-  "Home Health / Homecare": "Home Health",
-};
-
-function nppesOrgToProspect(record, vertical, market){
-  const org = record.basic?.organization_name || [record.basic?.first_name,record.basic?.last_name].filter(Boolean).join(" ") || "Unknown Provider";
-  const loc = (record.addresses||[]).find(a=>a.address_purpose==="LOCATION") || record.addresses?.[0] || {};
-  const cityTitleCase = loc.city ? loc.city.split(" ").map(w=>w.charAt(0)+(w.slice(1)||"").toLowerCase()).join(" ") : "";
-  const phone = loc.telephone_number || "";
-  const primaryTaxonomy = (record.taxonomies||[]).find(t=>t.primary) || record.taxonomies?.[0] || {};
-  const authOfficial = record.basic?.authorized_official_first_name
-    ? [record.basic.authorized_official_first_name, record.basic.authorized_official_last_name].filter(Boolean).join(" ")
-    : "";
-  return {
-    companyName: org,
-    contactName: authOfficial,
-    title: authOfficial ? (record.basic?.authorized_official_title_or_position || "Authorized Official") : "",
-    // NPPES provides a phone number (rare among our other sources!) but
-    // never an email — be explicit about which one this is.
-    emailPhone: phone || "",
-    cityMarket: cityTitleCase || market || "",
-    market: market || cityTitleCase || "",
-    sourceUrl: `https://npiregistry.cms.hhs.gov/registry/provider-view/${record.number}`,
-    sourceType: "NPI Registry (NPPES/CMS)",
-    verificationNotes: `NPI ${record.number} — ${primaryTaxonomy.desc||"Healthcare provider"}.${phone?` Phone: ${phone}.`:" No phone on file."} Email not available via NPPES — try the organization's website or Hunter.io.`,
-    whyFit: `Found via the federal NPI Registry (CMS) for "${vertical}" in ${cityTitleCase||market||"NC"}. Taxonomy: ${primaryTaxonomy.desc||"—"}.`,
-    vertical: vertical || "",
-    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
-    hrPeopleContact: "",
-    orgSize: "",
-    leadPainPoint: "",
-    priorityScore: "",
-    _npi: record.number,
-    // NPPES doesn't return coordinates in this response — fall back
-    // to the provider's own city if recognized, else search market.
-    _lat: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, record.number)[0],
-    _lon: cityFallbackCoord(NC_CITY_COORDS[cityTitleCase]?cityTitleCase:market, record.number)[1],
-    _geoPrecise: false,
-  };
-}
-
-// Search the NPPES NPI Registry — routed through a Supabase Edge
-// Function proxy (supabase/functions/nppes-search) since this API's
-// CORS support is unconfirmed/inconsistent. No API key involved.
-// enumeration_type=NPI-2 restricts results to ORGANIZATIONS (clinics,
-// agencies, group practices) rather than individual clinicians, since
-// the CRM targets organizational HR compliance prospects.
-async function nppesSearch(query, vertical, market, log){
-  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — NPI Registry proxy requires Supabase", results:[]};
-
-  try{
-    const taxonomy = VERTICAL_TO_NPPES_TAXONOMY[vertical];
-    const orgName = query.trim() ? `${query.trim()}*` : null;
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/nppes-search`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({
-        organizationName: orgName,
-        taxonomyDescription: taxonomy || null,
-        state: "NC",
-      }),
-    });
-
-    if(res.status===404){
-      log?.(`NPI Registry (CMS): Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the NPI Registry proxy" to enable live results.`);
-      return {ok:false, reason:"no_proxy", results:[]};
-    }
-
-    const data = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      log?.(`NPI Registry (CMS): ${data?.error||`HTTP ${res.status}`}`);
-      return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
-    }
-
-    const records = (data?.results||[]).filter(r=>r.enumeration_type==="NPI-2"); // orgs only
-    if(records.length===0){
-      log?.(`NPI Registry (CMS): No NC ${vertical||"healthcare"} organizations found for "${query||"(any)"}" — try a broader org name or remove the keyword.`);
-      return {ok:true, results:[]};
-    }
-
-    const results = records.slice(0,10).map(r => nppesOrgToProspect(r, vertical, market));
-    log?.(`NPI Registry (CMS): Found ${data.result_count||records.length} NC organization(s) via proxy — showing ${results.length}`);
-    return {ok:true, results};
-  }catch(e){
-    log?.(`NPI Registry (CMS): ${e.message}`);
-    return {ok:false, reason:"network_error", message:e.message, results:[]};
-  }
-}
-
-/* ════════════════════════════════════════════════════════════════
-   OPENSTREETMAP / OVERPASS API — real local business data, NO KEY
-   ─────────────────────────────────────────────────────────────
-   Free, public, no-auth, no-billing API serving OpenStreetMap's
-   community-maintained business/POI data — 10,000 requests/day per
-   IP, no signup required. Fills the gap GuideStar (nonprofits) and
-   NPI Registry (healthcare) don't cover: construction, manufacturing/
-   logistics, childcare, and general SMB — exactly the verticals this
-   CRM otherwise has no real source for.
-
-   Coverage caveat, stated honestly: OSM data is community-contributed
-   and coverage varies by area and category. Major/established
-   businesses are usually well-tagged; small or newer businesses may
-   be missing or have incomplete contact info. This is real data, not
-   a complete census — treat sparse results as "OSM doesn't have this
-   indexed yet," not as "no businesses exist."
-   Docs: https://wiki.openstreetmap.org/wiki/Overpass_API
-════════════════════════════════════════════════════════════════ */
-
-// Map CRM verticals to OSM tag queries. Each entry is a list of
-// [key,value] tag pairs ORed together — e.g. Construction matches
-// craft=electrician OR craft=plumber OR office=construction, etc.
-const VERTICAL_TO_OSM_TAGS = {
-  "Construction & Contractors": [["office","construction"],["craft","electrician"],["craft","plumber"],["craft","carpenter"],["craft","painter"],["craft","roofer"],["craft","hvac"]],
-  "Light Manufacturing & Logistics": [["man_made","works"],["industrial","factory"],["building","warehouse"],["office","logistics"]],
-  "Childcare & Licensed Group Homes": [["amenity","childcare"],["amenity","kindergarten"]],
-  "Education & Schools": [["amenity","school"],["amenity","college"]],
-};
-// Fallback when the vertical has no specific mapping (or "All
-// Verticals" is selected) — searches general small-business office/
-// shop categories rather than returning nothing.
-const OSM_FALLBACK_TAGS = [["office","company"],["office","yes"],["shop","yes"]];
-
-function osmTagsToOverpassQuery(tags, lat, lon, radiusMeters){
-  const clauses = tags.map(([k,v])=>`node["${k}"="${v}"](around:${radiusMeters},${lat},${lon});way["${k}"="${v}"](around:${radiusMeters},${lat},${lon});`).join("");
-  return `[out:json][timeout:25];(${clauses});out center 20;`;
-}
-
-function osmElementToProspect(el, vertical, market){
-  const tags = el.tags || {};
-  const name = tags.name || tags["operator"] || "Unnamed business (OSM)";
-  const addrParts = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
-  const city = tags["addr:city"] || market || "";
-  const phone = tags.phone || tags["contact:phone"] || "";
-  const website = tags.website || tags["contact:website"] || "";
-  const category = tags.craft || tags.office || tags.shop || tags.amenity || tags.man_made || tags.industrial || tags.building || "business";
-  // OSM nodes have lat/lon directly; ways/relations return a "center"
-  // point instead (we requested `out center` in the Overpass query).
-  const lat = el.lat ?? el.center?.lat ?? null;
-  const lon = el.lon ?? el.center?.lon ?? null;
-  return {
-    companyName: name,
-    contactName: "",
-    title: "",
-    // OSM sometimes has a phone number but never an email — be explicit.
-    emailPhone: phone || "",
-    cityMarket: city,
-    market: market || city,
-    sourceUrl: website || (el.id ? `https://www.openstreetmap.org/${el.type}/${el.id}` : ""),
-    sourceType: "OpenStreetMap (Overpass)",
-    verificationNotes: `Community-mapped OSM data (category: ${category}).${addrParts?` Address: ${addrParts}, ${city}.`:""}${phone?` Phone: ${phone}.`:""} Email not available — check the website${website?"":" (not listed)"} or try Hunter.io for this domain.`,
-    whyFit: `Found via OpenStreetMap for "${vertical||category}" near ${market||"NC"}.`,
-    vertical: vertical || "",
-    hrPersonListed: "Unknown", // not evidenced by this source — left unknown, never assumed "No"
-    hrPeopleContact: "",
-    orgSize: "",
-    leadPainPoint: "",
-    priorityScore: "",
-    // Real, precise coordinates from OSM — _geoPrecise marks this as
-    // exact (vs. city-level fallback used by other sources).
-    _lat: lat, _lon: lon, _geoPrecise: lat!=null&&lon!=null,
-  };
-}
-
-// Search OpenStreetMap via the Overpass API — routed through a
-// Supabase Edge Function proxy (supabase/functions/osm-search) since
-// Overpass's CORS support is inconsistent across its public mirror
-// servers. No API key involved on either hop; OSM data is fully open
-// (ODbL license — attribution required, which the UI provides).
-async function osmSearch(query, vertical, market, log){
-  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — OpenStreetMap proxy requires Supabase", results:[]};
-
-  try{
-    const [lat,lon] = market && NC_CITY_COORDS[market] ? NC_CITY_COORDS[market] : DEFAULT_NC_COORDS;
-    const radius = market ? 15000 : 60000; // tighter radius for a specific city, wider for "All Markets"
-    const tags = VERTICAL_TO_OSM_TAGS[vertical] || OSM_FALLBACK_TAGS;
-    const overpassQL = osmTagsToOverpassQuery(tags, lat, lon, radius);
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/osm-search`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({ overpassQL }),
-    });
-
-    if(res.status===404){
-      log?.(`OpenStreetMap: Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the OpenStreetMap proxy" to enable live results.`);
-      return {ok:false, reason:"no_proxy", results:[]};
-    }
-
-    const data = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      log?.(`OpenStreetMap: ${data?.error||`HTTP ${res.status}`}`);
-      return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
-    }
-
-    const elements = (data?.elements||[]).filter(el=>el.tags?.name); // skip unnamed nodes
-    if(elements.length===0){
-      log?.(`OpenStreetMap: No tagged businesses found near ${market||"NC"} for "${vertical||"this category"}" — OSM coverage varies by area; try a nearby city or a broader vertical.`);
-      return {ok:true, results:[]};
-    }
-
-    // Apply free-text query as a simple name/category filter if provided
-    const qL = query.trim().toLowerCase();
-    const filtered = qL ? elements.filter(el=>(el.tags.name||"").toLowerCase().includes(qL)) : elements;
-    const finalEls = (filtered.length>0?filtered:elements).slice(0,10);
-
-    const results = finalEls.map(el => osmElementToProspect(el, vertical, market));
-    log?.(`OpenStreetMap: Found ${elements.length} business(es) via proxy — showing ${results.length} (data © OpenStreetMap contributors, ODbL)`);
-    return {ok:true, results};
-  }catch(e){
-    log?.(`OpenStreetMap: ${e.message}`);
-    return {ok:false, reason:"network_error", message:e.message, results:[]};
-  }
-}
-
-// Search ProPublica's Nonprofit Explorer — routed through a Supabase
-// Edge Function proxy (supabase/functions/guidestar-search) because
-// ProPublica's API does not send CORS headers and blocks direct
-// browser requests. No API key is involved on either hop; the proxy
-// exists solely to work around the browser CORS restriction.
-//
-// If the Edge Function isn't deployed yet, this call fails with a 404
-// — in that case we report a clear "proxy not deployed" message
-// rather than a generic error, with a pointer to SETUP_GUIDE.md.
-async function guidestarSearch(query, vertical, market, log){
-  const q = query.trim() || vertical || "nonprofit";
-  if(!isConfigured) return {ok:false, reason:"no_proxy", message:"Supabase not configured — GuideStar proxy requires Supabase", results:[]};
-
-  try{
-    const nteeCode = VERTICAL_TO_NTEE[vertical] || null;
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/guidestar-search`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({ query: q, state: "NC", nteeCode }),
-    });
-
-    if(res.status===404){
-      log?.(`GuideStar (ProPublica): Proxy function not deployed yet. See SETUP_GUIDE.md → "Deploying the GuideStar proxy" to enable live results.`);
-      return {ok:false, reason:"no_proxy", results:[]};
-    }
-
-    const data = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      log?.(`GuideStar (ProPublica): ${data?.error||`HTTP ${res.status}`} — the API may be temporarily unavailable.`);
-      return {ok:false, reason:"api_error", status:res.status, message:data?.error, results:[]};
-    }
-
-    const orgs = data?.organizations || [];
-
-    if(orgs.length===0){
-      log?.(`GuideStar (ProPublica): No NC nonprofits found for "${q}" — try a broader term (e.g. just the vertical name).`);
-      return {ok:true, results:[]};
-    }
-
-    const results = orgs.slice(0,10).map(org => proPublicaOrgToProspect(org, vertical, market));
-    log?.(`GuideStar (ProPublica): Found ${data.total_results||results.length} NC nonprofit(s) matching "${q}" via proxy — showing ${results.length}`);
-    return {ok:true, results};
-  }catch(e){
-    log?.(`GuideStar (ProPublica): ${e.message}`);
-    return {ok:false, reason: e instanceof TypeError ? "cors_blocked" : "network_error", message:e.message, results:[]};
-  }
-}
-
-/* ════════════════════════════════════════════════════════════════
-   NC CHAMBER OF COMMERCE DIRECTORY — manual-search reference, NOT
-   an automated source.
-   ─────────────────────────────────────────────────────────────
-   Local chamber-of-commerce member directories are real, valuable
-   prospect sources, but none offer a public API and most explicitly
-   prohibit automated/scripted access in their terms of use (same
-   restriction as the NC Secretary of State's business registry).
-   Rather than scrape them — which would violate their terms — this
-   is a curated list of direct links to each chamber's own member/
-   business directory search page, for the VA to search manually.
-   This is intentionally separate from AI_SOURCES/runSearch since it
-   is not a "click search, get results" automated flow.
-════════════════════════════════════════════════════════════════ */
-const NC_CHAMBER_DIRECTORY = [
-  {market:"Raleigh",       name:"Greater Raleigh Chamber of Commerce",        url:"https://www.raleighchamber.org/",                 directoryUrl:"https://web.raleighchamber.org/directory/", note:"1,800+ member firms — Wake County's largest business org"},
-  {market:"Durham",        name:"Greater Durham Chamber of Commerce",         url:"https://durhamchamber.org/",                      directoryUrl:"https://durhamchamber.org/business-directory/"},
-  {market:"Chapel Hill",   name:"Chapel Hill–Carrboro Chamber of Commerce",   url:"https://www.carolinachamber.org/",                directoryUrl:"https://www.carolinachamber.org/list/"},
-  {market:"Cary",          name:"Cary Chamber of Commerce",                  url:"https://www.carychamber.com/",                    directoryUrl:"https://www.carychamber.com/list/"},
-  {market:"Charlotte",     name:"Charlotte Regional Business Alliance",       url:"https://charlotteregion.com/",                    directoryUrl:"https://charlotteregion.com/membership-directory/"},
-  {market:"Greensboro",    name:"Greensboro Chamber of Commerce",             url:"https://greensboro.org/",                         directoryUrl:"https://greensboro.org/member-directory/"},
-  {market:"Winston-Salem", name:"Winston-Salem Chamber of Commerce",          url:"https://winstonsalem.com/",                       directoryUrl:"https://winstonsalem.com/directory/"},
-  {market:"High Point",    name:"High Point Chamber of Commerce",             url:"https://www.highpointnc.org/",                    directoryUrl:"https://www.highpointnc.org/member-directory/"},
-  {market:"Wilmington",    name:"Wilmington Chamber of Commerce",             url:"https://wilmingtonchamber.org/",                  directoryUrl:"https://wilmingtonchamber.org/directory/", note:"1,000+ members, southeastern NC"},
-  {market:"Asheville",     name:"Asheville Area Chamber of Commerce",         url:"https://www.ashevillechamber.org/",               directoryUrl:"https://www.ashevillechamber.org/member-directory/"},
-  {market:"Fayetteville",  name:"Fayetteville Chamber of Commerce",           url:"https://www.fayettevillencchamber.org/",          directoryUrl:"https://www.fayettevillencchamber.org/list/"},
-  {market:"Rocky Mount",   name:"Rocky Mount Area Chamber of Commerce",       url:"https://rockymountchamber.org/",                  directoryUrl:"https://rockymountchamber.org/directory/"},
-  {market:"Goldsboro",     name:"Greater Goldsboro Chamber of Commerce",      url:"https://goldsborochamber.org/",                   directoryUrl:"https://goldsborochamber.org/directory/"},
-];
-// Statewide resources that don't map to a single CRM market
-const NC_STATEWIDE_DIRECTORIES = [
-  {name:"NC Chamber Federation — full list of 60+ local chambers", url:"https://ncchamber.com/membership/local-chambers/", note:"Use this if your target city isn't in the list above"},
-  {name:"NC Secretary of State Business Registration Search",      url:"https://www.sosnc.gov/online_services/search/by_title/_Business_Registration", note:"Official NC business registry — manual search only; automated access isn't permitted per their terms"},
-  {name:"US Chamber of Commerce — NC Chamber Finder",               url:"https://www.uschamber.com/co/chambers/north-carolina", note:"Searchable by city if you need a chamber not listed above"},
-];
-
-function ProspectFinderModal({onClose,onAddProspects,existingIds,sysSettings,crmData,savedApi,hunterVerify,currentUser,features}){
-  const [step,setStep]=useState("search"); // search | results | confirm
-  const [showChambers,setShowChambers]=useState(false);
-  const [query,setQuery]=useState("");
-  const [vertical,setVertical]=useState("");
-  const [market,setMarket]=useState("");
-  const [orgSize,setOrgSize]=useState("");
-  const [orgType,setOrgType]=useState("all"); // all | nonprofit | smb
-  const [selectedSources,setSelectedSources]=useState(AI_SOURCES.map(s=>s.id)); // search every real source by default — no manual source-picking needed
-  const [showSourcePicker,setShowSourcePicker]=useState(false); // advanced: narrow down to specific sources
-  const [searching,setSearching]=useState(false);
-  const [results,setResults]=useState([]);
-  const [selected,setSelected]=useState(new Set());
-  const [progress,setProgress]=useState({});
-  const [searchLog,setSearchLog]=useState([]);
-  const [sortBy,setSortBy]=useState("priority"); // priority | name | verified
-  const [resultFilter,setResultFilter]=useState("all"); // all | verified | unverified | new
-  const [recentSearches,setRecentSearches]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem("nc_crm_recent_searches")||"[]");}catch{return[];}
-  });
-
-  const toggleSrc=id=>setSelectedSources(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
-  const toggleSel=id=>setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
-  const selectAll=()=>setSelected(new Set(results.map(r=>r._id)));
-  const clearSel=()=>setSelected(new Set());
-
-  /* ── Finder upgrades ──────────────────────────────────────────
-     • duplicate check against the CRM is now fuzzy (name variants, email, phone, website domain)
-     • fit score is an explainable rubric (see src/lib/scoring.js) instead of "has a website/phone"
-     • emails can be verified before adding • searches can be saved/shared • results can be tagged on add */
-  const crmIndex=useMemo(()=>buildIndex(crmData||[]),[crmData]);
-  const matchOf=useMemo(()=>{const m=new Map();for(const r of results){const x=findMatches(r,crmIndex,{limit:1})[0];if(x)m.set(r._id,x);}return m;},[results,crmIndex]);
-  const isIn=r=>matchOf.get(r._id)?.level==="high";
-  const [verifyProg,setVerifyProg]=useState(null);
-  const [addTags,setAddTags]=useState([]);
-  const [saveName,setSaveName]=useState("");
-  const [showSave,setShowSave]=useState(false);
-  const saved=useSavedSearches("finder",savedApi,{enabled:!!savedApi,currentUser});
-  const bestEmail=r=>{const e=extractEmails(r.emailPhone);return e.find(x=>emailKind(x)==="personal")||e.find(x=>emailKind(x)==="hr")||e[0];};
-  const verifyResults=async()=>{
-    const targets=displayedResults.filter(r=>bestEmail(r));
-    if(!targets.length){log("No email addresses to verify in these results.");return;}
-    setVerifyProg({done:0,total:targets.length});
-    const out=await mapPool(targets,4,async r=>({id:r._id,v:await verifyEmail(bestEmail(r),{hunterVerify})}),(done,total)=>setVerifyProg({done,total}));
-    const byId=new Map(out.map(x=>[x.id,x.v]));
-    setResults(prev=>prev.map(r=>{const v=byId.get(r._id);return v?{...r,emailStatus:v.status,emailCheckedAt:v.checkedAt,_emailConfirmed:!!v.confirmed}:r;}));
-    const n=st=>out.filter(x=>x.v.status===st).length;
-    log(`Email check: ${n("valid")} valid, ${n("risky")} risky, ${n("invalid")} invalid${n("unknown")?`, ${n("unknown")} could not be checked`:""}.`);
-    setVerifyProg(null);
-  };
-  const applySaved=sv=>{const q=sv.params||{};setQuery(q.query||"");setVertical(q.vertical||"");setMarket(q.market||"");setOrgSize(q.orgSize||"");setOrgType(q.orgType||"all");if(Array.isArray(q.sources)&&q.sources.length)setSelectedSources(q.sources);};
-  const saveCurrentSearch=async()=>{
-    if(!saveName.trim())return;
-    try{await saved.save(saveName,{query:query.trim(),vertical,market,orgSize,orgType,sources:selectedSources},true);setSaveName("");setShowSave(false);}
-    catch(e){log(`Couldn't save search: ${e.message}`);}
-  };
-
-  const log=msg=>setSearchLog(p=>[...p,{t:tsNow().slice(11),msg}]);
-
-  // Re-apply a recent search's filters (does not auto-run — lets user review/tweak first)
-  const applyRecentSearch=(s)=>{
-    setQuery(s.query||"");
-    setVertical(s.vertical||"");
-    setMarket(s.market||"");
-    setOrgSize(s.orgSize||"");
-    setOrgType(s.orgType||"all");
-  };
-  const clearRecentSearches=()=>{
-    setRecentSearches([]);
-    try{localStorage.removeItem("nc_crm_recent_searches");}catch{}
-  };
-
-  const runSearch=async()=>{
-    if(!query.trim()&&!vertical&&!market){return;}
-    if(selectedSources.length===0){
-      setStep("results");
-      setSearchLog([{t:tsNow().slice(11),msg:"No sources selected — open \"Customize Sources\" and select at least one, or click \"Select All\"."}]);
-      return;
-    }
-    setSearching(true);setResults([]);setSelected(new Set());setSearchLog([]);
-    setStep("results");
-
-    // Save this search to recent history (dedupe, cap at 6, most-recent-first)
-    const searchSummary={query:query.trim(),vertical,market,orgSize,orgType,ts:Date.now()};
-    const label=[searchSummary.query,searchSummary.vertical,searchSummary.market].filter(Boolean).join(" · ")||"(filters only)";
-    setRecentSearches(prev=>{
-      const next=[{...searchSummary,label},...prev.filter(s=>s.label!==label)].slice(0,6);
-      try{localStorage.setItem("nc_crm_recent_searches",JSON.stringify(next));}catch{}
-      return next;
-    });
-
-    const prog={};selectedSources.forEach(s=>{prog[s]="searching";});
-    setProgress({...prog});
-
-    let allResults=[];
-    const pushResults=(chunk)=>{allResults=[...allResults,...chunk];setResults([...allResults]);};
-
-    // Every source is a real API call — no simulated/demo data exists
-    // anywhere in this flow. Sources run in sequence (not parallel) so
-    // the search log reads top-to-bottom in the order selected, and so
-    // a slow/failing source doesn't block the others from completing.
-    for(const src of selectedSources){
-      const srcInfo=AI_SOURCES.find(s=>s.id===src);
-      log(`${srcInfo?.label||src}: Searching live API…`);
-      setProgress(p=>({...p,[src]:"loading"}));
-
-      let outcome;
-      if(src==="hunter"){
-        outcome=await hunterSearch(query,sysSettings.hunterKey,vertical,market,log);
-      }else if(src==="apollo"){
-        outcome=await apolloSearch(query,sysSettings.apolloKey,vertical,market,log);
-      }else if(src==="guidestar"){
-        outcome=await guidestarSearch(query,vertical,market,log);
-      }else if(src==="nppes"){
-        outcome=await nppesSearch(query,vertical,market,log);
-      }else if(src==="osm"){
-        outcome=await osmSearch(query,vertical,market,log);
-      }
-
-      if(outcome?.ok){
-        const chunk=(outcome.results||[]).map(p=>({...EMPTY_P,...p,_id:uid(),_source:src,_verified:true}));
-        pushResults(chunk);
-        setProgress(p=>({...p,[src]:"done"}));
-        if(chunk.length===0){
-          log(`${srcInfo?.label||src}: 0 results${outcome.domainTried?` for domain "${outcome.domainTried}"`:""} — try a different/more specific query.`);
-        }
-      }else{
-        setProgress(p=>({...p,[src]:"error"}));
-        const PROXY_LABELS={guidestar:"GuideStar",nppes:"NPI Registry",osm:"OpenStreetMap",apollo:"Apollo"};
-        const proxyLabel=PROXY_LABELS[src]||srcInfo?.label||src;
-        const noKeySource=["guidestar","nppes","osm"].includes(src);
-        const reasonMsg={
-          no_proxy:`${proxyLabel} proxy not deployed — see SETUP_GUIDE.md to enable live results`,
-          cors_blocked:`blocked by browser (CORS) — requires the ${proxyLabel} proxy (see SETUP_GUIDE.md)`,
-          api_error:`API error — ${outcome?.message||(noKeySource?"the underlying API may be temporarily unavailable":"check your API key in Admin → Plugins")}`,
-          network_error:`network error — ${outcome?.message||"unknown"}`,
-          no_key:"no API key configured",
-          no_query:"enter a search query (Hunter/Apollo need a company name or domain)",
-        }[outcome?.reason]||"unknown error";
-        log(`${srcInfo?.label||src}: ${reasonMsg}`);
-      }
-    }
-
-    // All sources have been awaited sequentially above — search is
-    // already complete by this point, no artificial delay needed.
-    setSearching(false);
-    log("Search complete.");
-  };
-
-  const doAdd=()=>{
-    const toAdd=results.filter(r=>selected.has(r._id)).map(r=>{
-      const {_id,_source,_verified,_fit,_alsoIn,_emailConfirmed,...rest}=r;
-      const fit=scoreProspect(r);
-      return{...EMPTY_P,...rest,id:uid(),sourceType:AI_SOURCES.find(s=>s.id===r._source)?.label||r._source,currentStatus:"NEW",
-        tags:[...new Set([...(rest.tags||[]),...addTags])].slice(0,30),
-        priorityScore:rest.priorityScore||String(priorityFromScore(fit.score)),
-        whyFit:[rest.whyFit,explainFit(fit)].filter(Boolean).join(" · ")};
-    });
-    onAddProspects(toAdd);
-    onClose();
-  };
-
-  const hasKey=src=>(src==="apollo"&&sysSettings.apolloKey)||(src==="hunter"&&sysSettings.hunterKey)||!["apollo","hunter"].includes(src);
-
-  // Apply in-results filter + sort to the raw results list, without
-  // mutating `results` itself (so toggling filters doesn't lose data).
-  const displayedResults=useMemo(()=>{
-    // score every result, best first, then fold the same organisation found by several sources into one row
-    let list=collapseResults(results.map(r=>({...r,_fit:scoreProspect(r)})).sort((x,y)=>y._fit.score-x._fit.score));
-    if(resultFilter==="verified")list=list.filter(r=>r._verified);
-    else if(resultFilter==="unverified")list=list.filter(r=>!r._verified);
-    else if(resultFilter==="new")list=list.filter(r=>!isIn(r));
-    else if(resultFilter==="validemail")list=list.filter(r=>r.emailStatus==="valid");
-
-    if(sortBy==="priority")list.sort((a,b)=>b._fit.score-a._fit.score);
-    else if(sortBy==="name")list.sort((a,b)=>(a.companyName||"").localeCompare(b.companyName||""));
-    else if(sortBy==="verified")list.sort((a,b)=>(b._verified?1:0)-(a._verified?1:0));
-    return list;
-  },[results,resultFilter,sortBy,matchOf]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const newCount=results.filter(r=>!isIn(r)).length;
-  const verifiedCount=results.filter(r=>r._verified).length;
-
-  return(
-    <DW onClose={onClose} title="🔍 AI Prospect Finder" width={1080}>
-      {/* Source selector — searches everything by default */}
-      <div style={{marginBottom:18}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Search Sources</p>
-            <span style={{fontSize:11,fontWeight:600,color:selectedSources.length===0?"var(--k-red)":selectedSources.length===AI_SOURCES.length?"var(--k-green)":"var(--k-amber)"}}>
-              {selectedSources.length===0
-                ? "⚠️ No sources selected"
-                : selectedSources.length===AI_SOURCES.length
-                ? `✓ Searching all ${AI_SOURCES.length} sources`
-                : `Searching ${selectedSources.length} of ${AI_SOURCES.length} sources`}
-            </span>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setShowSourcePicker(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showSourcePicker?"rgba(96,165,250,0.4)":BR}`,background:showSourcePicker?"rgba(96,165,250,0.1)":"rgba(var(--k-white-rgb),0.03)",color:showSourcePicker?"var(--k-blue)":WM,cursor:"pointer",fontWeight:600}}>
-              ⚙️ Customize Sources {showSourcePicker?"▲":"▼"}
-            </button>
-            <button onClick={()=>setShowChambers(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${showChambers?"rgba(132,204,22,0.4)":BR}`,background:showChambers?"rgba(132,204,22,0.1)":"rgba(var(--k-white-rgb),0.03)",color:showChambers?"#84cc16":WM,cursor:"pointer",fontWeight:600}}>
-              🏛️ NC Chamber Directories {showChambers?"▲":"▼"}
-            </button>
-          </div>
-        </div>
-
-        {/* Advanced: per-source picker, hidden by default since "search
-            everything" is now the normal flow — only needed if someone
-            wants to deliberately narrow the search (e.g. nonprofits only). */}
-        {showSourcePicker&&(
-          <div style={{background:"rgba(96,165,250,0.05)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:9}}>
-              <p style={{margin:0,fontSize:11,color:WM,lineHeight:1.5}}>Every search runs against all sources by default. Deselect any you want to skip for this search.</p>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>setSelectedSources(AI_SOURCES.map(s=>s.id))} style={{...B.ghost,fontSize:10,padding:"4px 10px"}}>Select All</button>
-                <button onClick={()=>setSelectedSources([])} style={{...B.ghost,fontSize:10,padding:"4px 10px"}}>Clear All</button>
-              </div>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-              {AI_SOURCES.map(s=>{
-                const active=selectedSources.includes(s.id);
-                const needsKey=["apollo","hunter"].includes(s.id)&&!hasKey(s.id);
-                const isLive=(s.id==="hunter"&&sysSettings.hunterKey)||(s.id==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s.id);
-                return(
-                  <button key={s.id} onClick={()=>!needsKey&&toggleSrc(s.id)} title={needsKey?"API key required — configure in Settings":s.id==="apollo"?"Apollo key configured — live results require the Apollo proxy Edge Function (see SETUP_GUIDE.md). If not deployed, the search log will explain.":s.desc}
-                    style={{display:"flex",alignItems:"center",gap:7,padding:"8px 13px",background:active?`rgba(201,150,58,0.14)`:"rgba(var(--k-white-rgb),0.04)",border:`1.5px solid ${active?G:"rgba(var(--k-white-rgb),0.1)"}`,borderRadius:9,cursor:needsKey?"not-allowed":"pointer",opacity:needsKey?0.45:1,transition:"all 0.15s"}}>
-                    <span style={{fontSize:16}}>{s.icon}</span>
-                    <div style={{textAlign:"left"}}>
-                      <p style={{margin:0,fontSize:11,fontWeight:700,color:active?GL:WM,display:"flex",alignItems:"center",gap:5}}>
-                        {s.label}
-                        {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"var(--k-green)",fontWeight:800}}>LIVE</span>}
-                      </p>
-                      {needsKey&&<p style={{margin:0,fontSize:9,color:"var(--k-red)"}}>API key required</p>}
-                    </div>
-                    {active&&<span style={{marginLeft:2,fontSize:10,color:GL}}>✓</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {showChambers&&(
-          <div style={{background:"rgba(132,204,22,0.05)",border:"1px solid rgba(132,204,22,0.2)",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-            <p style={{margin:"0 0 8px",fontSize:11,color:WM,lineHeight:1.5}}>
-              Chamber-of-commerce member directories are real, valuable prospect sources, but none offer a public search API — most explicitly disallow automated access. These are direct links to search each chamber's directory <strong style={{color:GL}}>manually</strong>; not part of the automated search above.
-            </p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:6,marginBottom:10}}>
-              {NC_CHAMBER_DIRECTORY.map(c=>(
-                <a key={c.market} href={c.directoryUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",padding:"8px 11px",borderRadius:8,background:"rgba(var(--k-white-rgb),0.03)",border:`1px solid ${BR}`,textDecoration:"none",transition:"all 0.15s"}} className="rh">
-                  <p style={{margin:0,fontSize:11,fontWeight:700,color:W}}>{c.market}</p>
-                  <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name} ↗</p>
-                  {c.note&&<p style={{margin:"2px 0 0",fontSize:9,color:WD}}>{c.note}</p>}
-                </a>
-              ))}
-            </div>
-            <p style={{margin:"0 0 6px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.06em"}}>Statewide / Other</p>
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>
-              {NC_STATEWIDE_DIRECTORIES.map(d=>(
-                <a key={d.name} href={d.url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"var(--k-blue)",textDecoration:"none"}}>
-                  {d.name} ↗ <span style={{color:WD,fontWeight:400}}>— {d.note}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-
-      {/* Recent searches */}
-      {recentSearches.length>0&&step==="search"&&(
-        <div style={{marginBottom:14}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
-            <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Recent Searches</p>
-            <button onClick={clearRecentSearches} style={{...B.ghost,fontSize:9,padding:"3px 8px"}}>Clear</button>
-          </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {recentSearches.map((s,i)=>(
-              <button key={i} onClick={()=>applyRecentSearch(s)} style={{fontSize:11,padding:"5px 12px",borderRadius:20,border:`1px solid ${BR}`,background:"rgba(var(--k-white-rgb),0.03)",color:WM,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                🕓 {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Saved searches — shared with the team (or this browser in demo mode) */}
-      {step==="search"&&savedApi&&(
-        <div style={{marginBottom:14}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7,gap:8,flexWrap:"wrap"}}>
-            <p style={{margin:0,fontSize:11,fontWeight:700,color:WM,textTransform:"uppercase",letterSpacing:"0.07em"}}>Saved Searches <span style={{color:WD,fontWeight:500,textTransform:"none",letterSpacing:0}}>{saved.isLocal?"· this browser only":"· shared with your team"}</span></p>
-            {!showSave&&<button onClick={()=>setShowSave(true)} disabled={!query.trim()&&!vertical&&!market} className="nc-btn gold-ghost sm" title="Save the current criteria">★ Save this search</button>}
-          </div>
-          {showSave&&(
-            <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-              <input className="nc-input" style={{maxWidth:320}} autoFocus value={saveName} maxLength={80} placeholder="Name, e.g. Raleigh home health" onChange={e=>setSaveName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveCurrentSearch();if(e.key==="Escape")setShowSave(false);}}/>
-              <button className="nc-btn primary sm" onClick={saveCurrentSearch} disabled={!saveName.trim()}>Save</button>
-              <button className="nc-btn subtle sm" onClick={()=>setShowSave(false)}>Cancel</button>
-            </div>
-          )}
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {saved.items.length===0&&!showSave&&<span style={{fontSize:11,color:WD}}>Nothing saved yet — set up a search you run often, then save it.</span>}
-            {saved.items.map(sv=>(
-              <span key={sv.id} className="nc-chip" style={{paddingRight:6}}>
-                <button onClick={()=>applySaved(sv)} style={{opacity:1,font:"inherit",color:"inherit",fontWeight:600}} title={sv.createdByName?`Saved by ${sv.createdByName}`:undefined}>★ {sv.name}</button>
-                <button aria-label={`Delete saved search ${sv.name}`} onClick={()=>saved.remove(sv.id).catch(e=>log(`Couldn't delete: ${e.message}`))}>×</button>
-              </span>
-            ))}
-            {saved.error&&<span style={{fontSize:11,color:"var(--k-amber)"}}>Saved searches unavailable: {saved.error}</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Search form */}
-      <div style={{background:"rgba(var(--k-white-rgb),0.03)",border:"1px solid rgba(var(--k-white-rgb),0.08)",borderRadius:12,padding:16,marginBottom:16}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:11,marginBottom:11}}>
-          <FG label="Keywords / Search Query" span>
-            <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:WD}}>🔍</span>
-              <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runSearch()} placeholder='e.g. "home health Raleigh" or "nonprofit Charlotte compliance"' style={{...inp(),paddingLeft:32}}/>
-            </div>
-            {selectedSources.includes("hunter")&&sysSettings.hunterKey&&(
-              <p style={{margin:"6px 0 0",fontSize:10,color:"var(--k-amber)"}}>🎯 Hunter.io is LIVE — for best results, enter a company name or domain (e.g. "acmehealth" or "acmehealth.com"). Hunter.io will search that domain for contacts.</p>
-            )}
-          </FG>
-          <FG label="Organization Type">
-            <select value={orgType} onChange={e=>{
-              const v=e.target.value; setOrgType(v);
-              // Nudge the source selection toward the sources that actually
-              // cover this org type — doesn't force it, just helps.
-              if(v==="nonprofit"&&!selectedSources.includes("guidestar")) setSelectedSources(s=>[...s,"guidestar"]);
-              if(v==="healthcare"&&!selectedSources.includes("nppes")) setSelectedSources(s=>[...s,"nppes"]);
-            }} style={{...inp(),cursor:"pointer"}}>
-              <option value="all">All Organizations</option>
-              <option value="nonprofit">Nonprofits (501c) — best with GuideStar</option>
-              <option value="healthcare">Healthcare / Home Health — best with NPI Registry</option>
-              <option value="smb">SMB / For-Profit — best with Hunter.io / Apollo.io</option>
-            </select>
-          </FG>
-          <FG label="Vertical / Industry">
-            <select value={vertical} onChange={e=>setVertical(e.target.value)} style={{...inp(),cursor:"pointer"}}>
-              <option value="">All Verticals</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}
-            </select>
-          </FG>
-          <FG label="Market / City">
-            <select value={market} onChange={e=>setMarket(e.target.value)} style={{...inp(),cursor:"pointer"}}>
-              <option value="">All Markets</option>{MARKETS.map(m=><option key={m}>{m}</option>)}
-            </select>
-          </FG>
-          <FG label="&nbsp;">
-            <button onClick={runSearch} disabled={searching||(!query.trim()&&!vertical&&!market)} className="bh" style={{...B.gold,width:"100%",padding:"10px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:searching||(!query.trim()&&!vertical&&!market)?0.5:1}}>
-              {searching?<><Spin s={16} c="#0B1426"/> Searching…</>:"🔍 Search Prospects"}
-            </button>
-          </FG>
-        </div>
-      </div>
-
-      {/* Initial empty state — before any search */}
-      {step==="search"&&(
-        <div style={{textAlign:"center",padding:"40px 0",color:WD}}>
-          <p style={{fontSize:40,margin:"0 0 10px"}}>🔍</p>
-          <p style={{margin:0,fontSize:14,color:WM}}>Run a search to discover prospects</p>
-          <p style={{margin:"6px 0 0",fontSize:12}}>Try entering a keyword, selecting a vertical, or choosing a market</p>
-        </div>
-      )}
-
-      {/* Results */}
-      {step==="results"&&(
-        <div style={{animation:"fadeUp 0.2s ease"}}>
-          {/* Source progress */}
-          <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
-            {selectedSources.map(s=>{
-              const si=AI_SOURCES.find(x=>x.id===s);
-              const st=progress[s];
-              const isLive=(s==="hunter"&&sysSettings.hunterKey)||(s==="apollo"&&sysSettings.apolloKey)||["guidestar","nppes","osm"].includes(s);
-              return(
-                <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:"rgba(var(--k-white-rgb),0.04)",border:`1px solid ${st==="done"?"rgba(52,211,153,0.3)":st==="error"?"rgba(248,113,113,0.35)":st==="loading"?`${si?.color}44`:"rgba(var(--k-white-rgb),0.08)"}`,borderRadius:20}}>
-                  <span style={{fontSize:13}}>{si?.icon}</span>
-                  <span style={{fontSize:11,fontWeight:600,color:st==="done"?"var(--k-green)":st==="error"?"var(--k-red)":st==="loading"?si?.color:WM}}>{si?.label}</span>
-                  {isLive&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:20,background:"rgba(52,211,153,0.15)",color:"var(--k-green)",fontWeight:800}}>LIVE</span>}
-                  {st==="loading"&&<Spin s={10} c={si?.color}/>}
-                  {st==="done"&&<span style={{fontSize:10,color:"var(--k-green)"}}>✓</span>}
-                  {st==="error"&&<span style={{fontSize:10,color:"var(--k-red)"}}>⚠️</span>}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Search log */}
-          {searchLog.length>0&&(
-            <div style={{background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"8px 12px",marginBottom:12,maxHeight:80,overflowY:"auto",fontFamily:"monospace",fontSize:10,color:WD}}>
-              {searchLog.map((l,i)=><div key={i}><span style={{color:G}}>[{l.t}]</span> {l.msg}</div>)}
-            </div>
-          )}
-
-          {/* Results header */}
-          {results.length>0&&(
-            <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <p style={{margin:0,fontSize:13,fontWeight:700,color:W}}>{results.length} prospects found</p>
-                <span style={{fontSize:11,color:"var(--k-green)"}}>{newCount} new</span>
-                <span style={{fontSize:11,color:WD}}>·</span>
-                <span style={{fontSize:11,color:WM}}>{verifiedCount} verified</span>
-                <span style={{fontSize:11,color:WD}}>·</span>
-                <span style={{fontSize:11,color:WM}}>{selected.size} selected</span>
-                <div style={{marginLeft:"auto",display:"flex",gap:7}}>
-                  <button onClick={verifyResults} disabled={!!verifyProg} className="nc-btn gold-ghost sm" title={hunterVerify?"Checks syntax, the domain's mail server, and the mailbox (Hunter)":"Checks syntax and that the domain can receive email"}>
-                    {verifyProg?`Verifying ${verifyProg.done}/${verifyProg.total}…`:"✓ Verify emails"}
-                  </button>
-                  <button onClick={selectAll} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Select All</button>
-                  <button onClick={clearSel} style={{...B.ghost,fontSize:10,padding:"5px 11px"}}>Clear</button>
-                  {selected.size>0&&<button onClick={doAdd} className="bh" style={{...B.gold,fontSize:11,padding:"7px 16px",display:"flex",gap:6,alignItems:"center"}}>
-                    ➕ Add {selected.size} to CRM
-                  </button>}
-                </div>
-              </div>
-              {selected.size>0&&(
-                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <span style={{fontSize:11,color:WM,whiteSpace:"nowrap"}}>Tag these {selected.size} as</span>
-                  <div style={{minWidth:240,flex:"0 1 380px"}}>
-                    <TagInput value={addTags} onChange={setAddTags} suggestions={allTags(crmData||[])} disabled={features?.tags===false}
-                      placeholder={features?.tags===false?"Tags need the database update":"e.g. q4-home-health (optional)"}/>
-                  </div>
-                </div>
-              )}
-              {/* Sort + in-results filter controls */}
-              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>Show:</span>
-                {[["all","All"],["new","New only"],["validemail","Valid email"],["verified","Verified"],["unverified","Unverified"]].map(([k,l])=>(
-                  <button key={k} onClick={()=>setResultFilter(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${resultFilter===k?"rgba(201,150,58,0.4)":BR}`,background:resultFilter===k?"rgba(201,150,58,0.12)":"rgba(var(--k-white-rgb),0.03)",color:resultFilter===k?GL:WD,cursor:"pointer",fontWeight:resultFilter===k?700:500}}>{l}</button>
-                ))}
-                <span style={{fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:10}}>Sort:</span>
-                {[["priority","Best fit"],["verified","Verified first"],["name","Company name"]].map(([k,l])=>(
-                  <button key={k} onClick={()=>setSortBy(k)} style={{fontSize:10,padding:"4px 11px",borderRadius:20,border:`1px solid ${sortBy===k?"rgba(96,165,250,0.4)":BR}`,background:sortBy===k?"rgba(96,165,250,0.12)":"rgba(var(--k-white-rgb),0.03)",color:sortBy===k?"var(--k-blue)":WD,cursor:"pointer",fontWeight:sortBy===k?700:500}}>{l}</button>
-                ))}
-              </div>
-              {results.some(r=>r._source==="osm")&&(
-                <p style={{margin:0,fontSize:9,color:WD}}>Map &amp; Local Business Directory results © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" style={{color:WD,textDecoration:"underline"}}>OpenStreetMap contributors</a>, ODbL.</p>
-              )}
-            </div>
-          )}
-
-          {/* ═══ MAP VIEW — real tile-based map via Leaflet/OpenStreetMap ═══ */}
-          {results.length>0&&(()=>{
-            const pinned = displayedResults.filter(r=>r._lat!=null&&r._lon!=null);
-            const center = market && NC_CITY_COORDS[market] ? NC_CITY_COORDS[market] : DEFAULT_NC_COORDS;
-            return(
-              <div style={{position:"relative",borderRadius:12,overflow:"hidden",border:`1px solid ${BR}`,marginBottom:14}}>
-                <MapContainer center={center} zoom={market?11:7} style={{height:280,width:"100%"}} scrollWheelZoom={true}>
-                  <TileLayer
-                    attribution='© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <FitToPins pinned={pinned} fallbackCenter={center}/>
-                  {pinned.map(r=>{
-                    const sel=selected.has(r._id);
-                    const si=AI_SOURCES.find(s=>s.id===r._source);
-                    const alreadyIn=isIn(r);
-                    return(
-                      <Marker key={r._id} position={[r._lat,r._lon]} icon={makeColoredPin(sel?"#C9963A":(si?.color||"#84cc16"), sel)}
-                        eventHandlers={{click:()=>!alreadyIn&&toggleSel(r._id)}}>
-                        <Popup>
-                          <div style={{minWidth:180,fontFamily:"inherit"}}>
-                            <p style={{margin:"0 0 3px",fontWeight:700,fontSize:13}}>{r.companyName}</p>
-                            <p style={{margin:"0 0 3px",fontSize:11,color:"#555"}}>{r.cityMarket||r.market||"NC"}{!r._geoPrecise?" (city-level estimate)":""}</p>
-                            {r.contactName&&<p style={{margin:"0 0 3px",fontSize:11}}>{r.contactName}{r.title?` · ${r.title}`:""}</p>}
-                            {r.emailPhone&&<p style={{margin:"0 0 3px",fontSize:11}}>{r.emailPhone}</p>}
-                            <p style={{margin:"4px 0 0",fontSize:10,color:si?.color}}>{si?.icon} {si?.label}</p>
-                            {!alreadyIn&&(
-                              <button onClick={()=>toggleSel(r._id)} style={{marginTop:6,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:6,border:"none",background:sel?"#C9963A":"#1B2A4A",color:sel?"#0B1426":"#fff",cursor:"pointer"}}>
-                                {sel?"✓ Selected":"+ Select"}
-                              </button>
-                            )}
-                            {alreadyIn&&<p style={{margin:"6px 0 0",fontSize:10,color:"var(--k-green)",fontWeight:700}}>Already in CRM</p>}
-                          </div>
-                        </Popup>
-                      </Marker>
-                    );
-                  })}
-                </MapContainer>
-                <div style={{position:"absolute",bottom:8,left:10,zIndex:1000,fontSize:9,color:"#fff",background:"rgba(11,20,38,0.75)",padding:"4px 9px",borderRadius:6,display:"flex",alignItems:"center",gap:10}}>
-                  <span>📍 {pinned.length} of {displayedResults.length} mapped</span>
-                  <span style={{display:"flex",alignItems:"center",gap:4}}>city-level estimate vs. precise — see pin popup</span>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* ═══ RESULTS TABLE (GHL-style) ═══ */}
-          <div style={{border:`1px solid ${BR}`,borderRadius:11,overflow:"hidden",maxHeight:360,overflowY:"auto"}}>
-            {searching&&results.length===0&&(
-              <div style={{textAlign:"center",padding:"32px 0"}}>
-                <Spin s={36} c={G}/>
-                <p style={{color:WM,marginTop:12,fontSize:13}}>Searching across {selectedSources.length} source{selectedSources.length!==1?"s":""}…</p>
-              </div>
-            )}
-            {displayedResults.length>0&&(
-              <table style={{width:"100%",borderCollapse:"collapse"}}>
-                <thead>
-                  <tr style={{background:"rgba(var(--k-white-rgb),0.03)",borderBottom:`1px solid ${BR}`}}>
-                    <th style={{width:36,padding:"9px 8px"}}>
-                      <input type="checkbox" checked={displayedResults.every(r=>selected.has(r._id)||isIn(r))} onChange={()=>{
-                        const allSel = displayedResults.every(r=>selected.has(r._id));
-                        setSelected(prev=>{
-                          const next=new Set(prev);
-                          displayedResults.forEach(r=>{
-                            const already=isIn(r);
-                            if(already)return;
-                            if(allSel)next.delete(r._id);else next.add(r._id);
-                          });
-                          return next;
-                        });
-                      }} style={{cursor:"pointer"}}/>
-                    </th>
-                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Business</th>
-                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Fit Score</th>
-                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Online Presence</th>
-                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Source</th>
-                    <th style={{textAlign:"left",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Status</th>
-                    <th style={{textAlign:"right",padding:"9px 8px",fontSize:10,fontWeight:700,color:WD,textTransform:"uppercase",letterSpacing:"0.05em"}}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedResults.map(r=>{
-                    const sel=selected.has(r._id);
-                    const si=AI_SOURCES.find(s=>s.id===r._source);
-                    const alreadyIn=isIn(r);
-                    const fit=r._fit||scoreProspect(r);
-                    const poss=!alreadyIn&&matchOf.get(r._id)?.level==="medium"?matchOf.get(r._id):null;
-                    return(
-                      <tr key={r._id} onClick={()=>!alreadyIn&&toggleSel(r._id)} style={{borderBottom:`1px solid rgba(var(--k-white-rgb),0.04)`,background:sel?"rgba(201,150,58,0.06)":"transparent",cursor:alreadyIn?"default":"pointer",opacity:alreadyIn?0.5:1}} className={alreadyIn?"":"rh"}>
-                        <td style={{padding:"10px 8px"}} onClick={e=>e.stopPropagation()}>
-                          <input type="checkbox" checked={sel} disabled={alreadyIn} onChange={()=>!alreadyIn&&toggleSel(r._id)} style={{cursor:alreadyIn?"default":"pointer"}}/>
-                        </td>
-                        <td style={{padding:"10px 8px",maxWidth:240}}>
-                          <p style={{margin:0,fontSize:12,fontWeight:700,color:W,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.companyName}</p>
-                          <p style={{margin:"2px 0 0",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.contactName?`${r.contactName} · `:""}{r.cityMarket||r.market||"NC"}</p>
-                          {alreadyIn&&<span style={{fontSize:9,color:"var(--k-green)",fontWeight:700}} title={(matchOf.get(r._id)?.reasons||[]).join(" · ")}>Already in CRM · {matchOf.get(r._id)?.prospect.companyName}</span>}
-                          {poss&&<span style={{fontSize:9,color:"var(--k-amber)",fontWeight:700,display:"block"}} title={poss.reasons.join(" · ")}>⚠ Possible match: {poss.prospect.companyName}</span>}
-                          {r._alsoIn?.length>0&&<span style={{fontSize:9,color:WD,display:"block"}}>Also found via {r._alsoIn.map(id=>AI_SOURCES.find(x=>x.id===id)?.label||id).join(", ")}</span>}
-                          {r.emailStatus&&<span style={{display:"block",marginTop:2}}><EmailBadge status={r.emailStatus} confirmed={r._emailConfirmed}/></span>}
-                        </td>
-                        <td style={{padding:"10px 8px"}}><ScoreBadge result={fit} size={32} showLabel/></td>
-                        <td style={{padding:"10px 8px"}}>
-                          <div style={{display:"flex",gap:5}}>
-                            <span title={r.sourceUrl?"Has a website":"No website found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.sourceUrl?"rgba(52,211,153,0.15)":"rgba(var(--k-white-rgb),0.04)",fontSize:10}}>{r.sourceUrl?"🌐":"—"}</span>
-                            <span title={r.emailPhone?"Has contact info":"No contact info found"} style={{width:20,height:20,borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",background:r.emailPhone?"rgba(52,211,153,0.15)":"rgba(var(--k-white-rgb),0.04)",fontSize:10}}>{r.emailPhone?"☎️":"—"}</span>
-                          </div>
-                        </td>
-                        <td style={{padding:"10px 8px"}}>
-                          <span style={{fontSize:9,color:si?.color,border:`1px solid ${si?.color}44`,borderRadius:20,padding:"2px 9px",whiteSpace:"nowrap"}}>{si?.icon} {si?.label}</span>
-                        </td>
-                        <td style={{padding:"10px 8px"}}>
-                          <span style={{fontSize:10,color:alreadyIn?"var(--k-green)":WD,fontWeight:600}}>{alreadyIn?"In CRM":"Not added"}</span>
-                        </td>
-                        <td style={{padding:"10px 8px",textAlign:"right"}} onClick={e=>e.stopPropagation()}>
-                          {alreadyIn?(
-                            <span style={{fontSize:10,color:WD}}>—</span>
-                          ):(
-                            <button onClick={()=>{
-                              setSelected(new Set([r._id]));
-                              setTimeout(doAdd,0);
-                            }} style={{fontSize:11,fontWeight:700,color:GL,background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>+ Add</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {!searching&&results.length>0&&displayedResults.length===0&&(
-              <div style={{textAlign:"center",padding:"32px 0",color:WD}}>
-                <p style={{fontSize:40,margin:"0 0 10px"}}>🗂️</p>
-                <p style={{margin:0,fontSize:14,color:WM}}>No results match this filter</p>
-                <p style={{margin:"6px 0 0",fontSize:12}}>Try "All" or a different Show filter above</p>
-                <button onClick={()=>setResultFilter("all")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 14px",marginTop:10}}>Show All Results</button>
-              </div>
-            )}
-            {!searching&&results.length===0&&(
-              <div style={{textAlign:"center",padding:"32px 0",color:WD}}>
-                <p style={{fontSize:40,margin:"0 0 10px"}}>🔍</p>
-                <p style={{margin:0,fontSize:14,color:WM}}>No prospects found for this search</p>
-                <p style={{margin:"6px 0 0",fontSize:12}}>Try a broader keyword, switch verticals, or search "All Markets"</p>
-                <div style={{display:"flex",gap:7,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
-                  {vertical&&<button onClick={()=>setVertical("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Vertical</button>}
-                  {market&&<button onClick={()=>setMarket("")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>Clear Market</button>}
-                  {orgType!=="all"&&<button onClick={()=>setOrgType("all")} className="bh" style={{...B.ghost,fontSize:11,padding:"6px 13px"}}>All Org Types</button>}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom action bar */}
-          {results.length>0&&selected.size>0&&(
-            <div style={{marginTop:14,padding:"12px 16px",background:"rgba(201,150,58,0.08)",border:"1px solid rgba(201,150,58,0.25)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-              <p style={{margin:0,fontSize:13,color:W}}><strong style={{color:GL}}>{selected.size}</strong> prospect{selected.size!==1?"s":""} selected and ready to add</p>
-              <button onClick={doAdd} className="bh" style={{...B.gold,display:"flex",gap:8,alignItems:"center",padding:"10px 22px",fontSize:13}}>
-                ➕ Add to Prospect List →
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </DW>
-  );
-}
 
 /* ════════════════════════════════════════════════════════════════
    EXCEL IMPORT MODAL
@@ -2322,17 +1092,14 @@ function ProspectModal({prospect,isNew,onSave,onDelete,onClose,canDelete}){
 /* ════════════════════════════════════════════════════════════════
    ADMIN PANEL
 ════════════════════════════════════════════════════════════════ */
-function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,setSysSettings,onSaveSettings,auditLog,addAudit,onBack,onLogout,dbStatus}){
+function AdminPanel({onOpenProspects,currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,setCrmData,onSaveProspect,onDeleteProspect,onImportProspects,sysSettings,setSysSettings,onSaveSettings,auditLog,addAudit,onBack,onLogout,dbStatus}){
   const [tab,setTab]=useState("overview");
   const [toast,setToast]=useState(null);
   const [uDlg,setUDlg]=useState(null);
-  const [pDlg,setPDlg]=useState(null);
   const [confirmDel,setConfirmDel]=useState(null);
   const [uForm,setUForm]=useState({});
   const [fErr,setFErr]=useState("");
   const [srch,setSrch]=useState("");
-  const [sfilt,setSfilt]=useState("All");
-  const [showImport,setShowImport]=useState(false);
   const [settings,setSettings]=useState({...sysSettings});
   // sysSettings loads asynchronously from Supabase — if AdminPanel mounts
   // before that load finishes (or before the admin opens Settings/Plugins),
@@ -2389,11 +1156,8 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
   const toggleActive=async u=>{if(u.id===currentUser.id){t2("Cannot deactivate yourself.","err");return;}try{await onSaveUser({...u,active:!u.active});}catch(e){t2(`Update failed: ${e.message}`,"err");return;}addAudit(currentUser.username,`${u.active?"Deactivated":"Activated"}: ${u.username}`);t2(`${u.name} ${u.active?"deactivated":"activated"}.`,u.active?"err":"ok");};
 
   // Prospect ops
-  const saveP=async form=>{const isNew=!crmData.find(p=>p.id===form.id);await onSaveProspect(form);addAudit(currentUser.username,isNew?`Added: ${form.companyName}`:`Edited: ${form.companyName}`);t2(isNew?"Added!":"Saved!");setPDlg(null);};
-  const deleteP=async id=>{const p=crmData.find(x=>x.id===id);await onDeleteProspect(id);addAudit(currentUser.username,`Deleted: ${p?.companyName||id}`);t2(`"${p?.companyName}" deleted.`,"err");setConfirmDel(null);setPDlg(null);};
   const saveSettings=async()=>{await onSaveSettings({...settings});settingsTouched.current=false;addAudit(currentUser.username,"Updated system settings");t2("Settings saved.");};
 
-  const filtP=crmData.filter(p=>{const q=srch.toLowerCase();return(sfilt==="All"||p.currentStatus===sfilt)&&(!q||[p.companyName,p.contactName,p.market,p.vertical].some(v=>(v||"").toLowerCase().includes(q)));});
   const TABS=[{id:"overview",l:"📊 Overview"},{id:"users",l:"👥 Users"},{id:"crm",l:"🗄️ Prospects"},{id:"settings",l:"⚙️ Settings"},{id:"plugins",l:"🔌 Plugins"},{id:"audit",l:"📋 Audit Log"}];
 
   return(
@@ -2513,40 +1277,11 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
 
           {tab==="crm"&&(
             <div style={{animation:"fadeUp 0.3s ease"}}>
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
-                <div><h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>CRM — Prospects</h2><p style={{margin:"4px 0 0",fontSize:12,color:WM}}>{crmData.length} total records</p></div>
-                <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                  <button onClick={()=>setShowImport(true)} className="bh" style={{...B.purple,fontSize:11,display:"flex",gap:5,alignItems:"center"}}>📁 Import</button>
-                  <button onClick={()=>{exportToExcel(crmData,"NC_CRM_Admin");t2("Exported!");}} className="bh" style={{...B.green,fontSize:11}}>⬇️ Export</button>
-                  {isAdmin&&<button onClick={async()=>{if(window.confirm("Reset all CRM data? This will overwrite the database.")){await onImportProspects(SEED,"replace");addAudit(currentUser.username,"Reset CRM to seed");t2("Data reset.","err");}}} className="bh" style={{...B.danger,fontSize:11}}>↺ Reset</button>}
-                  <button onClick={()=>setPDlg("add")} className="bh" style={{...B.gold,fontSize:11}}>+ Add</button>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:9,marginBottom:11,flexWrap:"wrap"}}>
-                <div style={{position:"relative",flex:1,minWidth:180}}><span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:12,color:WD}}>🔍</span><input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="Search…" style={{...inp(),paddingLeft:30}}/></div>
-                <select value={sfilt} onChange={e=>setSfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:130,cursor:"pointer"}}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
-                <span style={{fontSize:11,color:WD,alignSelf:"center"}}>{filtP.length}/{crmData.length}</span>
-              </div>
-              <div style={{background:NC,border:`1px solid rgba(201,150,58,0.18)`,borderRadius:13,overflow:"hidden"}}>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
-                    <thead><tr style={{background:"rgba(var(--k-white-rgb),0.04)",borderBottom:`1px solid rgba(var(--k-white-rgb),0.07)`}}>{["Company","Contact","Vertical","Market","Status","Pri.","Actions"].map(h=><th key={h} style={{textAlign:"left",padding:"9px 13px",fontSize:10,color:WD,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
-                    <tbody>
-                      {filtP.length===0&&<tr><td colSpan={7} style={{padding:"30px 0",textAlign:"center",color:WD,fontSize:13}}>No records match.</td></tr>}
-                      {filtP.map((p,i)=>(
-                        <tr key={p.id} className="rh" style={{borderBottom:`1px solid rgba(var(--k-white-rgb),0.04)`,background:i%2?"rgba(var(--k-white-rgb),0.015)":"transparent"}}>
-                          <td style={{padding:"10px 13px"}}><p style={{margin:0,fontSize:12,fontWeight:700,color:W,maxWidth:170,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p><div style={{display:"flex",gap:4,marginTop:1}}>{p.flagToMelissa&&<span style={{fontSize:9,color:"var(--k-pink)"}}>🚩</span>}{p.doNotRespond&&<span style={{fontSize:9,color:"var(--k-red)"}}>🚫</span>}</div></td>
-                          <td style={{padding:"10px 13px"}}><p style={{margin:0,fontSize:12,color:WM}}>{p.contactName||"—"}</p><p style={{margin:0,fontSize:10,color:WD}}>{p.title}</p></td>
-                          <td style={{padding:"10px 13px",fontSize:11,color:WD,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.vertical||"—"}</td>
-                          <td style={{padding:"10px 13px",fontSize:11,color:WD}}>{p.market||"—"}</td>
-                          <td style={{padding:"10px 13px"}}><SBadge status={p.currentStatus} sm/></td>
-                          <td style={{padding:"10px 13px",fontSize:14,fontWeight:800,color:parseInt(p.priorityScore)>=7?"var(--k-pink)":parseInt(p.priorityScore)>=4?GL:"rgba(var(--k-white-rgb),0.2)"}}>{p.priorityScore||"—"}</td>
-                          <td style={{padding:"10px 13px"}}><div style={{display:"flex",gap:6}}><button onClick={()=>setPDlg(p)} className="bh" style={{...B.ghost,fontSize:10,padding:"4px 9px",color:GL,borderColor:"rgba(201,150,58,0.3)"}}>✏️</button>{isAdmin&&<button onClick={()=>setConfirmDel({type:"prospect",item:p})} className="bh" style={{...B.danger,fontSize:10,padding:"4px 9px"}}>🗑</button>}</div></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <h2 style={{margin:0,fontSize:20,fontWeight:900,color:W}}>Prospects</h2>
+              <div style={{background:NC,border:`1px solid rgba(201,150,58,0.18)`,borderRadius:13,padding:"22px 24px",marginTop:14,maxWidth:660}}>
+                <p style={{margin:"0 0 6px",fontSize:15,fontWeight:800,color:W}}>Your {crmData.length} prospects now live in one place</p>
+                <p style={{margin:"0 0 16px",fontSize:13,color:WM,lineHeight:1.6}}>Searching, editing, importing, exporting, the map, duplicate review and qualification are all in the <b>Prospects</b> area. This tab used to hold a second, older copy of the table; it was removed so there is only one place to work (it also had a “Reset all CRM data” button that replaced every prospect with sample data).</p>
+                {onOpenProspects?<button onClick={onOpenProspects} className="bh" style={{...B.gold,fontSize:12}}>Open Prospects</button>:null}
               </div>
             </div>
           )}
@@ -2667,8 +1402,6 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
 
       {toast&&<Toast msg={toast.msg} type={toast.type}/>}
 
-      {showImport&&<ExcelImportModal onClose={()=>setShowImport(false)} onImport={async(rows,mode)=>{await onImportProspects(rows,mode);addAudit(currentUser.username,`Imported ${rows.length} prospects (${mode})`);setShowImport(false);t2(`${rows.length} imported!`);}}/>}
-      {pDlg&&<ProspectModal prospect={pDlg==="add"?{...EMPTY_P,id:uid()}:pDlg} isNew={pDlg==="add"} onSave={saveP} onDelete={id=>setConfirmDel({type:"prospect",item:crmData.find(p=>p.id===id)})} onClose={()=>setPDlg(null)} canDelete={isAdmin}/>}
 
       {confirmDel&&<DW onClose={()=>setConfirmDel(null)} title="Confirm Delete" width={380}>
         <div style={{textAlign:"center",padding:"8px 0"}}>
@@ -2677,7 +1410,7 @@ function AdminPanel({currentUser,users,setUsers,onSaveUser,onDeleteUser,crmData,
           <p style={{margin:"0 0 22px",fontSize:13,color:WM}}>{confirmDel.type==="user"?`"${confirmDel.item.name}" (@${confirmDel.item.username})`:`"${confirmDel.item.companyName}"`} will be permanently removed.</p>
           <div style={{display:"flex",gap:10,justifyContent:"center"}}>
             <button onClick={()=>setConfirmDel(null)} className="bh" style={B.ghost}>Cancel</button>
-            <button onClick={()=>confirmDel.type==="user"?deleteU(confirmDel.item):deleteP(confirmDel.item.id)} className="bh" style={B.danger}>Delete Permanently</button>
+            <button onClick={()=>deleteU(confirmDel.item)} className="bh" style={B.danger}>Delete Permanently</button>
           </div>
         </div>
       </DW>}
@@ -2798,8 +1531,9 @@ const MOCK_SENT=[
 ════════════════════════════════════════════════════════════════ */
 function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentUser,sysSettings,onViewProspect,t2}){
   const [etab,setEtab]=useState("queue");
-  const [inbox,setInbox]=useState(MOCK_INBOX);
-  const [sent,setSent]=useState(MOCK_SENT);
+  // Fictional sample emails exist ONLY for demo mode. A real workspace must never show invented people or fake sends.
+  const [inbox,setInbox]=useState(isConfigured?[]:MOCK_INBOX);
+  const [sent,setSent]=useState(isConfigured?[]:MOCK_SENT);
   const [inboxSearch,setInboxSearch]=useState("");
   const [selectedEmail,setSelectedEmail]=useState(null);
   const [compose,setCompose]=useState(null);
@@ -2864,14 +1598,14 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
         // Shouldn't happen if isGmailConnected() returned true, but just in case
         setInboxConnected(true);
         setUsingRealGmail(false);
-        setInbox(MOCK_INBOX);
-        t2("Showing demo inbox — Gmail token unavailable.");
+        setInbox(isConfigured?[]:MOCK_INBOX);
+        t2(isConfigured?"Gmail isn't connected — sign in with Google to see your replies.":"Showing demo inbox — Gmail token unavailable.");
       } else {
         // Gmail API error (e.g. token expired or scopes missing)
         setInboxConnected(true);
         setUsingRealGmail(false);
-        setInbox(MOCK_INBOX);
-        t2("Couldn't load Gmail — showing demo inbox. Try signing out and back in.", "err");
+        setInbox(isConfigured?[]:MOCK_INBOX);
+        t2(isConfigured?"Couldn't load Gmail. Try signing out and back in.":"Couldn't load Gmail — showing demo inbox. Try signing out and back in.", "err");
       }
     } else {
       // Not signed in via Google — fall back to demo inbox
@@ -2879,8 +1613,8 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
         setConnecting(false);
         setInboxConnected(true);
         setUsingRealGmail(false);
-        setInbox(MOCK_INBOX);
-        t2("Showing demo inbox. Sign in with Google to connect your real Gmail.");
+        setInbox(isConfigured?[]:MOCK_INBOX);
+        t2(isConfigured?"Gmail isn't connected — sign in with Google to see your replies.":"Showing demo inbox. Sign in with Google to connect your real Gmail.");
       },900);
     }
   };
@@ -2895,8 +1629,8 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
         t2("Couldn't refresh Gmail inbox.", "err");
       }
     } else {
-      setInbox(MOCK_INBOX);
-      t2("Demo inbox refreshed!");
+      setInbox(isConfigured?[]:MOCK_INBOX);
+      t2(isConfigured?"Nothing to refresh until Gmail is connected.":"Demo inbox refreshed!");
     }
   };
 
@@ -2970,7 +1704,9 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
       return;
     }
 
-    // Demo fallback — no Gmail connected
+    // Not connected: in a real workspace NOTHING is sent, so nothing may be recorded (no status change, no email row).
+    if(isConfigured){ setSending(false); t2("Gmail isn't connected, so nothing was sent or recorded. Connect Gmail first, or use the Outreach desk (Open in my email app).","err"); return; }
+    // Demo fallback — no Gmail connected (demo mode only)
     setTimeout(()=>{
       const next=touchKey==="t1"?"T1 SENT":touchKey==="t2"?"T2 SENT":"NURTURE/T3 SENT";
       if(prospect)qStatus(prospect.id,next);
@@ -3376,7 +2112,7 @@ function EmailHub({crmData,setCrmData,q1,q2,q3,totalDue,qStatus,canEdit,currentU
                           <td style={{padding:"10px 14px"}}><span style={{fontSize:10,padding:"2px 8px",background:e.touch==="T1"?"rgba(219,168,67,0.12)":e.touch==="T2"?"rgba(139,92,246,0.12)":"rgba(236,72,153,0.12)",border:`1px solid ${e.touch==="T1"?"rgba(219,168,67,0.3)":e.touch==="T2"?"rgba(139,92,246,0.3)":"rgba(236,72,153,0.3)"}`,borderRadius:6,color:e.touch==="T1"?GL:e.touch==="T2"?"#a78bfa":"var(--k-pink)",fontWeight:700}}>Touch {e.touch}</span></td>
                           <td style={{padding:"10px 14px"}}>{e.via==="gmail"?<span style={{fontSize:10,color:"var(--k-green)",display:"flex",alignItems:"center",gap:4}}><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg> Gmail</span>:<span style={{fontSize:10,color:WD}}>Demo log</span>}</td>
                           <td style={{padding:"10px 14px",fontSize:11,color:WD,whiteSpace:"nowrap"}}>{(e.date||"").slice(0,16)}</td>
-                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,color:e.opened?"var(--k-green)":WD,display:"flex",alignItems:"center",gap:4}}>{e.opened?<>✓ Opened</>:<>— Not opened</>}</span></td>
+                          <td style={{padding:"10px 14px"}}><span style={{fontSize:10,color:e.opened?"var(--k-green)":WD,display:"flex",alignItems:"center",gap:4}}><span title="Open tracking is not available — a reply is the only reliable signal">—</span></span></td>
                         </tr>
                       );
                     })}
@@ -3791,13 +2527,12 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
   const [cl,setCl]=useState(Array(CHECKLIST.length).fill(false));
   const [showImport,setShowImport]=useState(false);
   const [showFinder,setShowFinder]=useState(false);
+  const [pvReq,setPvReq]=useState(null);   // asks the Prospects area to apply a view / open a prospect (Today screen, command palette)
+  const [wsReq,setWsReq]=useState(null); // quick actions on a prospect: open Email / schedule a follow-up
   const [qualifyReq,setQualifyReq]=useState(null); // asks the Prospects area to open a prospect in Qualification
   const [sortCol,setSortCol]=useState("companyName");
   // Pipeline (kanban) state. These MUST be top-level hooks: they used to be declared inside the
   // conditional pipeline view, which crashed the app (React error #310) the first time it opened.
-  const [pipeSearch,setPipeSearch]=useState("");
-  const [dragOver,setDragOver]=useState(null);
-  const [dragging,setDragging]=useState(null);
   const [sortDir,setSortDir]=useState("asc");
 
   const role=ROLES[currentUser.role];
@@ -3901,6 +2636,16 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
   },[onSaveProspect,deleteMany,addAudit,currentUser]);
   const exportRows=useCallback((rows,name)=>{exportToExcel(rows,name);t2(`Exported ${rows.length} prospect${rows.length===1?"":"s"}`);},[]);
 
+
+  // Outreach desk plumbing: change one prospect (reports failure), Gmail access, and saving a REAL Gmail send to the emails table.
+  const saveOne=useCallback((id,fn)=>bulkSave([{id,patch:fn}]),[bulkSave]);
+  const gmailApi=useMemo(()=>({isConnected:isGmailConnected,send:sendViaGmailAPI}),[]);
+  const logSentEmail=useCallback(({prospect,subject,body,touch,to})=>{
+    if(!isConfigured)return;
+    DB.addEmail({prospect_id:(prospect?.id&&/^[0-9a-f-]{36}$/.test(String(prospect.id)))?prospect.id:null,to_email:to,to_name:prospect?.contactName||"",subject,body,
+      touch:touch?`T${touch}`:"",direction:"outbound",from_email:sessionStorage.getItem("google_email")||"",from_name:currentUser.name,opened:false,sent_at:new Date().toISOString()})
+      .catch(e=>dwarn("[NC CRM] Could not save email to DB:",e.message));
+  },[currentUser]);
 
   // Qualification saves (shared by the Prospects area and the workspace shell)
   const qualifyUpdate=async ({id,changes})=>{
@@ -4058,212 +2803,20 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
       )}
 
       {/* FILTER BAR */}
-      {view==="pipeline"&&(
-        <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"9px 16px",position:"sticky",top:82,zIndex:50,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <div style={{position:"relative",flex:1,minWidth:170}}>
-            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:12,color:WD}}>🔍</span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, contact, email, notes…" style={{...inp(),paddingLeft:28}}/>
-          </div>
-          <select value={sfilt} onChange={e=>setSfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:130,cursor:"pointer"}}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
-          <select value={vfilt} onChange={e=>setVfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:140,cursor:"pointer"}}><option value="All">All Verticals</option>{VERTICALS.map(v=><option key={v}>{v}</option>)}</select>
-          <select value={mfilt} onChange={e=>setMfilt(e.target.value)} style={{...inp(),width:"auto",minWidth:110,cursor:"pointer"}}><option value="All">All Markets</option>{marketChoices.map(m=><option key={m}>{m}</option>)}</select>
-          <span style={{fontSize:11,color:WD,whiteSpace:"nowrap"}}>{filtered.length}/{tot}</span>
-          {(search||sfilt!=="All"||vfilt!=="All"||mfilt!=="All")&&<button onClick={()=>{setSearch("");setSfilt("All");setVfilt("All");setMfilt("All");}} style={{...B.ghost,fontSize:10,padding:"5px 9px",color:"var(--k-red)",borderColor:"rgba(248,113,113,0.3)"}}>✕ Clear</button>}
-        </div>
-      )}
-
       {/* PROSPECTS — table / map / duplicates (src/features/prospects) */}
       {view==="table"&&(
-        <ProspectsView qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
+        <ProspectsView viewRequest={pvReq} onRequestHandled={()=>{setPvReq(null);setQualifyReq(null);}} qualifyRequest={qualifyReq} onQualifyUpdate={qualifyUpdate} onWorkspaceAction={(type,p)=>setWsReq({type,id:p.id,company:p.companyName,n:Date.now()})} crmData={crmData} role={role} currentUser={currentUser} canEdit={canEdit} features={features}
           sysSettings={sysSettings} savedApi={savedApi} hunterVerify={hunterVerify} applyStatus={applyTouchDates}
           onEditProspect={p=>setPDlg(p)} onAddProspect={()=>setPDlg("add")} onOpenFinder={()=>setShowFinder(true)} onOpenImport={()=>setShowImport(true)}
           onExport={exportRows} onBulkSave={bulkSave} onDeleteMany={deleteMany} onMerge={mergeRecords} toast={t2}/>
       )}
 
-      {/* PIPELINE — Bitrix24-style kanban */}
-      {view==="pipeline"&&(()=>{
-        // Pipeline uses only the active outreach stages (not DNR/Converted
-        // which are terminal states better viewed in the table).
-        const PIPE_STAGES=[
-          {s:"NEW",           label:"New & Unassigned",  accent:"#DBA843", bg:"rgba(201,150,58,0.18)"},
-          {s:"T1 SENT",       label:"Touch 1 Sent",      accent:"var(--k-blue)", bg:"rgba(96,165,250,0.18)"},
-          {s:"T2 SENT",       label:"Touch 2 Sent",      accent:"#a78bfa", bg:"rgba(139,92,246,0.18)"},
-          {s:"REVIEW",        label:"Under Review",      accent:"#fde047", bg:"rgba(251,191,36,0.18)"},
-          {s:"TOUCH 3 GATE",  label:"Touch 3 Gate",      accent:"var(--k-pink)", bg:"rgba(236,72,153,0.18)"},
-          {s:"NURTURE/T3 SENT",label:"Nurtured / T3",   accent:"#2dd4bf", bg:"rgba(20,184,166,0.18)"},
-          {s:"Replied",       label:"Replied ✦",         accent:"var(--k-green)", bg:"rgba(52,211,153,0.18)"},
-          {s:"Converted",     label:"Converted 🎉",      accent:"var(--k-purple)", bg:"rgba(168,85,247,0.18)"},
-        ];
-        // (pipeSearch / dragOver / dragging are declared at the top of CRMApp — hooks can't live inside this conditional block)
-
-        const pipeFiltered=filtered.filter(p=>!pipeSearch||(p.companyName+p.contactName+p.vertical+p.cityMarket).toLowerCase().includes(pipeSearch.toLowerCase()));
-
-        const totalProspects=pipeFiltered.length;
-        const totalReplied=pipeFiltered.filter(p=>p.replyReceived).length;
-        const totalFlagged=pipeFiltered.filter(p=>p.flagToMelissa).length;
-
-        const handleDragStart=(e,p)=>{
-          setDragging(p);
-          e.dataTransfer.effectAllowed="move";
-        };
-        const handleDrop=(e,stage)=>{
-          e.preventDefault();
-          if(dragging&&dragging.currentStatus!==stage){
-            onSaveProspect({...dragging,currentStatus:stage});
-          }
-          setDragging(null);setDragOver(null);
-        };
-
-        return(
-          <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 90px)",overflow:"hidden"}}>
-
-            {/* Board toolbar */}
-            <div style={{background:NL,borderBottom:`1px solid ${BR}`,padding:"10px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0,flexWrap:"wrap"}}>
-              <h2 style={{margin:0,fontSize:15,fontWeight:800,color:W}}>Pipeline</h2>
-              {/* Search */}
-              <div style={{position:"relative",flex:"0 0 260px"}}>
-                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:WD}}>🔍</span>
-                <input value={pipeSearch} onChange={e=>setPipeSearch(e.target.value)} placeholder="Search pipeline…" style={{...inp(),paddingLeft:30,fontSize:11,padding:"6px 10px 6px 30px",height:32}}/>
-              </div>
-              {/* Summary pills */}
-              <div style={{display:"flex",gap:7,alignItems:"center"}}>
-                <span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(201,150,58,0.12)",color:GL,border:"1px solid rgba(201,150,58,0.25)",fontWeight:700}}>{totalProspects} prospects</span>
-                {totalReplied>0&&<span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(52,211,153,0.1)",color:"var(--k-green)",border:"1px solid rgba(52,211,153,0.25)",fontWeight:700}}>📩 {totalReplied} replied</span>}
-                {totalFlagged>0&&<span style={{fontSize:11,padding:"3px 12px",borderRadius:20,background:"rgba(244,114,182,0.1)",color:"var(--k-pink)",border:"1px solid rgba(244,114,182,0.25)",fontWeight:700}}>🚩 {totalFlagged} flagged</span>}
-              </div>
-              <div style={{marginLeft:"auto",display:"flex",gap:7}}>
-                {canEdit&&<button onClick={()=>setPDlg({...EMPTY_P,id:uid()})} className="bh" style={{...B.gold,fontSize:11,padding:"7px 14px",display:"flex",alignItems:"center",gap:5}}>＋ Add Prospect</button>}
-              </div>
-            </div>
-
-            {/* Kanban board */}
-            <div style={{flex:1,overflowX:"auto",overflowY:"hidden",padding:"14px 16px"}}>
-              <div style={{display:"flex",gap:11,height:"100%",minWidth:PIPE_STAGES.length*220}}>
-                {PIPE_STAGES.map(({s,label,accent,bg})=>{
-                  const cards=pipeFiltered.filter(p=>p.currentStatus===s);
-                  const avgPriority=cards.length?Math.round(cards.reduce((a,p)=>a+(parseInt(p.priorityScore)||0),0)/cards.length):0;
-                  const isDragTarget=dragOver===s;
-
-                  return(
-                    <div key={s}
-                      onDragOver={e=>{e.preventDefault();setDragOver(s);}}
-                      onDragLeave={()=>setDragOver(null)}
-                      onDrop={e=>handleDrop(e,s)}
-                      style={{
-                        flex:"0 0 214px",display:"flex",flexDirection:"column",
-                        background:isDragTarget?"rgba(var(--k-white-rgb),0.04)":"rgba(var(--k-white-rgb),0.02)",
-                        border:`1.5px solid ${isDragTarget?accent:"rgba(var(--k-white-rgb),0.06)"}`,
-                        borderRadius:13,overflow:"hidden",
-                        transition:"border-color 0.15s, background 0.15s",
-                      }}>
-
-                      {/* Column header — colored accent bar */}
-                      <div style={{background:bg,borderBottom:`1px solid ${accent}44`,padding:"10px 12px 8px"}}>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
-                          <span style={{fontSize:10,fontWeight:800,color:accent,textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{label}</span>
-                          <span style={{fontSize:12,fontWeight:900,color:W,background:"rgba(0,0,0,0.25)",borderRadius:20,padding:"1px 8px",marginLeft:5,flexShrink:0}}>{cards.length}</span>
-                        </div>
-                        {/* Column metric strip — avg priority + flagged count */}
-                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                          <span style={{fontSize:9,color:"rgba(var(--k-white-rgb),0.5)"}}>{cards.length} prospect{cards.length!==1?"s":""}</span>
-                          {avgPriority>0&&<span style={{fontSize:9,color:accent,fontWeight:700}}>avg ⭐{avgPriority}</span>}
-                          {cards.filter(p=>p.flagToMelissa).length>0&&<span style={{fontSize:9,color:"var(--k-pink)",fontWeight:700}}>🚩{cards.filter(p=>p.flagToMelissa).length}</span>}
-                        </div>
-                      </div>
-
-                      {/* Cards scroll area */}
-                      <div style={{flex:1,overflowY:"auto",padding:"8px 8px 4px"}}>
-                        <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                          {cards.map(p=>{
-                            const sc2=SC[p.currentStatus]||{};
-                            const lastTouchDate=p.t3SendDate||p.t2SendDate||p.t1SendDate||null;
-                            const touchCount=[p.t1SendDate,p.t2SendDate,p.t3SendDate].filter(Boolean).length;
-                            return(
-                              <div key={p.id}
-                                draggable
-                                onDragStart={e=>handleDragStart(e,p)}
-                                onDragEnd={()=>{setDragging(null);setDragOver(null);}}
-                                onClick={()=>setPDlg(p)}
-                                className="rh"
-                                style={{
-                                  background:NL,border:`1px solid rgba(var(--k-white-rgb),0.07)`,
-                                  borderLeft:`3px solid ${accent}`,
-                                  borderRadius:9,padding:"10px 11px",cursor:"pointer",
-                                  opacity:dragging?.id===p.id?0.5:1,
-                                  transition:"opacity 0.15s",
-                                }}>
-
-                                {/* Company name */}
-                                <p style={{margin:"0 0 3px",fontSize:12,fontWeight:800,color:W,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.companyName}</p>
-
-                                {/* Contact + title */}
-                                {p.contactName&&<p style={{margin:"0 0 5px",fontSize:10,color:WM,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>👤 {p.contactName}{p.title?` · ${p.title}`:""}</p>}
-
-                                {/* Vertical + market pills */}
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                                  {p.vertical&&<span style={{fontSize:8,padding:"2px 7px",background:`${accent}15`,color:accent,borderRadius:20,border:`1px solid ${accent}30`,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.vertical}</span>}
-                                  {p.cityMarket&&<span style={{fontSize:8,padding:"2px 7px",background:"rgba(var(--k-white-rgb),0.04)",color:WD,borderRadius:20,border:`1px solid rgba(var(--k-white-rgb),0.08)`}}>{p.cityMarket}</span>}
-                                </div>
-
-                                {/* Dates + touches */}
-                                {lastTouchDate&&(
-                                  <p style={{margin:"0 0 5px",fontSize:9,color:WD}}>Last touch: {lastTouchDate}</p>
-                                )}
-
-                                {/* Bottom row: flags + priority + touch count */}
-                                <div style={{display:"flex",alignItems:"center",gap:5,marginTop:2}}>
-                                  {p.flagToMelissa&&<span style={{fontSize:10}}>🚩</span>}
-                                  {p.replyReceived&&<span style={{fontSize:10}}>📩</span>}
-                                  {p.doNotRespond&&<span style={{fontSize:10}}>🚫</span>}
-                                  {p.t3Approved&&<span style={{fontSize:10}}>✅</span>}
-                                  {touchCount>0&&<span style={{fontSize:8,padding:"1px 6px",background:"rgba(var(--k-white-rgb),0.05)",color:WD,borderRadius:20,border:`1px solid rgba(var(--k-white-rgb),0.08)`}}>T{touchCount}</span>}
-                                  {p.priorityScore&&<span style={{marginLeft:"auto",fontSize:9,fontWeight:800,color:parseInt(p.priorityScore)>=8?"var(--k-pink)":parseInt(p.priorityScore)>=5?GL:WD}}>⭐{p.priorityScore}</span>}
-                                </div>
-
-                                {/* Priority bar */}
-                                {p.priorityScore&&(
-                                  <div style={{marginTop:6,height:2,background:"rgba(var(--k-white-rgb),0.06)",borderRadius:1}}>
-                                    <div style={{height:"100%",background:parseInt(p.priorityScore)>=8?"var(--k-pink)":parseInt(p.priorityScore)>=5?accent:WD,borderRadius:1,width:Math.min(parseInt(p.priorityScore)*10,100)+"%",transition:"width 0.3s"}}/>
-                                  </div>
-                                )}
-
-                                {/* Email + org size footer */}
-                                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,paddingTop:5,borderTop:"1px solid rgba(var(--k-white-rgb),0.05)"}}>
-                                  <span style={{fontSize:9,color:WD,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{p.emailPhone||"No email"}</span>
-                                  {p.orgSize&&<span style={{fontSize:8,color:WD,flexShrink:0,marginLeft:4}}>{p.orgSize}</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* Empty state */}
-                          {cards.length===0&&(
-                            <div style={{textAlign:"center",padding:"20px 10px",color:WD}}>
-                              <p style={{fontSize:22,margin:"0 0 4px"}}>○</p>
-                              <p style={{fontSize:10,margin:0}}>No prospects</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Add here button */}
-                      {canEdit&&(
-                        <div style={{padding:"6px 8px",borderTop:"1px solid rgba(var(--k-white-rgb),0.04)",flexShrink:0}}>
-                          <button
-                            onClick={()=>setPDlg({...EMPTY_P,id:uid(),currentStatus:s})}
-                            style={{...B.ghost,fontSize:10,padding:"6px",width:"100%",color:WD,borderStyle:"dashed",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                            <span style={{fontSize:14,lineHeight:1}}>+</span> Quick add
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* PIPELINE -- rules in src/lib/pipeline.js, UI in src/features/prospects/PipelineBoard.jsx */}
+      {view==="pipeline"&&(
+        <PipelineBoard crmData={crmData} canEdit={canEdit} applyStatus={applyTouchDates} onSaveOne={saveOne}
+          onEdit={p=>setPDlg(p)} onAdd={stage=>setPDlg({...EMPTY_P,id:uid(),currentStatus:stage})}
+          onWriteEmail={id=>setWsReq({type:"email",id,company:crmData.find(x=>x.id===id)?.companyName,n:Date.now()})} toast={t2}/>
+      )}
 
       {/* CALENDAR */}
       {view==="calendar"&&(
@@ -4299,6 +2852,15 @@ function CRMApp({currentUser,onLogout,onOpenAdmin,renderAdmin,crmData,setCrmData
       <ProspectHome
         crmData={crmData}
         classicViews={classicViews}
+        workspaceRequest={wsReq}
+        applyStatus={applyTouchDates}
+        onSaveOne={saveOne}
+        gmail={gmailApi}
+        onEmailSent={logSentEmail}
+        notify={t2}
+        onProspectsRequest={r=>setPvReq({...r,n:Date.now()})}
+        onCommand={c=>{if(c==="add")setPDlg("add");if(c==="import")setShowImport(true);}}
+        tagsEnabled={!!features?.tags}
         onSelectClassic={setView}
         renderAdmin={renderAdmin}
         onOpenQualification={id=>setQualifyReq({id,n:Date.now()})}
@@ -4857,8 +3419,9 @@ export default function App(){
     </>
   );
 
-  const renderAdminPanel=(onBack)=>(
+  const renderAdminPanel=(onBack,extra)=>(
       <AdminPanel
+        onOpenProspects={extra?.openProspects}
         currentUser={currentUser}
         users={users}
         setUsers={(u) => {

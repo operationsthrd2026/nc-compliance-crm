@@ -36,14 +36,7 @@ export function bigrams(s){
   return out;
 }
 
-/** Sørensen–Dice on character bigrams (forgives typos / small word changes). */
-export function dice(a, b){
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  return diceBigrams(bigrams(a), bigrams(b));
-}
 
-/** Same as dice() but on precomputed bigram arrays (hot path for dedupe). */
 export function diceBigrams(A, B){
   if (!A.length || !B.length) return 0;
   const counts = new Map(); for (const g of A) counts.set(g, (counts.get(g) || 0) + 1);
@@ -66,15 +59,6 @@ export function similarityKeys(ka, kb){
   return Math.max(jac * 0.9, dc * 0.5 + jac * 0.5);
 }
 
-/** 0..1 similarity between two organisation names. 1 = same after normalisation. */
-export function nameSimilarity(a, b){
-  const na = normalizeName(a), nb = normalizeName(b);
-  if (!na || !nb) return 0;
-  if (na === nb) return 1;
-  const jac = jaccard(na.split(" "), nb.split(" "));
-  const dc = dice(na, nb);
-  return Math.max(jac * 0.9, dc * 0.5 + jac * 0.5);
-}
 
 export const EMAIL_RE = /[A-Z0-9._%+'-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 

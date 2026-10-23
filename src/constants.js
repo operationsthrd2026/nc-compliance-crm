@@ -37,7 +37,7 @@ export const SC={
   "Do Not Respond": {bg:"rgba(239,68,68,0.12)", c:"var(--k-red)",b:"rgba(239,68,68,0.35)"},
   "Converted":      {bg:"rgba(168,85,247,0.12)",c:"var(--k-purple)",b:"rgba(168,85,247,0.35)"},
 };
-export const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"Unknown",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:"",tags:[],emailStatus:"",emailCheckedAt:""};
+export const EMPTY_P={id:null,companyName:"",contactName:"",title:"",emailPhone:"",cityMarket:"",market:"",sourceUrl:"",sourceType:"",verificationNotes:"",whyFit:"",vertical:"",hrPersonListed:"Unknown",hrPeopleContact:"",orgSize:"",t1SendDate:"",t1DueDate:"",t2SendDate:"",t2DueDate:"",t3SendDate:"",t3DueDate:"",leadPainPoint:"",melissaReview:"",t3Approved:false,replyReceived:false,flagToMelissa:false,doNotRespond:false,currentStatus:"NEW",outreachNotes:"",priorityScore:"",remarks:"",tags:[],emailStatus:"",emailCheckedAt:"",latitude:"",longitude:"",streetAddress:""};
 export const uid=()=>Date.now()+Math.random();
 export const today=()=>new Date().toISOString().split("T")[0];
 export const isPast=d=>d&&new Date(d+"T23:59:59")<new Date();
@@ -61,4 +61,3 @@ export const NC_CITY_COORDS = {
   "Greensboro":[36.0726,-79.7920], "Winston-Salem":[36.0999,-80.2442], "High Point":[35.9557,-80.0053],
   "Rocky Mount":[35.9382,-77.7905], "Goldsboro":[35.3849,-77.9928],
 };
-export const DEFAULT_NC_COORDS = [35.7596,-79.0193];

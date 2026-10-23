@@ -40,3 +40,19 @@ test("every token exists in BOTH themes (a missing one would silently fall back)
 test("dark theme keeps the original brand values (dark mode must not change)", () => {
   const d = THEMES.dark; assert.equal(d.bg, "#0B1426"); assert.equal(d.surface, "#111E38"); assert.equal(d.text, "#F0F4FF"); assert.equal(d["gold-l"], "#DBA843"); assert.equal(d.green, "#34d399");
 });
+
+/* The Today screen paints coloured text on a faint wash of the same colour (badges, icon chips, big numbers). */
+const mix = (fg, bg, pct) => [0, 1, 2].map(i => fg[i] * pct + bg[i] * (1 - pct)).concat(1);
+for (const theme of ["dark", "light"]){
+  test(`${theme}: tone-coloured text stays readable on its own tinted background (Today badges / chips)`, () => {
+    const T = THEMES[theme], surface = parse(T.surface), bad = [];
+    for (const tone of ["red", "green", "blue", "amber"]){
+      const fg = over(parse(T[tone]), surface);
+      for (const pct of [0.10, 0.12, 0.14]){ const bg = mix(fg, surface, pct); const r = ratio(fg, bg); if (r < 4.5) bad.push(`${tone} on ${Math.round(pct * 100)}% wash = ${r.toFixed(2)}`); }
+    }
+    assert.deepEqual(bad, [], bad.join("; "));
+  });
+  test(`${theme}: gold links on cards (Today “Hide”, “See all”) are readable`, () => {
+    assert.ok(contrast(theme, "gold-l", "surface") >= 4.5, contrast(theme, "gold-l", "surface").toFixed(2));
+  });
+}

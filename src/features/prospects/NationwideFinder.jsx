@@ -1,30 +1,42 @@
 import React,{useMemo,useState} from "react";
 import {EMPTY_P,VERTICALS} from "../../constants.js";
 import {US_STATES,RADII,locationIssue,locationLabel} from "../../lib/usLocation.js";
+import ResultsMap from "./ResultsMap.jsx";
+import {locationLinks,formatAddress} from "../../lib/maps.js";
 import {safeWebsite,safeOrganizationWebsite,safeEmail,safePhone,publicDetailsFromOsm} from "../../lib/contactDetails.js";
+import {annotateFinderRows,finderExtras} from "../../lib/finderMatch.js";
+import {ScoreBadge} from "../../ui/kit.jsx";
 
 const DARK="var(--pf-tx-0B1426)", PANEL="var(--pf-tx-152442)", EDGE="rgba(240,244,255,.14)", GOLD="var(--pf-tx-DBA843)", MUTED="var(--pf-tx-B1BED7)";
 const inp={width:"100%",boxSizing:"border-box",padding:"10px 11px",border:"1px solid "+EDGE,background:"var(--pf-bg-1C2B50)",color:"#F0F4FF",borderRadius:8,fontSize:13};
 const btn={border:0,borderRadius:8,padding:"10px 16px",background:GOLD,color:DARK,cursor:"pointer",fontWeight:750};
-const nonProfitCategories=["Nonprofits & Associations","Faith-Based Organizations","Human Services Nonprofits","Community Development Orgs","Religious & Faith-Based Nonprofits","Social Service Agencies","Arts & Cultural Nonprofits","Environmental Nonprofits","Advocacy Organizations","Foundations & Grantmakers","Education & Schools"];
+// Every category is searched (the server used to keep only the first 3). Tags are OpenStreetMap key/value pairs;
+// nameHints catch businesses that are in the right line of work but not tagged (matched against the business NAME).
 const categories={
- "Construction & Contractors":[["office","construction"],["craft","electrician"],["craft","plumber"],["craft","carpenter"],["craft","painter"]],
- "Childcare & Licensed Group Homes":[["amenity","childcare"],["amenity","kindergarten"]],
- "Education & Schools":[["amenity","school"],["amenity","college"]],
- "Restaurants & Cafes":[["amenity","restaurant"],["amenity","cafe"],["amenity","fast_food"]],
- "Retail Stores":[["shop","clothes"],["shop","convenience"],["shop","supermarket"],["shop","general"]],
- "Beauty Salons & Spas":[["shop","hairdresser"],["shop","beauty"],["leisure","spa"]],
- "Automotive Services":[["shop","car_repair"],["shop","car"],["amenity","car_wash"]],
- "Cleaning & Maintenance":[["office","cleaning"],["craft","cleaner"]],
- "Professional Services":[["office","lawyer"],["office","accountant"],["office","consulting"]],
+ "Construction & Contractors":[["office","construction_company"],["craft","electrician"],["craft","plumber"],["craft","carpenter"],["craft","painter"],["craft","hvac"],["craft","roofer"],["craft","builder"]],
+ "Childcare & Licensed Group Homes":[["amenity","childcare"],["amenity","kindergarten"],["social_facility","group_home"],["social_facility","child_care"]],
+ "Education & Schools":[["amenity","school"],["amenity","college"],["amenity","university"],["amenity","language_school"],["amenity","driving_school"]],
+ "Restaurants & Cafes":[["amenity","restaurant"],["amenity","cafe"],["amenity","fast_food"],["amenity","bar"],["amenity","pub"]],
+ "Retail Stores":[["shop","clothes"],["shop","convenience"],["shop","supermarket"],["shop","general"],["shop","gift"],["shop","hardware"],["shop","florist"],["shop","furniture"],["shop","department_store"]],
+ "Beauty Salons & Spas":[["shop","hairdresser"],["shop","beauty"],["leisure","spa"],["shop","massage"]],
+ "Automotive Services":[["shop","car_repair"],["shop","car"],["amenity","car_wash"],["shop","tyres"],["shop","car_parts"]],
+ "Cleaning & Maintenance":[["office","cleaning"],["craft","cleaner"],["shop","laundry"],["shop","dry_cleaning"]],
+ "Professional Services":[["office","lawyer"],["office","accountant"],["office","consulting"],["office","insurance"],["office","financial"],["office","employment_agency"],["office","architect"]],
  "Fitness & Wellness":[["leisure","fitness_centre"],["leisure","sports_centre"]],
- "Hospitality & Lodging":[["tourism","hotel"],["tourism","guest_house"]],
- "Real Estate Services":[["office","estate_agent"]],
- "Light Manufacturing & Logistics":[["man_made","works"],["industrial","factory"],["office","logistics"]],
- "Healthcare Practices":[["amenity","clinic"],["amenity","doctors"]],
- "Home Health / Homecare":[["healthcare","home_care"],["office","healthcare"]]
+ "Hospitality & Lodging":[["tourism","hotel"],["tourism","guest_house"],["tourism","motel"],["tourism","hostel"]],
+ "Real Estate Services":[["office","estate_agent"],["office","property_management"]],
+ "Light Manufacturing & Logistics":[["man_made","works"],["industrial","factory"],["office","logistics"],["industrial","warehouse"]],
+ "Healthcare Practices":[["amenity","clinic"],["amenity","doctors"],["amenity","dentist"],["healthcare","doctor"],["healthcare","clinic"],["healthcare","dentist"],["healthcare","physiotherapist"],["healthcare","psychotherapist"]],
+ "Home Health / Homecare":[["healthcare","home_care"],["office","healthcare"],["amenity","social_facility"],["healthcare","nurse"]]
 };
-const fallbackTags=[["amenity","restaurant"],["amenity","cafe"],["shop","convenience"]];
+const nameHints={
+ "Home Health / Homecare":["home care","home health","senior care","in-home","caregiver"],
+ "Childcare & Licensed Group Homes":["child care","childcare","daycare","day care","learning center","preschool"],
+ "Construction & Contractors":["construction","contracting","builders","roofing","remodeling"],
+ "Cleaning & Maintenance":["cleaning","janitorial","maid service"],
+ "Healthcare Practices":["family practice","medical group","pediatrics","urgent care"],
+ "Light Manufacturing & Logistics":["manufacturing","logistics","freight","distribution"]
+};
 const clean=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const idFor=r=>r.ein?"ein:"+r.ein:r.osmId?"osm:"+r.osmId:(r.contactName||r.emailPhone)?"contact:"+clean(r.companyName)+"|"+clean(r.contactName)+"|"+clean(r.emailPhone):clean(r.companyName)+"|"+clean(r.cityMarket);
 const fromNonprofit=o=>({
@@ -36,15 +48,17 @@ const fromNonprofit=o=>({
  verificationNotes:"Listed in IRS-derived nonprofit records. Contact details and current exemption status not independently verified.",
  whyFit:"Nonprofit directory match",ein:o.ein||"",website:""
 });
-const fromBusiness=(e,fallbackLocation)=>{
+const fromBusiness=(e,fallbackLocation,vertical="")=>{
  const t=e.tags||{},city=t["addr:city"]||"",state=t["addr:state"]||"";
  const {website,email,phone}=publicDetailsFromOsm(t);
  const osmLink="https://www.openstreetmap.org/"+e.type+"/"+e.id;
+ const addr=e.address||{street:[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" "),city,state,postcode:t["addr:postcode"]||""};
  return {companyName:t.name||"Unnamed small business",contactName:"",title:"",
  emailPhone:[email,phone].filter(Boolean).join(" | "),email,phone,cityMarket:city||state?locationLabel(state,city,""):fallbackLocation,market:city||state?locationLabel(state,city,""):fallbackLocation,
- sourceUrl:osmLink,website,sourceType:"OpenStreetMap (Overpass)",vertical:"",
+ sourceUrl:osmLink,website,sourceType:"OpenStreetMap (Overpass)",vertical:vertical||"",
  hrPersonListed:"Unknown",verificationNotes:"Community-contributed location and contact data; email addresses are not independently verified.",
- whyFit:"Business listing matching chosen category",osmId:e.type+":"+e.id};
+ whyFit:"Business listing matching chosen category",osmId:e.type+":"+e.id,
+  latitude:Number.isFinite(e.lat)?e.lat:"",longitude:Number.isFinite(e.lon)?e.lon:"",streetAddress:formatAddress(addr),distanceMiles:e.distanceMiles??null};
 };
 const field=(label,child)=><label style={{display:"flex",flexDirection:"column",gap:5,fontSize:11,color:MUTED,fontWeight:650}}>{label}{child}</label>;
 export default function NationwideFinder({onClose,onAddProspects,crmData=[],baseUrl,requestHeaders,embedded=false,canAdmin=false}){
@@ -58,8 +72,10 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  const [geminiPaused,setGeminiPaused]=useState(false);
  const [groqEnabled,setGroqEnabled]=useState(false),[groqConsent,setGroqConsent]=useState(false),[groqPaused,setGroqPaused]=useState(false);
  const [contactTitle,setContactTitle]=useState("Human Resources"),[domain,setDomain]=useState(""),[allowCredits,setAllowCredits]=useState(false);
+ const [view,setView]=useState("list");
  const existing=useMemo(()=>new Set(crmData.map(idFor)),[crmData]);
- const shown=useMemo(()=>rows.map(r=>({...r,already:!!r.already||existing.has(idFor(r))})),[rows,existing]);
+ // Same duplicate detection + fit score as the rest of the app: catches name variants and shared email/phone/website, not just identical ids.
+ const shown=useMemo(()=>annotateFinderRows(rows,crmData,{idFor,existingIds:existing}),[rows,crmData,existing]);
  const append=items=>setRows(prev=>{const seen=new Set(prev.map(idFor));return [...prev,...items.filter(r=>{const id=idFor(r);if(seen.has(id))return false;seen.add(id);return true;})];});
  const addLog=t=>setLogs(prev=>[...prev,t]);
  const post=async(path,body)=>{
@@ -136,14 +152,14 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   const notes=[];
   const wantNonprofits=(type!=="smb");
   const wantBusinesses=(type!=="nonprofit");
-  const nonprofitQuery=keyword.trim()||(city.trim()?city.trim():"foundation");
+  const nonprofitQuery=keyword.trim()||((city.trim()||vertical)?"":"foundation");
   const currentPage=next?(page||0):0;
   if(wantNonprofits&&(keyword.trim()||vertical||state||city.trim()||zip)){
    if(zip&&!city.trim()){
     if(!next)notes.push("Nonprofits: ZIP-only searches are not supported. Add a city to include nonprofit directory results.");
    }else{
     tasks.push(["Nonprofit Explorer",async()=>{
-     const info=await post("prospectfinder-nonprofits",{query:nonprofitQuery,city:city.trim(),state:state||null,page:currentPage});
+     const info=await post("prospectfinder-nonprofits",{query:nonprofitQuery,city:city.trim(),state:state||null,vertical,page:currentPage});
      let matches=Array.isArray(info.organizations)?info.organizations:[];
      if(city.trim())matches=matches.filter(o=>clean(o.city)===clean(city));
      return {items:matches.map(fromNonprofit),page:currentPage+1<Number(info.num_pages||0)?currentPage+1:null};
@@ -154,13 +170,16 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
   if(!next){
    if(wantBusinesses){
     if(!city.trim()&&!zip)notes.push("Local businesses: enter a city or ZIP to search OpenStreetMap.");
+    else if(!vertical&&!keyword.trim())notes.push("Local businesses: choose an industry or enter a business name so the search knows what to look for.");
     else tasks.push(["Local businesses",async()=>{
      const location=await post("prospectfinder-geocode",{city:city.trim(),state,zip});
-     const tags=categories[vertical]||fallbackTags;
-     const raw=await post("prospectfinder-businesses",{lat:location.lat,lon:location.lon,radiusMiles:Number(radius),tags});
-     let businesses=(raw.elements||[]).filter(e=>e.tags?.name);
-     if(keyword.trim())businesses=businesses.filter(e=>clean(e.tags.name).includes(clean(keyword))||clean(Object.values(e.tags).join(" ")).includes(clean(keyword)));
-     return {items:businesses.slice(0,60).map(e=>fromBusiness(e,loc))};
+     // The server filters INSIDE the query (named places, every category, the keyword), sorts nearest-first and adds address + coordinates.
+     const raw=await post("prospectfinder-businesses",{lat:location.lat,lon:location.lon,radiusMiles:Number(radius),tags:categories[vertical]||[],nameHints:nameHints[vertical]||[],keyword:keyword.trim()});
+     const got=Array.isArray(raw.elements)?raw.elements:[];
+     if(raw.radiusUsed&&raw.radiusUsed<Number(radius))notes.push("Local businesses: radius limited to "+raw.radiusUsed+" miles.");
+     if(raw.truncated)notes.push("Local businesses: showing the nearest "+got.length+" of more matches. Add a business name or a smaller radius to narrow it.");
+     if(raw.partial)notes.push("Local businesses: the directory was slow, so results may be incomplete. Search again to retry.");
+     return {items:got.map(e=>fromBusiness(e,loc,vertical))};
     }]);
    }
    if(apolloEnabled){
@@ -329,8 +348,8 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
  };
  const add=async()=>{
   const items=shown.filter(r=>selected.includes(idFor(r))&&!r.already).map(r=>{
-   const {ein,osmId,...cleaned}=r;
-   return {...EMPTY_P,...cleaned,emailPhone:[r.email,r.phone].filter(Boolean).join(" | ")||r.emailPhone||"",id:Date.now()+Math.random(),priorityScore:"",currentStatus:"NEW"};
+   const {ein,osmId,fit,match,already,alsoIn,_source,_alsoIn,distanceMiles,...cleaned}=r;
+   return {...EMPTY_P,...cleaned,emailPhone:[r.email,r.phone].filter(Boolean).join(" | ")||r.emailPhone||"",id:Date.now()+Math.random(),...finderExtras(r),currentStatus:"NEW"};
   });
   if(!items.length){setMessage("Select at least one prospect not already in the CRM.");return;}
   setAdding(true);setMessage("");
@@ -413,14 +432,18 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
      <button style={btn} disabled={adding||!selected.length} onClick={add}>{adding?"Saving…":"Save selected to CRM"}</button>
     </div>
    </div>
-   <div style={{overflowX:"auto",border:"1px solid "+(embedded?"var(--pf-bd-E4E8F1)":EDGE),borderRadius:10}}>
-    <table style={{width:"100%",minWidth:1180,borderCollapse:"collapse",fontSize:12}}>
-     <thead style={{background:embedded?"var(--pf-bg-F7F7FC)":PANEL,color:embedded?"var(--pf-tx-4F42CE)":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact person","Website","Email","Phone","Source listing","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
+   {shown.length>0&&<div role="tablist" aria-label="Results view" style={{display:"flex",gap:8,margin:"0 0 10px"}}>
+    {[["list","List"],["map","Map + Street View"]].map(([v,l])=><button key={v} type="button" role="tab" aria-selected={view===v} onClick={()=>setView(v)} style={{...btn,background:view===v?(embedded?"var(--pf-bg-6454E8)":GOLD):(embedded?"var(--pf-bg-E9E9FC)":"var(--pf-bg-253454)"),color:view===v?(embedded?"#FFFFFF":DARK):(embedded?"var(--pf-tx-5246AC)":"#F0F4FF")}}>{l}</button>)}
+   </div>}
+   {view==="map"&&shown.length>0&&<ResultsMap rows={shown} selected={selected} idFor={idFor} onToggle={key=>setSelected(prev=>prev.includes(key)?prev.filter(k=>k!==key):[...prev,key])}/>}
+   <div hidden={view==="map"&&shown.length>0} style={{overflowX:"auto",border:"1px solid "+(embedded?"var(--pf-bd-E4E8F1)":EDGE),borderRadius:10}}>
+    <table style={{width:"100%",minWidth:1320,borderCollapse:"collapse",fontSize:12}}>
+     <thead style={{background:embedded?"var(--pf-bg-F7F7FC)":PANEL,color:embedded?"var(--pf-tx-4F42CE)":GOLD}}><tr>{["Select","Organization","Type / Source","Location","Contact person","Website","Email","Phone","Source listing","Map","Fit","CRM status"].map(x=><th key={x} style={{padding:12,textAlign:"left"}}>{x}</th>)}</tr></thead>
      <tbody>{shown.map(r=>{
       const key=idFor(r);return <tr key={key} style={{borderTop:"1px solid "+EDGE,opacity:r.already?.55:1}}>
        <td style={{padding:10}}><input type="checkbox" aria-label={"Select "+r.companyName} disabled={r.already} checked={selected.includes(key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,key]:prev.filter(k=>k!==key))}/></td>
-       <td style={{padding:10,fontWeight:650}}>{r.companyName}</td>
-       <td style={{padding:10,color:embedded?"var(--pf-tx-485B80)":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"var(--pf-tx-485B80)":MUTED}}>{r.cityMarket||locationLabel(state,city,zip)}</td>
+       <td style={{padding:10,fontWeight:650}}>{r.companyName}{r.alsoIn?.length>0&&<div style={{fontSize:11,fontWeight:500,opacity:.75}}>Also found via {r.alsoIn.join(", ")}</div>}</td>
+       <td style={{padding:10,color:embedded?"var(--pf-tx-485B80)":MUTED}}>{r.sourceType}</td><td style={{padding:10,color:embedded?"var(--pf-tx-485B80)":MUTED}}>{r.streetAddress||r.cityMarket||locationLabel(state,city,zip)}{r.streetAddress&&<div style={{fontSize:11,opacity:.8}}>{r.cityMarket}</div>}{r.distanceMiles!=null&&<div style={{fontSize:11,opacity:.8}}>{r.distanceMiles} mi away</div>}</td>
        <td style={{padding:10}}>
         {r.contactName?<div style={{fontWeight:700,color:embedded?"var(--pf-tx-20324F)":"#F0F4FF"}}>{r.contactName}</div>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not listed</span>}
         {r.title&&<div style={{fontSize:11,color:embedded?"var(--pf-tx-66758D)":MUTED,marginTop:2}}>{r.title}</div>}
@@ -429,10 +452,15 @@ export default function NationwideFinder({onClose,onAddProspects,crmData=[],base
        <td style={{padding:10}}>{r.email?<a href={"mailto:"+r.email} style={{color:embedded?"var(--pf-tx-5143BF)":GOLD,overflowWrap:"anywhere"}}>{r.email}</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not available</span>}</td>
        <td style={{padding:10}}>{r.phone?<a href={"tel:"+r.phone.replace(/[^\d+]/g,"")} style={{color:embedded?"var(--pf-tx-5143BF)":GOLD}}>{r.phone}</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>Not available</span>}</td>
        <td style={{padding:10}}>{r.sourceUrl&&safeWebsite(r.sourceUrl)?<a href={safeWebsite(r.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{color:embedded?"var(--pf-tx-5143BF)":GOLD}}>View source ↗</a>:<span style={{fontSize:11,color:embedded?"var(--pf-tx-71809B)":MUTED}}>—</span>}</td>
-       <td style={{padding:10,color:r.already?"var(--pf-tx-34D399)":MUTED}}>{r.already?"Already in CRM":"New · unverified"}</td>
+       <td style={{padding:10,whiteSpace:"nowrap"}}>{(()=>{const l=locationLinks(r);const c=embedded?"var(--pf-tx-5143BF)":GOLD;return l.map?<>{l.streetView&&<a href={l.streetView} target="_blank" rel="noopener noreferrer" style={{color:c,marginRight:8}}>Street View</a>}<a href={l.map} target="_blank" rel="noopener noreferrer" style={{color:c}}>{l.exact?"Map":"Find on Maps"}</a></>:<span style={{fontSize:11,opacity:.6}}>--</span>;})()}</td>
+       <td style={{padding:10}}><ScoreBadge result={r.fit} size={30} showLabel/></td>
+       <td style={{padding:10,color:r.already?"var(--pf-tx-34D399)":r.match?"var(--k-amber)":MUTED}} title={(r.match?.reasons||[]).join(" · ")}>
+        {r.already?<>Already in CRM{r.match?<div style={{fontSize:11,opacity:.85}}>{r.match.prospect.companyName}</div>:null}</>
+         :r.match?<>⚠ Possible match<div style={{fontSize:11}}>{r.match.prospect.companyName}</div></>:"New · unverified"}
+       </td>
       </tr>;
      })}
-     {!shown.length&&<tr><td colSpan={10} style={{padding:30,textAlign:"center",color:embedded?"var(--pf-tx-66758D)":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
+     {!shown.length&&<tr><td colSpan={12} style={{padding:30,textAlign:"center",color:embedded?"var(--pf-tx-66758D)":MUTED}}>{busy?"Searching your selected sources…":"Enter a location or keyword, choose optional APIs, then click Search Prospects once. Errors are reported by source above."}</td></tr>}
      </tbody>
     </table>
    </div>

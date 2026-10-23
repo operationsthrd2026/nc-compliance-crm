@@ -1,7 +1,9 @@
 import { useMemo, useState, useEffect } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { groupByPlace, jitter } from "../../lib/geo.js";
+import { validCoords, locationLinks } from "../../lib/maps.js";
 
 const DEFAULT_US_CENTER = [39.5, -98.35]; // geographic centre of the contiguous U.S.
 import { TIERS } from "../../lib/scoring.js";
@@ -10,6 +12,14 @@ import { Btn, EmptyState } from "../../ui/kit.jsx";
 
 // tier colour for a group's AVERAGE score (same thresholds as individual scores)
 const tierOfAvg = avg => avg >= 70 ? "hot" : avg >= 50 ? "strong" : avg >= 30 ? "possible" : "low";
+
+function PlaceLinks({ p }){
+  const l = locationLinks(p); if (!l.map) return null;
+  return <span style={{ display: "inline-flex", gap: 6, marginLeft: 6 }}>
+    {l.streetView && <a className="nc-btn ghost sm" href={l.streetView} target="_blank" rel="noopener noreferrer">Street View</a>}
+    <a className="nc-btn ghost sm" href={l.map} target="_blank" rel="noopener noreferrer">{l.exact ? "Maps" : "Find on Maps"}</a>
+  </span>;
+}
 
 function Fit({ points, focus }){
   const map = useMap();
@@ -83,8 +93,8 @@ export default function TerritoryMap({ rows, scoreOf, onPickPlace, onOpen }){
           })}
           {pins && stats.flatMap(s => s.list.map(p => {
             const sc = scoreOf(p); return (
-              <CircleMarker key={p.id} center={jitter(s.coords, p.id, s.precision === "state" ? 80 : 1)} radius={5} pathOptions={{ color: cssColor(sc.color), weight: 1, fillColor: cssColor(sc.color), fillOpacity: .9 }}>
-                <Popup><div style={{ minWidth: 170 }}><div style={{ font: "700 13px var(--nc-font)" }}>{p.companyName}</div><div style={{ color: "var(--nc-text-2)", margin: "2px 0 8px" }}>{sc.label} fit · {sc.score}/100<br />{p.vertical || "No industry"}</div><Btn size="sm" variant="primary" onClick={() => onOpen(p)}>Open</Btn></div></Popup>
+              <CircleMarker key={p.id} center={validCoords(p.latitude, p.longitude) ? [Number(p.latitude), Number(p.longitude)] : jitter(s.coords, p.id, s.precision === "state" ? 80 : 1)} radius={5} pathOptions={{ color: cssColor(sc.color), weight: 1, fillColor: cssColor(sc.color), fillOpacity: .9 }}>
+                <Popup><div style={{ minWidth: 170 }}><div style={{ font: "700 13px var(--nc-font)" }}>{p.companyName}</div><div style={{ color: "var(--nc-text-2)", margin: "2px 0 8px" }}>{sc.label} fit · {sc.score}/100<br />{p.vertical || "No industry"}</div><Btn size="sm" variant="primary" onClick={() => onOpen(p)}>Open</Btn><PlaceLinks p={p} /></div></Popup>
               </CircleMarker>);
           }))}
         </MapContainer>

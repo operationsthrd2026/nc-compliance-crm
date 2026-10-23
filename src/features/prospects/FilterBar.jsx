@@ -11,7 +11,7 @@ const countBy = (rows, fn) => { const m = new Map(); for (const r of rows){ cons
 export default function FilterBar({ filters, setFilters, allRows, tagList, tagsEnabled, savedItems, canEdit, canSaveShared, onSaveView, onDeleteView, onApplyView, viewCounts, currentUserId, isAdmin, isLocalSaved, savedError }){
   const searchRef = useRef(null);
   useEffect(() => {
-    const k = e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"){ e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select(); } };
+    const k = e => { if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")){ e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select(); } };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
   }, []);
 
@@ -43,7 +43,7 @@ export default function FilterBar({ filters, setFilters, allRows, tagList, tagsE
           <span aria-hidden style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--nc-text-3)", fontSize: 13 }}>⌕</span>
           <input ref={searchRef} className="nc-input" style={{ paddingLeft: 30, paddingRight: 52 }} value={filters.q} onChange={e => set({ q: e.target.value })}
             placeholder="Search company, contact, email, notes, tags…" aria-label="Search prospects" />
-          <span className="nc-kbd nc-hide-sm" style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)" }}>Ctrl K</span>
+          <span className="nc-kbd nc-hide-sm" style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)" }} title="Press / to search">/</span>
         </div>
         <MultiSelect label="Status" options={opts.status} value={f.status} onChange={v => set({ status: v })} />
         <MultiSelect label="Industry" options={opts.vertical} value={f.vertical} onChange={v => set({ vertical: v })} searchable />

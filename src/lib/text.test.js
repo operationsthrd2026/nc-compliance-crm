@@ -1,18 +1,11 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { normalizeName, nameSimilarity, extractEmails, extractPhones, domainOfUrl, domainOfEmail, isFreemail } from "./text.js";
+import { normalizeName, extractEmails, extractPhones, domainOfUrl, domainOfEmail, isFreemail } from "./text.js";
 
 test("normalizeName strips legal suffixes, punctuation, accents, 'the'", () => {
   assert.equal(normalizeName("ACME Home-Care, L.L.C."), "acme home care");
   assert.equal(normalizeName("The Durham Child Care, Inc."), "durham child care");
   assert.equal(normalizeName("Café & Co. Foundation"), "cafe foundation");
   assert.equal(normalizeName(null), "");
-});
-test("nameSimilarity: identical after normalisation = 1, different cities stay apart", () => {
-  assert.equal(nameSimilarity("Acme Home Care LLC", "ACME Home Care, Inc."), 1);
-  assert.ok(nameSimilarity("Raleigh Home Health", "Durham Home Health") < 0.78);
-  assert.ok(nameSimilarity("Durham Child Care", "Durham Child Care Center") >= 0.78);
-  assert.ok(nameSimilarity("Smith Construction", "Zebra Pediatrics") < 0.3);
-  assert.equal(nameSimilarity("", "x"), 0);
 });
 test("extractEmails lowercases, dedupes, trims trailing punctuation", () => {
   assert.deepEqual(extractEmails("Info@Acme.org; Jane <jane@acme.org>. info@acme.org,").sort(), ["info@acme.org", "jane@acme.org"]);

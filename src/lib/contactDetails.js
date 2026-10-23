@@ -44,8 +44,3 @@ export function publicDetailsFromOsm(tags={}) {
   return {website,email,phone};
 }
 
-export function publicDetailsFromApollo(organization={}) {
-  // Apollo People Search does not supply a person's verified email/phone.
-  const site=organization.website_url||organization.website||organization.primary_domain||organization.domain;
-  return {website:safeOrganizationWebsite(site),email:"",phone:""};
-}

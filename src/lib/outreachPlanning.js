@@ -4,7 +4,6 @@ const CLOSED=new Set(["Replied","Converted","Do Not Respond","NURTURE/T3 SENT"])
 const STAGE_T2=new Set(["T1 SENT"]);
 const STAGE_T3=new Set(["T2 SENT","TOUCH 3 GATE"]);
 export const FOLLOWUP_VIEWS=["All","Overdue","Today","Next 7 days","Later","Unscheduled","Approval needed"];
-export const DATE_STEPS=["t2DueDate","t3DueDate"];
 
 export function parseLocalDay(value){
  const match=/^(\d{4})-(\d\d)-(\d\d)$/.exec(String(value||""));

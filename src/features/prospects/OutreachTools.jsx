@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from "react";
-import {contactChecklist,defaultTemplateFor,draftFor,mailtoLink,messageEligibility,OUTREACH_TEMPLATES,verificationActivityDetails} from "../../lib/outreachTemplates.js";
+import {contactChecklist,verificationActivityDetails} from "../../lib/outreachTemplates.js";
 import {safeWebsite} from "../../lib/contactDetails.js";
 
 const panel={border:"1px solid var(--pf-bd-E6EAF3)",borderRadius:15,padding:20,background:"var(--pf-bg-FFFFFF)"};
@@ -86,26 +86,17 @@ function ActivityTimeline({prospect,enabled,onGetActivities,onLogActivity,canEdi
    </div>}
  </section>;
 }
-export default function OutreachTools({crmData=[],canEdit=false,enabled=false,onGetActivities,onLogActivity,onOpenCRM}){
- const [term,setTerm]=useState(""),[prospectId,setProspectId]=useState(""),[templateId,setTemplateId]=useState("business-intro");
- const [subject,setSubject]=useState(""),[body,setBody]=useState("");
+export default function OutreachTools({crmData=[],canEdit=false,enabled=false,onGetActivities,onLogActivity,onOpenCRM,onWriteEmail,initialProspectId=null}){
+ const [term,setTerm]=useState(""),[prospectId,setProspectId]=useState(initialProspectId?String(initialProspectId):"");
  const [evidence,setEvidence]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState("");
  const [busy,setBusy]=useState(false);
  const matching=useMemo(()=>crmData.filter(p=>(p.companyName||"").toLowerCase().includes(term.trim().toLowerCase())).slice(0,300),[crmData,term]);
  const prospect=crmData.find(p=>String(p.id)===String(prospectId))||null;
- const eligible=messageEligibility(prospect||{});
  const checklist=contactChecklist(prospect||{});
  useEffect(()=>{
   if(!prospect)return;
-  setTemplateId(defaultTemplateFor(prospect));
   setEvidence("");setMessage("");setError("");
  },[prospect?.id]);
- useEffect(()=>{
-  if(!prospect)return;
-  const data=draftFor(prospect,templateId);
-  setSubject(data.subject);setBody(data.body);
-  setMessage("");setError("");
- },[prospect?.id,templateId]);
  const log=async(activityType,summary,details)=>{
   if(!enabled||!canEdit)throw Error("A live CRM editor account is required to record an activity.");
   return await onLogActivity({prospectId:prospect.id,activityType,summary,details});
@@ -121,28 +112,10 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
   }catch(e){setError(e.message||"Could not save source review.");}
   finally{setBusy(false);}
  };
- const prepared=async()=>{
-  if(!prospect||busy||eligible.blocked)return;
-  setBusy(true);setError("");setMessage("");
-  try{
-   await log("email_prepared","Draft prepared: "+OUTREACH_TEMPLATES.find(t=>t.id===templateId)?.label,
-    ("Subject: "+subject+"\n\n"+body).slice(0,4000));
-   setMessage("Draft preparation recorded in the CRM. Email not sent. Refresh the activity timeline to see it.");
-  }catch(e){setError(e.message||"Could not record draft.");}
-  finally{setBusy(false);}
- };
- const copy=async()=>{
-  if(eligible.blocked||!prospect)return;
-  try{
-   await navigator.clipboard.writeText("Subject: "+subject+"\n\n"+body);
-   setMessage("Draft copied. Nothing has been sent or logged automatically.");setError("");
-  }catch{setError("Clipboard permission denied. Select and copy the subject/body fields manually.");}
- };
- const mailto=mailtoLink(eligible.email,subject,body);
  return <div>
-  <div className="pf-page-kicker">PHASE 4 · OUTREACH WORKSPACE</div>
-  <h1 className="pf-page-title">Templates & activity</h1>
-  <p className="pf-page-description">Prepare outreach drafts, review public contact details and record manual activity against saved CRM prospects. Search APIs are not used.</p>
+  <div className="pf-page-kicker">EMAIL & OUTREACH</div>
+  <h1 className="pf-page-title">Activity log</h1>
+  <p className="pf-page-description">Review public contact details, record a manual source check, and see or add activity for a saved prospect. To write an email, use the <strong>Outreach desk</strong>.</p>
   <section style={{...panel,margin:"23px 0 17px",display:"grid",gap:12}}>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(225px,1fr))",gap:11}}>
     <label style={small}>Find an existing prospect
@@ -158,35 +131,12 @@ export default function OutreachTools({crmData=[],canEdit=false,enabled=false,on
    </div>
    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:9}}>
     <span style={small}>Showing up to 300 matching prospects · {crmData.length} total saved CRM records</span>
-    <button className="pf-button outline" onClick={onOpenCRM}>Open Classic CRM ↗</button>
+    <span style={{display:"flex",gap:9,flexWrap:"wrap"}}>{prospect&&onWriteEmail&&<button className="pf-button" onClick={()=>onWriteEmail(prospect.id)}>Write an email →</button>}<button className="pf-button outline" onClick={onOpenCRM}>Open Prospects →</button></span>
    </div>
   </section>
-  {!prospect?<div style={{...panel,color:"var(--pf-tx-74819B)",fontSize:12}}>Select a saved organization above to prepare a draft, review contact fields or open its activity timeline.</div>:
+  {!prospect?<div style={{...panel,color:"var(--pf-tx-74819B)",fontSize:12}}>Select a saved organization above to review contact fields, record a source check or open its activity timeline.</div>:
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:16,alignItems:"start"}}>
    <div style={{display:"grid",gap:16}}>
-    <section style={{...panel,display:"grid",gap:13}}>
-     <div><h3 style={{margin:"0 0 5px",fontSize:15}}>Outreach draft</h3>
-      <p style={{...small,margin:0}}>Editable email templates. No automated sending, personalization research or mass campaigns.</p></div>
-     <label style={small}>Template
-      <select value={templateId} onChange={e=>setTemplateId(e.target.value)} style={{...field,marginTop:5}}>
-       {OUTREACH_TEMPLATES.map(t=><option value={t.id} key={t.id}>{t.label}</option>)}
-      </select>
-     </label>
-     <div style={{background:eligible.blocked?"var(--pf-bg-FFF0F0)":"var(--pf-bg-F5F7FB)",borderRadius:9,padding:11,fontSize:11,color:eligible.blocked?"var(--pf-tx-A34343)":"var(--pf-tx-596A83)"}}>{eligible.warning}</div>
-     <label style={small}>Subject
-      <input value={subject} onChange={e=>setSubject(e.target.value)} disabled={eligible.blocked} style={{...field,marginTop:5}}/>
-     </label>
-     <label style={small}>Message
-      <textarea value={body} onChange={e=>setBody(e.target.value)} disabled={eligible.blocked} rows={13} style={{...field,marginTop:5,resize:"vertical",lineHeight:1.6}}/>
-     </label>
-     <div style={{display:"flex",gap:9,flexWrap:"wrap"}}>
-      <button style={action} onClick={copy} disabled={eligible.blocked}>Copy draft</button>
-      {eligible.canOpenEmail&&mailto?<a style={{...secondary,textDecoration:"none",display:"inline-flex",alignItems:"center"}} href={mailto}>Open email app ↗</a>:
-       <button style={secondary} disabled title="A valid saved email is needed">Open email app ↗</button>}
-      {enabled&&canEdit&&<button style={secondary} disabled={busy||eligible.blocked} onClick={prepared}>Record draft prepared</button>}
-     </div>
-     <p style={{...small,margin:0}}>Opening your email app creates an editable unsent message. Review recipients, content, consent and accuracy before sending.</p>
-    </section>
     <section style={{...panel,display:"grid",gap:12}}>
      <div><h3 style={{margin:"0 0 5px",fontSize:15}}>Contact source review</h3>
       <p style={{...small,margin:0}}>Syntax and source presence are different from verified ownership or deliverability.</p></div>
